@@ -90,6 +90,11 @@ AtomicSimpleCPU::AtomicSimpleCPU(AtomicSimpleCPUParams *p)
     data_read_req = std::make_shared<Request>();
     data_write_req = std::make_shared<Request>();
     data_amo_req = std::make_shared<Request>();
+
+    //open file trace.txt in write mode
+    tptr = fopen("trace.txt", "w");
+    if (tptr == NULL)
+        printf("Could not open file");
 }
 
 
@@ -411,6 +416,9 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
                 dcache_latency += sendPacket(dcachePort, &pkt);
             }
             dcache_access = true;
+            d_addr = addr;
+            d_size = size;
+            d_depth = req->getAccessDepth();;
 
             assert(!pkt.isError());
 
@@ -680,6 +688,7 @@ AtomicSimpleCPU::tick()
         if (fault == NoFault) {
             Tick icache_latency = 0;
             bool icache_access = false;
+            i_depth = 0;
             dcache_access = false; // assume no dcache access
 
             if (needToFetch) {
@@ -695,6 +704,7 @@ AtomicSimpleCPU::tick()
                     ifetch_pkt.dataStatic(&inst);
 
                     icache_latency = sendPacket(icachePort, &ifetch_pkt);
+                    i_depth = ifetch_req->getAccessDepth();
 
                     assert(!ifetch_pkt.isError());
 
@@ -712,6 +722,7 @@ AtomicSimpleCPU::tick()
                 // keep an instruction count
                 if (fault == NoFault) {
                     countInst();
+                    dumpInst(curStaticInst);
                     ppCommit->notify(std::make_pair(thread, curStaticInst));
                 }
                 else if (traceData && !DTRACE(ExecFaulting)) {
@@ -778,6 +789,60 @@ void
 AtomicSimpleCPU::printAddr(Addr a)
 {
     dcachePort.printAddr(a);
+}
+
+void AtomicSimpleCPU::dumpInst(StaticInstPtr inst) {
+  SimpleExecContext &t_info = *threadInfo[curThread];
+  SimpleThread *thread = t_info.thread;
+
+  fprintf(tptr, "0 0 0  ");
+  fprintf(tptr, "%d %d %d %d %d %d %d ", inst->opClass(),
+          inst->isMicroop(), inst->isCondCtrl(), inst->isUncondCtrl(),
+          inst->isSquashAfter(), inst->isSerializeAfter(),
+          inst->isSerializeBefore());
+  bool MisPred = false;
+  if (branchPred && inst->isControl()) {
+    if (t_info.predPC != thread->pcState())
+      MisPred = true;
+  }
+  fprintf(tptr, "%d  ", MisPred);
+  fprintf(tptr, "%d %d %d %lu  ", inst->isMemBarrier(), inst->isQuiesce(),
+          inst->isNonSpeculative(), thread->pcState().instAddr() % 64);
+  fprintf(tptr, "%d ", inst->numSrcRegs());
+  for (int i = 0; i < inst->numSrcRegs(); i++) {
+    fprintf(tptr, "%d %hu ", inst->srcRegIdx(i).classValue(),
+            inst->srcRegIdx(i).index());
+  }
+  fprintf(tptr, " %d ", inst->numDestRegs());
+  for (int i = 0; i < inst->numDestRegs(); i++) {
+    fprintf(tptr, "%d %hu ", inst->destRegIdx(i).classValue(),
+            inst->destRegIdx(i).index());
+  }
+  fprintf(tptr, " %d %lx %u %d", dcache_access, dcache_access ? d_addr : 0,
+          dcache_access ? d_size : 0, d_depth);
+  //for (int i = 1; i < 4; i++) {
+  //  fprintf(tptr, " %d", inst->dwalkDepth[i]);
+  //}
+  //for (int i = 1; i < 4; i++) {
+  //  fprintf(tptr, " %lx", inst->dwalkAddr[i]);
+  //}
+  //assert(inst->dWritebacks[0] == 0 && inst->dWritebacks[3] == 0);
+  //for (int i = 1; i < 3; i++) {
+  //  fprintf(tptr, " %d", inst->dWritebacks[i]);
+  //}
+  fprintf(tptr, "  %lx %d", thread->pcState().instAddr(), i_depth);
+  //for (int i = 1; i < 4; i++) {
+  //  fprintf(tptr, " %d", inst->iwalkDepth[i]);
+  //}
+  //for (int i = 1; i < 4; i++) {
+  //  fprintf(tptr, " %lx", inst->iwalkAddr[i]);
+  //}
+  //assert(inst->iWritebacks[0] == 0 && inst->iWritebacks[3] == 0);
+  //for (int i = 1; i < 3; i++) {
+  //  fprintf(tptr, " %d", inst->iWritebacks[i]);
+  //}
+  //assert(inst->iwalkDepth[0] == -1 && inst->dwalkDepth[0] == -1);
+  fprintf(tptr, "\n");
 }
 
 ////////////////////////////////////////////////////////////////////////

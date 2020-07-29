@@ -166,6 +166,11 @@ class AtomicSimpleCPU : public BaseSimpleCPU
     bool dcache_access;
     Tick dcache_latency;
 
+    int i_depth;
+    Addr d_addr;
+    unsigned d_size;
+    int d_depth;
+
     /** Probe Points. */
     ProbePointArg<std::pair<SimpleThread*, const StaticInstPtr>> *ppCommit;
 
@@ -234,6 +239,9 @@ class AtomicSimpleCPU : public BaseSimpleCPU
      * debugging).
      */
     void printAddr(Addr a);
+
+    FILE *tptr = nullptr;
+    void dumpInst(StaticInstPtr inst);
 };
 
 #endif // __CPU_SIMPLE_ATOMIC_HH__
