@@ -87,8 +87,9 @@ class BaseTLB : public SimObject
   public:
     virtual void demapPage(Addr vaddr, uint64_t asn) = 0;
 
-    virtual Fault translateAtomic(
-            const RequestPtr &req, ThreadContext *tc, Mode mode) = 0;
+    virtual Fault translateAtomic(const RequestPtr &req, ThreadContext *tc,
+                                  Mode mode, int *depths = NULL,
+                                  Addr *addrs = NULL) = 0;
     virtual void translateTiming(
             const RequestPtr &req, ThreadContext *tc,
             Translation *translation, Mode mode) = 0;

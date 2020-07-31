@@ -804,6 +804,9 @@ class TableWalker : public ClockedObject
         /** Page entries walked during service (for stats) */
         unsigned levels;
 
+        int depthByLevel[4];
+        Addr addrByLevel[4];
+
         void doL1Descriptor();
         void doL2Descriptor();
 
@@ -971,6 +974,9 @@ class TableWalker : public ClockedObject
 
     Fault testWalk(Addr pa, Addr size, TlbEntry::DomainType domain,
                    LookupLevel lookup_level);
+
+  public:
+    int LastDepth;
 };
 
 } // namespace ArmISA

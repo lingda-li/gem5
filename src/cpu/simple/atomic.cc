@@ -400,8 +400,8 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
 
         // translate to physical address
         if (predicate) {
-            fault = thread->dtb->translateAtomic(req, thread->getTC(),
-                                                 BaseTLB::Read);
+          fault = thread->dtb->translateAtomic(
+              req, thread->getTC(), BaseTLB::Read, dw_depths, dw_addrs);
         }
 
         // Now do the access.
@@ -418,7 +418,7 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
             dcache_access = true;
             d_addr = addr;
             d_size = size;
-            d_depth = req->getAccessDepth();;
+            d_depth = req->getAccessDepth();
 
             assert(!pkt.isError());
 
@@ -494,8 +494,8 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
 
         // translate to physical address
         if (predicate)
-            fault = thread->dtb->translateAtomic(req, thread->getTC(),
-                                                 BaseTLB::Write);
+          fault = thread->dtb->translateAtomic(
+              req, thread->getTC(), BaseTLB::Write, dw_depths, dw_addrs);
 
         // Now do the access.
         if (predicate && fault == NoFault) {
@@ -528,6 +528,9 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
                     threadSnoop(&pkt, curThread);
                 }
                 dcache_access = true;
+                d_addr = addr;
+                d_size = size;
+                d_depth = req->getAccessDepth();
                 assert(!pkt.isError());
 
                 if (req->isSwap()) {
@@ -604,8 +607,8 @@ AtomicSimpleCPU::amoMem(Addr addr, uint8_t* data, unsigned size,
                  thread->pcState().instAddr(), std::move(amo_op));
 
     // translate to physical address
-    Fault fault = thread->dtb->translateAtomic(req, thread->getTC(),
-                                                      BaseTLB::Write);
+    Fault fault = thread->dtb->translateAtomic(
+        req, thread->getTC(), BaseTLB::Write, dw_depths, dw_addrs);
 
     // Now do the access.
     if (fault == NoFault && !req->getFlags().isSet(Request::NO_ACCESS)) {
@@ -621,6 +624,9 @@ AtomicSimpleCPU::amoMem(Addr addr, uint8_t* data, unsigned size,
         }
 
         dcache_access = true;
+        d_addr = addr;
+        d_size = size;
+        d_depth = req->getAccessDepth();
 
         assert(!pkt.isError());
         assert(!req->isLLSC());
@@ -676,13 +682,18 @@ AtomicSimpleCPU::tick()
 
         TheISA::PCState pcState = thread->pcState();
 
+        for (int i = 0; i < 4; i++) {
+          iw_depths[i] = -1;
+          iw_addrs[i] = 0;
+        }
         bool needToFetch = !isRomMicroPC(pcState.microPC()) &&
                            !curMacroStaticInst;
         if (needToFetch) {
             ifetch_req->taskId(taskId());
             setupFetchRequest(ifetch_req);
             fault = thread->itb->translateAtomic(ifetch_req, thread->getTC(),
-                                                 BaseTLB::Execute);
+                                                 BaseTLB::Execute, iw_depths,
+                                                 iw_addrs);
         }
 
         if (fault == NoFault) {
@@ -690,6 +701,13 @@ AtomicSimpleCPU::tick()
             bool icache_access = false;
             i_depth = 0;
             dcache_access = false; // assume no dcache access
+            d_addr = 0;
+            d_size = 0;
+            d_depth = 0;
+            for (int i = 0; i < 4; i++) {
+              dw_depths[i] = -1;
+              dw_addrs[i] = 0;
+            }
 
             if (needToFetch) {
                 // This is commented out because the decoder would act like
@@ -820,28 +838,28 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst) {
   }
   fprintf(tptr, " %d %lx %u %d", dcache_access, dcache_access ? d_addr : 0,
           dcache_access ? d_size : 0, d_depth);
-  //for (int i = 1; i < 4; i++) {
-  //  fprintf(tptr, " %d", inst->dwalkDepth[i]);
-  //}
-  //for (int i = 1; i < 4; i++) {
-  //  fprintf(tptr, " %lx", inst->dwalkAddr[i]);
-  //}
+  for (int i = 1; i < 4; i++) {
+    fprintf(tptr, " %d", dw_depths[i]);
+  }
+  for (int i = 1; i < 4; i++) {
+    fprintf(tptr, " %lx", dw_addrs[i]);
+  }
   //assert(inst->dWritebacks[0] == 0 && inst->dWritebacks[3] == 0);
   //for (int i = 1; i < 3; i++) {
   //  fprintf(tptr, " %d", inst->dWritebacks[i]);
   //}
   fprintf(tptr, "  %lx %d", thread->pcState().instAddr(), i_depth);
-  //for (int i = 1; i < 4; i++) {
-  //  fprintf(tptr, " %d", inst->iwalkDepth[i]);
-  //}
-  //for (int i = 1; i < 4; i++) {
-  //  fprintf(tptr, " %lx", inst->iwalkAddr[i]);
-  //}
+  for (int i = 1; i < 4; i++) {
+    fprintf(tptr, " %d", iw_depths[i]);
+  }
+  for (int i = 1; i < 4; i++) {
+    fprintf(tptr, " %lx", iw_addrs[i]);
+  }
   //assert(inst->iWritebacks[0] == 0 && inst->iWritebacks[3] == 0);
   //for (int i = 1; i < 3; i++) {
   //  fprintf(tptr, " %d", inst->iWritebacks[i]);
   //}
-  //assert(inst->iwalkDepth[0] == -1 && inst->dwalkDepth[0] == -1);
+  assert(iw_depths[0] == -1 && dw_depths[0] == -1);
   fprintf(tptr, "\n");
 }
 

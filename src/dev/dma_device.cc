@@ -42,6 +42,7 @@
 
 #include <utility>
 
+#include "arch/arm/table_walker.hh"
 #include "base/chunk_generator.hh"
 #include "debug/DMA.hh"
 #include "debug/Drain.hh"
@@ -87,6 +88,9 @@ DmaPort::handleResp(PacketPtr pkt, Tick delay)
     // if we have reached the total number of bytes for this DMA
     // request, then signal the completion and delete the sate
     if (state->totBytes == state->numBytes) {
+        if (TableWalker *walker_device =
+                dynamic_cast<TableWalker *>(device))
+          walker_device->LastDepth = pkt->req->getAccessDepth();
         if (state->completionEvent) {
             delay += state->delay;
             device->schedule(state->completionEvent, curTick() + delay);

@@ -349,20 +349,20 @@ class TLB : public BaseTLB
         TLB::ArmTranslationType tranType, Addr vaddr, bool long_desc_format);
     Fault translateMmuOn(ThreadContext *tc, const RequestPtr &req, Mode mode,
         Translation *translation, bool &delay, bool timing, bool functional,
-        Addr vaddr, ArmFault::TranMethod tranMethod);
+        Addr vaddr, ArmFault::TranMethod tranMethod, TlbEntry **tep);
 
     Fault translateFs(const RequestPtr &req, ThreadContext *tc, Mode mode,
-            Translation *translation, bool &delay,
-            bool timing, ArmTranslationType tranType, bool functional = false);
+                      Translation *translation, bool &delay, bool timing,
+                      ArmTranslationType tranType, bool functional = false,
+                      TlbEntry **tep = NULL);
     Fault translateSe(const RequestPtr &req, ThreadContext *tc, Mode mode,
             Translation *translation, bool &delay, bool timing);
     Fault translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode,
-            ArmTranslationType tranType);
-    Fault
-    translateAtomic(const RequestPtr &req,
-                    ThreadContext *tc, Mode mode) override
-    {
-        return translateAtomic(req, tc, mode, NormalTran);
+                          ArmTranslationType tranType, int *depths = NULL,
+                          Addr *addrs = NULL);
+    Fault translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode,
+                          int *depths = NULL, Addr *addrs = NULL) override {
+      return translateAtomic(req, tc, mode, NormalTran, depths, addrs);
     }
     void translateTiming(
             const RequestPtr &req, ThreadContext *tc,

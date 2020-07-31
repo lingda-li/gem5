@@ -167,9 +167,14 @@ class AtomicSimpleCPU : public BaseSimpleCPU
     Tick dcache_latency;
 
     int i_depth;
+    int iw_depths[4];
+    Addr iw_addrs[4];
+
     Addr d_addr;
     unsigned d_size;
     int d_depth;
+    int dw_depths[4];
+    Addr dw_addrs[4];
 
     /** Probe Points. */
     ProbePointArg<std::pair<SimpleThread*, const StaticInstPtr>> *ppCommit;

@@ -1057,7 +1057,7 @@ Fault
 TLB::translateMmuOn(ThreadContext* tc, const RequestPtr &req, Mode mode,
                     Translation *translation, bool &delay, bool timing,
                     bool functional, Addr vaddr,
-                    ArmFault::TranMethod tranMethod)
+                    ArmFault::TranMethod tranMethod, TlbEntry **tep)
 {
     TlbEntry *te = NULL;
     bool is_fetch  = (mode == Execute);
@@ -1068,6 +1068,8 @@ TLB::translateMmuOn(ThreadContext* tc, const RequestPtr &req, Mode mode,
 
     Fault fault = getResultTe(&te, req, tc, mode, translation, timing,
                               functional, &mergeTe);
+    if (tep)
+      *tep = te;
     // only proceed if we have a valid table entry
     if ((te == NULL) && (fault == NoFault)) delay = true;
 
@@ -1127,7 +1129,7 @@ TLB::translateMmuOn(ThreadContext* tc, const RequestPtr &req, Mode mode,
 Fault
 TLB::translateFs(const RequestPtr &req, ThreadContext *tc, Mode mode,
         Translation *translation, bool &delay, bool timing,
-        TLB::ArmTranslationType tranType, bool functional)
+        TLB::ArmTranslationType tranType, bool functional, TlbEntry **tep)
 {
     // No such thing as a functional timing access
     assert(!(timing && functional));
@@ -1186,26 +1188,40 @@ TLB::translateFs(const RequestPtr &req, ThreadContext *tc, Mode mode,
                 isStage2 ? "IPA" : "VA", vaddr_tainted, asid);
         // Translation enabled
         return translateMmuOn(tc, req, mode, translation, delay, timing,
-                              functional, vaddr, tranMethod);
+                              functional, vaddr, tranMethod, tep);
     }
 }
 
 Fault
 TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode,
-    TLB::ArmTranslationType tranType)
+    TLB::ArmTranslationType tranType, int *depths, Addr *addrs)
 {
     updateMiscReg(tc, tranType);
 
     if (directToStage2) {
         assert(stage2Tlb);
-        return stage2Tlb->translateAtomic(req, tc, mode, tranType);
+        return stage2Tlb->translateAtomic(req, tc, mode, tranType, depths,
+                                          addrs);
     }
 
     bool delay = false;
     Fault fault;
-    if (FullSystem)
-        fault = translateFs(req, tc, mode, NULL, delay, false, tranType);
-    else
+    TlbEntry *tev = NULL;
+    TlbEntry **tep = &tev;
+    if (FullSystem) {
+      fault =
+          translateFs(req, tc, mode, NULL, delay, false, tranType, false, tep);
+      assert(depths && addrs);
+      if (*tep) {
+        assert(req->hasPaddr());
+        for (int i = 0; i < 4; i++) {
+          depths[i] = (*tep)->walkDepth[i];
+          addrs[i] = (*tep)->walkAddr[i];
+          (*tep)->walkDepth[i] = -1;
+          (*tep)->walkAddr[i] = 0;
+        }
+      }
+    } else
         fault = translateSe(req, tc, mode, NULL, delay, false);
     assert(!delay);
     return fault;

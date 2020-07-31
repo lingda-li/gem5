@@ -138,6 +138,10 @@ TableWalker::WalkerState::WalkerState() :
     mode(BaseTLB::Read), tranType(TLB::NormalTran), l2Desc(l1Desc),
     delayed(false), tableWalker(nullptr)
 {
+  for (int i = 0; i < 4; i++) {
+    depthByLevel[i] = -1;
+    addrByLevel[i] = 0;
+  }
 }
 
 void
@@ -1669,6 +1673,15 @@ TableWalker::doLongDescriptor()
                 currState->fault = generateLongDescFault(fault_source);
             } else {
                 insertTableEntry(currState->longDesc, true);
+                TlbEntry *te = tlb->lookup(currState->vaddr, currState->asid,
+                                           currState->vmid, currState->isHyp,
+                                           currState->isSecure, true, false,
+                                           currState->el);
+                assert(te);
+                for (int i = 0; i < 4; i++) {
+                  te->walkDepth[i] = currState->depthByLevel[i];
+                  te->walkAddr[i] = currState->addrByLevel[i];
+                }
             }
         }
         return;
@@ -1744,6 +1757,7 @@ TableWalker::doLongDescriptor()
             }
 
             bool delayed;
+            currState->addrByLevel[L] = next_desc_addr;
             delayed = fetchDescriptor(next_desc_addr, (uint8_t*)&currState->longDesc.data,
                                       sizeof(uint64_t), flag, -1, event,
                                       &TableWalker::doLongDescriptor);
@@ -2004,6 +2018,7 @@ TableWalker::fetchDescriptor(Addr descAddr, uint8_t *data, int numBytes,
     Request::Flags flags, int queueIndex, Event *event,
     void (TableWalker::*doDescriptor)())
 {
+    currState->addrByLevel[currState->longDesc.lookupLevel] = descAddr;
     bool isTiming = currState->timing;
 
     DPRINTF(TLBVerbose, "Fetching descriptor at address: 0x%x stage2Req: %d\n",
@@ -2055,6 +2070,9 @@ TableWalker::fetchDescriptor(Addr descAddr, uint8_t *data, int numBytes,
         } else if (!currState->functional) {
             port->dmaAction(MemCmd::ReadReq, descAddr, numBytes, NULL, data,
                            currState->tc->getCpuPtr()->clockPeriod(), flags);
+            currState->depthByLevel[currState->longDesc.lookupLevel] =
+                LastDepth;
+            //printf("he %d %lx %p\n", LastDepth, descAddr, currState);
             (this->*doDescriptor)();
         } else {
             RequestPtr req = std::make_shared<Request>(
