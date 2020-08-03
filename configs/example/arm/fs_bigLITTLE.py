@@ -80,6 +80,13 @@ def _using_pdes(root):
     return False
 
 
+class AtomicCacheCluster(devices.CpuCluster):
+    def __init__(self, system, num_cpus, cpu_clock, cpu_voltage="1.0V"):
+        cpu_config = [ ObjectList.cpu_list.get("AtomicSimpleCPU"),
+            devices.L1I, devices.L1D, devices.WalkCache, devices.L2 ]
+        super(AtomicCacheCluster, self).__init__(system, num_cpus, cpu_clock,
+                                                 cpu_voltage, *cpu_config)
+
 class BigCluster(devices.CpuCluster):
     def __init__(self, system, num_cpus, cpu_clock,
                  cpu_voltage="1.0V"):
@@ -148,6 +155,7 @@ def createSystem(caches, kernel, bootscript, machine_type="VExpress_GEM5",
 
 cpu_types = {
     "atomic" : (AtomicCluster, AtomicCluster),
+    "ac"     : (AtomicCacheCluster, AtomicCacheCluster),
     "timing" : (BigCluster, LittleCluster),
     "exynos" : (Ex5BigCluster, Ex5LittleCluster),
 }
