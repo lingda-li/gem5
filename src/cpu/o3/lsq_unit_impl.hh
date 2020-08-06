@@ -137,6 +137,11 @@ LSQUnit<Impl>::completeDataAccess(PacketPtr pkt)
             completeStore(dynamic_cast<SQSenderState*>(state)->idx);
         }
     }
+
+    // Record cache hit level info.
+    inst->cachedepth = pkt->req->getAccessDepth();
+    for (int i = 0; i < 4; i++)
+      inst->dWritebacks[i] = pkt->req->writebacks[i];
 }
 
 template <class Impl>

@@ -123,7 +123,7 @@ class TimingSimpleCPU : public BaseSimpleCPU
 
         void
         finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc,
-               BaseTLB::Mode mode)
+               BaseTLB::Mode mode, int *depths, Addr *addrs)
         {
             cpu->sendFetch(fault, req, tc);
         }

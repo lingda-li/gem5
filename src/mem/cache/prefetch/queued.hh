@@ -123,7 +123,8 @@ class Queued : public Base
         {}
 
         void finish(const Fault &fault, const RequestPtr &req,
-                            ThreadContext *tc, BaseTLB::Mode mode) override;
+                    ThreadContext *tc, BaseTLB::Mode mode,
+                    int *depths, Addr *addrs) override;
 
         /**
          * Issues the translation request to the provided TLB

@@ -86,7 +86,7 @@ class Stage2MMU : public SimObject
 
         void
         finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc,
-               BaseTLB::Mode mode);
+               BaseTLB::Mode mode, int *depths, Addr *addrs);
 
         void setVirt(Addr vaddr, int size, Request::Flags flags, int masterId)
         {

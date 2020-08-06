@@ -420,6 +420,7 @@ DefaultFetch<Impl>::processCacheCompletion(PacketPtr pkt)
 
     pkt->req->setAccessLatency();
     cpu->ppInstAccessComplete->notify(pkt);
+    depth = pkt->req->getAccessDepth();
     // Reset the mem req to NULL.
     delete pkt;
     memReq[tid] = NULL;
@@ -649,10 +650,18 @@ DefaultFetch<Impl>::fetchCacheLine(Addr vaddr, ThreadID tid, Addr pc)
 template <class Impl>
 void
 DefaultFetch<Impl>::finishTranslation(const Fault &fault,
-                                      const RequestPtr &mem_req)
+                                      const RequestPtr &mem_req,
+                                      int *depths, Addr *addrs)
 {
     ThreadID tid = cpu->contextToThread(mem_req->contextId());
     Addr fetchBufferBlockPC = mem_req->getVaddr();
+    if (depths) {
+      assert(addrs);
+      for (int i = 0; i < 4; i++) {
+        walkDepth[i] = depths[i];
+        walkAddr[i] = addrs[i];
+      }
+    }
 
     assert(!cpu->switchedOut());
 
@@ -1332,10 +1341,26 @@ DefaultFetch<Impl>::fetch(bool &status_change)
             numInst++;
 
 #if TRACING_ON
-            if (DTRACE(O3PipeView)) {
-                instruction->fetchTick = curTick();
-            }
+            //if (DTRACE(O3PipeView)) {
+            //    instruction->fetchTick = curTick();
+            //}
+            instruction->fetchTick = curTick();
 #endif
+            if (status_change && numInst == 1) {
+              instruction->fetchdepth = depth;
+              for (int i = 0; i < 4; i++) {
+                instruction->iwalkDepth[i] = walkDepth[i];
+                instruction->iwalkAddr[i] = walkAddr[i];
+              }
+              for (int i = 0; i < 4; i++)
+                instruction->iWritebacks[i] = writebacks[i];
+            } else {
+              instruction->fetchdepth = 0;
+              for (int i = 0; i < 4; i++) {
+                instruction->iwalkDepth[i] = -1;
+                instruction->iwalkAddr[i] = 0;
+              }
+            }
 
             nextPC = thisPC;
 

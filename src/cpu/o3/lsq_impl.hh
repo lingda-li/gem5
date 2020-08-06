@@ -769,7 +769,7 @@ LSQ<Impl>::pushRequest(const DynInstPtr& inst, bool isLoad, uint8_t *data,
 template<class Impl>
 void
 LSQ<Impl>::SingleDataRequest::finish(const Fault &fault, const RequestPtr &req,
-        ThreadContext* tc, BaseTLB::Mode mode)
+        ThreadContext* tc, BaseTLB::Mode mode, int* depths, Addr *addrs)
 {
     _fault.push_back(fault);
     numInTranslationFragments = 0;
@@ -796,13 +796,20 @@ LSQ<Impl>::SingleDataRequest::finish(const Fault &fault, const RequestPtr &req,
 
         LSQRequest::_inst->fault = fault;
         LSQRequest::_inst->translationCompleted(true);
+        if (depths) {
+          assert(addrs);
+          for (int i = 0; i < 4; i++) {
+            _inst->dwalkDepth[i] = depths[i];
+            _inst->dwalkAddr[i] = addrs[i];
+          }
+        }
     }
 }
 
 template<class Impl>
 void
 LSQ<Impl>::SplitDataRequest::finish(const Fault &fault, const RequestPtr &req,
-        ThreadContext* tc, BaseTLB::Mode mode)
+        ThreadContext* tc, BaseTLB::Mode mode, int* depths, Addr *addrs)
 {
     int i;
     for (i = 0; i < _requests.size() && _requests[i] != req; i++);
@@ -842,6 +849,13 @@ LSQ<Impl>::SplitDataRequest::finish(const Fault &fault, const RequestPtr &req,
             } else {
                 _inst->fault = _fault[0];
                 setState(State::Fault);
+            }
+            if (depths) {
+              assert(addrs);
+              for (int i = 0; i < 4; i++) {
+                _inst->dwalkDepth[i] = depths[i];
+                _inst->dwalkAddr[i] = addrs[i];
+              }
             }
         }
 

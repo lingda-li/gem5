@@ -91,10 +91,10 @@ AtomicSimpleCPU::AtomicSimpleCPU(AtomicSimpleCPUParams *p)
     data_write_req = std::make_shared<Request>();
     data_amo_req = std::make_shared<Request>();
 
-    //open file trace.txt in write mode
+    // Open file trace.txt in write mode.
     tptr = fopen("trace.txt", "w");
     if (tptr == NULL)
-        printf("Could not open file");
+        printf("Could not open trace file.\n");
 }
 
 

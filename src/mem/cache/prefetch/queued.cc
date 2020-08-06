@@ -82,7 +82,8 @@ Queued::DeferredPacket::startTranslation(BaseTLB *tlb)
 
 void
 Queued::DeferredPacket::finish(const Fault &fault,
-    const RequestPtr &req, ThreadContext *tc, BaseTLB::Mode mode)
+    const RequestPtr &req, ThreadContext *tc, BaseTLB::Mode mode,
+    int *depths, Addr *addrs)
 {
     assert(ongoingTranslation);
     ongoingTranslation = false;

@@ -117,7 +117,8 @@ Stage2MMU::Stage2Translation::Stage2Translation(Stage2MMU &_parent,
 void
 Stage2MMU::Stage2Translation::finish(const Fault &_fault,
                                      const RequestPtr &req,
-                                     ThreadContext *tc, BaseTLB::Mode mode)
+                                     ThreadContext *tc, BaseTLB::Mode mode,
+                                     int *depths, Addr *addrs)
 {
     fault = _fault;
 

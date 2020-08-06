@@ -95,7 +95,7 @@ class Stage2LookUp : public BaseTLB::Translation
     void markDelayed() {}
 
     void finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc,
-                BaseTLB::Mode mode);
+                BaseTLB::Mode mode, int *depths, Addr *addrs);
 };
 
 

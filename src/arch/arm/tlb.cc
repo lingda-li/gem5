@@ -1272,8 +1272,11 @@ TLB::translateComplete(const RequestPtr &req, ThreadContext *tc,
 {
     bool delay = false;
     Fault fault;
+    TlbEntry *tev = NULL;
+    TlbEntry **tep = &tev;
     if (FullSystem)
-        fault = translateFs(req, tc, mode, translation, delay, true, tranType);
+      fault = translateFs(req, tc, mode, translation, delay, true, tranType,
+                          false, tep);
     else
         fault = translateSe(req, tc, mode, translation, delay, true);
     DPRINTF(TLBVerbose, "Translation returning delay=%d fault=%d\n", delay, fault !=
@@ -1285,9 +1288,21 @@ TLB::translateComplete(const RequestPtr &req, ThreadContext *tc,
     // one when the translation starts and again when the stage 1 translation
     // completes.
     if (translation && (callFromS2 || !stage2Req || req->hasPaddr() || fault != NoFault)) {
-        if (!delay)
-            translation->finish(fault, req, tc, mode);
-        else
+        if (!delay) {
+            int walkDepth[4];
+            Addr walkAddr[4];
+            if (*tep) {
+                assert(req->hasPaddr());
+                for (int i = 0; i < 4; i++) {
+                  walkDepth[i] = (*tep)->walkDepth[i];
+                  walkAddr[i] = (*tep)->walkAddr[i];
+                  (*tep)->walkDepth[i] = -1;
+                  (*tep)->walkAddr[i] = 0;
+                }
+                translation->finish(fault, req, tc, mode, walkDepth, walkAddr);
+            } else
+                translation->finish(fault, req, tc, mode);
+        } else
             translation->markDelayed();
     }
     return fault;
