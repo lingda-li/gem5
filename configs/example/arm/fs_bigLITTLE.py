@@ -54,6 +54,7 @@ from common import SysPaths
 from common import ObjectList
 from common import Options
 from common.cores.arm import ex5_big, ex5_LITTLE
+from common.cores.arm.O3_ARM_v7a import *
 
 import devices
 from devices import AtomicCluster, KvmCluster, FastmodelCluster
@@ -86,6 +87,8 @@ class AtomicCacheCluster(devices.CpuCluster):
             devices.L1I, devices.L1D, devices.WalkCache, devices.L2 ]
         super(AtomicCacheCluster, self).__init__(system, num_cpus, cpu_clock,
                                                  cpu_voltage, *cpu_config)
+        for cpu in self.cpus:
+            cpu.branchPred = O3_ARM_v7a_BP()
 
 class BigCluster(devices.CpuCluster):
     def __init__(self, system, num_cpus, cpu_clock,
