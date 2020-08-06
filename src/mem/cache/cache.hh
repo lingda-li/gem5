@@ -93,9 +93,9 @@ class Cache : public BaseCache
 
     void recvTimingReq(PacketPtr pkt) override;
 
-    void doWritebacks(PacketList& writebacks, Tick forward_time) override;
+    int doWritebacks(PacketList& writebacks, Tick forward_time) override;
 
-    void doWritebacksAtomic(PacketList& writebacks) override;
+    int doWritebacksAtomic(PacketList& writebacks) override;
 
     void serviceMSHRTargets(MSHR *mshr, const PacketPtr pkt,
                             CacheBlk *blk) override;

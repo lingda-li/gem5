@@ -590,12 +590,12 @@ class BaseCache : public ClockedObject
     /**
      * Insert writebacks into the write buffer
      */
-    virtual void doWritebacks(PacketList& writebacks, Tick forward_time) = 0;
+    virtual int doWritebacks(PacketList& writebacks, Tick forward_time) = 0;
 
     /**
      * Send writebacks down the memory hierarchy in atomic mode
      */
-    virtual void doWritebacksAtomic(PacketList& writebacks) = 0;
+    virtual int doWritebacksAtomic(PacketList& writebacks) = 0;
 
     /**
      * Create an appropriate downstream bus request packet.

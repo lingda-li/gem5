@@ -387,6 +387,8 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
     dcache_latency = 0;
 
     req->taskId(taskId());
+    for (int i = 0; i < 4; i++)
+      req->writebacks[i] = 0;
 
     Addr frag_addr = addr;
     int frag_size = 0;
@@ -419,6 +421,8 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
             d_addr = addr;
             d_size = size;
             d_depth = req->getAccessDepth();
+            for (int i = 0; i < 4; i++)
+              d_writebacks[i] = req->writebacks[i];
 
             assert(!pkt.isError());
 
@@ -480,6 +484,8 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
     dcache_latency = 0;
 
     req->taskId(taskId());
+    for (int i = 0; i < 4; i++)
+      req->writebacks[i] = 0;
 
     Addr frag_addr = addr;
     int frag_size = 0;
@@ -531,6 +537,8 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
                 d_addr = addr;
                 d_size = size;
                 d_depth = req->getAccessDepth();
+                for (int i = 0; i < 4; i++)
+                  d_writebacks[i] = req->writebacks[i];
                 assert(!pkt.isError());
 
                 if (req->isSwap()) {
@@ -605,6 +613,8 @@ AtomicSimpleCPU::amoMem(Addr addr, uint8_t* data, unsigned size,
     req->taskId(taskId());
     req->setVirt(addr, size, flags, dataMasterId(),
                  thread->pcState().instAddr(), std::move(amo_op));
+    for (int i = 0; i < 4; i++)
+      req->writebacks[i] = 0;
 
     // translate to physical address
     Fault fault = thread->dtb->translateAtomic(
@@ -627,6 +637,8 @@ AtomicSimpleCPU::amoMem(Addr addr, uint8_t* data, unsigned size,
         d_addr = addr;
         d_size = size;
         d_depth = req->getAccessDepth();
+        for (int i = 0; i < 4; i++)
+          d_writebacks[i] = req->writebacks[i];
 
         assert(!pkt.isError());
         assert(!req->isLLSC());
@@ -683,12 +695,15 @@ AtomicSimpleCPU::tick()
         TheISA::PCState pcState = thread->pcState();
 
         for (int i = 0; i < 4; i++) {
+          i_writebacks[i] = 0;
           iw_depths[i] = -1;
           iw_addrs[i] = 0;
         }
         bool needToFetch = !isRomMicroPC(pcState.microPC()) &&
                            !curMacroStaticInst;
         if (needToFetch) {
+            for (int i = 0; i < 4; i++)
+              ifetch_req->writebacks[i] = 0;
             ifetch_req->taskId(taskId());
             setupFetchRequest(ifetch_req);
             fault = thread->itb->translateAtomic(ifetch_req, thread->getTC(),
@@ -705,6 +720,7 @@ AtomicSimpleCPU::tick()
             d_size = 0;
             d_depth = 0;
             for (int i = 0; i < 4; i++) {
+              d_writebacks[i] = 0;
               dw_depths[i] = -1;
               dw_addrs[i] = 0;
             }
@@ -723,6 +739,8 @@ AtomicSimpleCPU::tick()
 
                     icache_latency = sendPacket(icachePort, &ifetch_pkt);
                     i_depth = ifetch_req->getAccessDepth();
+                    for (int i = 0; i < 4; i++)
+                      i_writebacks[i] = ifetch_req->writebacks[i];
 
                     assert(!ifetch_pkt.isError());
 
@@ -844,22 +862,22 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst) {
   for (int i = 1; i < 4; i++) {
     fprintf(tptr, " %lx", dw_addrs[i]);
   }
-  //assert(inst->dWritebacks[0] == 0 && inst->dWritebacks[3] == 0);
-  //for (int i = 1; i < 3; i++) {
-  //  fprintf(tptr, " %d", inst->dWritebacks[i]);
-  //}
+  assert(d_writebacks[3] == 0);
+  for (int i = 0; i < 3; i++) {
+    fprintf(tptr, " %d", d_writebacks[i]);
+  }
   fprintf(tptr, "  %lx %d", thread->pcState().instAddr(), i_depth);
+  assert(iw_depths[0] == -1 && dw_depths[0] == -1);
   for (int i = 1; i < 4; i++) {
     fprintf(tptr, " %d", iw_depths[i]);
   }
   for (int i = 1; i < 4; i++) {
     fprintf(tptr, " %lx", iw_addrs[i]);
   }
-  //assert(inst->iWritebacks[0] == 0 && inst->iWritebacks[3] == 0);
-  //for (int i = 1; i < 3; i++) {
-  //  fprintf(tptr, " %d", inst->iWritebacks[i]);
-  //}
-  assert(iw_depths[0] == -1 && dw_depths[0] == -1);
+  assert(i_writebacks[0] == 0 && i_writebacks[3] == 0);
+  for (int i = 1; i < 3; i++) {
+    fprintf(tptr, " %d", i_writebacks[i]);
+  }
   fprintf(tptr, "\n");
 }
 

@@ -89,25 +89,29 @@ NoncoherentCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
     return success;
 }
 
-void
+int
 NoncoherentCache::doWritebacks(PacketList& writebacks, Tick forward_time)
 {
+    int wbCount = writebacks.size();
     while (!writebacks.empty()) {
         PacketPtr wb_pkt = writebacks.front();
         allocateWriteBuffer(wb_pkt, forward_time);
         writebacks.pop_front();
     }
+    return wbCount;
 }
 
-void
+int
 NoncoherentCache::doWritebacksAtomic(PacketList& writebacks)
 {
+    int wbCount = writebacks.size();
     while (!writebacks.empty()) {
         PacketPtr wb_pkt = writebacks.front();
         memSidePort.sendAtomic(wb_pkt);
         writebacks.pop_front();
         delete wb_pkt;
     }
+    return wbCount;
 }
 
 void

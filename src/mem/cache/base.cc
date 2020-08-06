@@ -349,7 +349,8 @@ BaseCache::recvTimingReq(PacketPtr pkt)
         // After the evicted blocks are selected, they must be forwarded
         // to the write buffer to ensure they logically precede anything
         // happening below
-        doWritebacks(writebacks, clockEdge(lat + forwardLatency));
+        int wb = doWritebacks(writebacks, clockEdge(lat + forwardLatency));
+        pkt->req->incWriteback(wb);
     }
 
     // Here we charge the headerDelay that takes into account the latencies
@@ -529,7 +530,8 @@ BaseCache::recvTimingResp(PacketPtr pkt)
 
     const Tick forward_time = clockEdge(forwardLatency) + pkt->headerDelay;
     // copy writebacks to write buffer
-    doWritebacks(writebacks, forward_time);
+    int wb = doWritebacks(writebacks, forward_time);
+    pkt->req->incWriteback(wb);
 
     DPRINTF(CacheVerbose, "%s: Leaving with %s\n", __func__, pkt->print());
     delete pkt;
@@ -565,7 +567,8 @@ BaseCache::recvAtomic(PacketPtr pkt)
 
     // handle writebacks resulting from the access here to ensure they
     // logically precede anything happening below
-    doWritebacksAtomic(writebacks);
+    int wb = doWritebacksAtomic(writebacks);
+    pkt->req->incWriteback(wb);
     assert(writebacks.empty());
 
     if (!satisfied) {
@@ -584,7 +587,8 @@ BaseCache::recvAtomic(PacketPtr pkt)
     // there).
 
     // do any writebacks resulting from the response handling
-    doWritebacksAtomic(writebacks);
+    wb = doWritebacksAtomic(writebacks);
+    pkt->req->incWriteback(wb);
 
     // if we used temp block, check to see if its valid and if so
     // clear it out, but only do so after the call to recvAtomic is
@@ -1748,7 +1752,8 @@ BaseCache::sendMSHRQueuePacket(MSHR* mshr)
                                              pkt->id);
             PacketList writebacks;
             writebacks.push_back(wb_pkt);
-            doWritebacks(writebacks, 0);
+            int wb = doWritebacks(writebacks, 0);
+            pkt->req->incWriteback(wb);
         }
 
         return false;
