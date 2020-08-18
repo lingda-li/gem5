@@ -939,6 +939,7 @@ class Request
       assert(depth < 4);
       writebacks[depth] += wb;
     }
+    void clearAccessDepth() { depth = 0; }
     /** @} */
 };
 

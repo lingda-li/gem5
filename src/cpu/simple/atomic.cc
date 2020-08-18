@@ -92,7 +92,7 @@ AtomicSimpleCPU::AtomicSimpleCPU(AtomicSimpleCPUParams *p)
     data_amo_req = std::make_shared<Request>();
 
     // Open file trace.txt in write mode.
-    tptr = fopen("trace.txt", "w");
+    tptr = fopen((name() + ".trace.txt").c_str(), "w");
     if (tptr == NULL)
         printf("Could not open trace file.\n");
 }
@@ -389,6 +389,7 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
     req->taskId(taskId());
     for (int i = 0; i < 4; i++)
       req->writebacks[i] = 0;
+    req->clearAccessDepth();
 
     Addr frag_addr = addr;
     int frag_size = 0;
@@ -486,6 +487,7 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
     req->taskId(taskId());
     for (int i = 0; i < 4; i++)
       req->writebacks[i] = 0;
+    req->clearAccessDepth();
 
     Addr frag_addr = addr;
     int frag_size = 0;
@@ -615,6 +617,7 @@ AtomicSimpleCPU::amoMem(Addr addr, uint8_t* data, unsigned size,
                  thread->pcState().instAddr(), std::move(amo_op));
     for (int i = 0; i < 4; i++)
       req->writebacks[i] = 0;
+    req->clearAccessDepth();
 
     // translate to physical address
     Fault fault = thread->dtb->translateAtomic(
@@ -699,11 +702,14 @@ AtomicSimpleCPU::tick()
           iw_depths[i] = -1;
           iw_addrs[i] = 0;
         }
+        bool need_dump = false;
+        mis_pred = false;
         bool needToFetch = !isRomMicroPC(pcState.microPC()) &&
                            !curMacroStaticInst;
         if (needToFetch) {
             for (int i = 0; i < 4; i++)
               ifetch_req->writebacks[i] = 0;
+            ifetch_req->clearAccessDepth();
             ifetch_req->taskId(taskId());
             setupFetchRequest(ifetch_req);
             fault = thread->itb->translateAtomic(ifetch_req, thread->getTC(),
@@ -758,7 +764,7 @@ AtomicSimpleCPU::tick()
                 // keep an instruction count
                 if (fault == NoFault) {
                     countInst();
-                    dumpInst(curStaticInst);
+                    need_dump = true;
                     ppCommit->notify(std::make_pair(thread, curStaticInst));
                 }
                 else if (traceData && !DTRACE(ExecFaulting)) {
@@ -799,6 +805,8 @@ AtomicSimpleCPU::tick()
         }
         if (fault != NoFault || !t_info.stayAtPC)
             advancePC(fault);
+        if (need_dump)
+            dumpInst(curStaticInst);
     }
 
     if (tryCompleteDrain())
@@ -836,12 +844,7 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst) {
           inst->isMicroop(), inst->isCondCtrl(), inst->isUncondCtrl(),
           inst->isSquashAfter(), inst->isSerializeAfter(),
           inst->isSerializeBefore());
-  bool MisPred = false;
-  if (branchPred && inst->isControl()) {
-    if (t_info.predPC != thread->pcState())
-      MisPred = true;
-  }
-  fprintf(tptr, "%d  ", MisPred);
+  fprintf(tptr, "%d  ", mis_pred);
   fprintf(tptr, "%d %d %d %lu  ", inst->isMemBarrier(), inst->isQuiesce(),
           inst->isNonSpeculative(), thread->pcState().instAddr() % 64);
   fprintf(tptr, "%d ", inst->numSrcRegs());
@@ -854,6 +857,7 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst) {
     fprintf(tptr, "%d %hu ", inst->destRegIdx(i).classValue(),
             inst->destRegIdx(i).index());
   }
+
   fprintf(tptr, " %d %lx %u %d", dcache_access, dcache_access ? d_addr : 0,
           dcache_access ? d_size : 0, d_depth);
   for (int i = 1; i < 4; i++) {
@@ -866,6 +870,7 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst) {
   for (int i = 0; i < 3; i++) {
     fprintf(tptr, " %d", d_writebacks[i]);
   }
+
   fprintf(tptr, "  %lx %d", thread->pcState().instAddr(), i_depth);
   assert(iw_depths[0] == -1 && dw_depths[0] == -1);
   for (int i = 1; i < 4; i++) {
@@ -879,6 +884,10 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst) {
     fprintf(tptr, " %d", i_writebacks[i]);
   }
   fprintf(tptr, "\n");
+  //if (d_depth>0)
+  //printf("%lu %d\n", instCnt, d_depth);
+  //if (mis_pred)
+  //printf("%lu %lx %lx\n", instCnt, t_info.predPC.instAddr(), thread->pcState().instAddr());
 }
 
 ////////////////////////////////////////////////////////////////////////

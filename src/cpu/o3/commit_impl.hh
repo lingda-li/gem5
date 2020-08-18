@@ -1580,6 +1580,7 @@ void DefaultCommit<Impl>::dumpInst(const DynInstPtr &inst)
     fprintf(tptr, "%d %hu ", staticInst->destRegIdx(i).classValue(),
             staticInst->destRegIdx(i).index());
   }
+
   fprintf(tptr, " %d %lx %u %d", inst->effAddrValid(),
           inst->effAddrValid() ? inst->effAddr : 0,
           inst->effAddrValid() ? inst->effSize : 0, inst->cachedepth);
@@ -1593,6 +1594,7 @@ void DefaultCommit<Impl>::dumpInst(const DynInstPtr &inst)
   for (int i = 0; i < 3; i++) {
     fprintf(tptr, " %d", inst->dWritebacks[i]);
   }
+
   fprintf(tptr, "  %lx %d", inst->instAddr(), inst->fetchdepth);
   assert(inst->iwalkDepth[0] == -1 && inst->dwalkDepth[0] == -1);
   for (int i = 1; i < 4; i++) {
@@ -1606,6 +1608,10 @@ void DefaultCommit<Impl>::dumpInst(const DynInstPtr &inst)
     fprintf(tptr, " %d", inst->iWritebacks[i]);
   }
   fprintf(tptr, "\n");
+  //if (inst->cachedepth > 0)
+  //printf("%f %d\n", instsCommitted[0].value(), inst->cachedepth);
+  //if (inst->mispredicted())
+  //printf("%f %d\n", instsCommitted[0].value(), inst->mispredicted());
 }
 
 #endif//__CPU_O3_COMMIT_IMPL_HH__
