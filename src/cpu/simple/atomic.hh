@@ -248,7 +248,7 @@ class AtomicSimpleCPU : public BaseSimpleCPU
     void printAddr(Addr a);
 
     FILE *tptr = nullptr;
-    void dumpInst(StaticInstPtr inst);
+    void dumpInst(StaticInstPtr inst, Addr pc);
 };
 
 #endif // __CPU_SIMPLE_ATOMIC_HH__

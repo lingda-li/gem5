@@ -1563,11 +1563,12 @@ void DefaultCommit<Impl>::dumpInst(const DynInstPtr &inst)
   auto staticInst = inst->staticInst;
   fprintf(tptr, "%lu %lu %lu  ", inst->fetchTick,
           inst->out_rob_tick - inst->fetchTick, curTick());
+  //fprintf(tptr, "0 0 0  ");
   lastCompleteTick = inst->out_rob_tick - inst->fetchTick;
-  fprintf(tptr, "%d %d %d %d %d %d %d %d  ", inst->opClass(),
+  fprintf(tptr, "%d %d %d %d %d %d %d %d %d  ", inst->opClass(),
           inst->isMicroop(), inst->isCondCtrl(), inst->isUncondCtrl(),
-          inst->isSquashAfter(), inst->isSerializeAfter(),
-          inst->isSerializeBefore(), inst->mispredicted());
+          inst->isDirectCtrl(), inst->isSquashAfter(), inst->isSerializeAfter(),
+          inst->isSerializeBefore(), inst->fetchMispredicted());
   fprintf(tptr, "%d %d %d %lu  ", inst->isMemBarrier(), inst->isQuiesce(),
           inst->isNonSpeculative(), inst->pcState().instAddr() % 64);
   fprintf(tptr, "%d ", staticInst->numSrcRegs());
@@ -1609,9 +1610,9 @@ void DefaultCommit<Impl>::dumpInst(const DynInstPtr &inst)
   }
   fprintf(tptr, "\n");
   //if (inst->cachedepth > 0)
-  //printf("%f %d\n", instsCommitted[0].value(), inst->cachedepth);
+  //printf("%lu %d\n", (unsigned long)instsCommitted[0].value(), inst->cachedepth);
   //if (inst->mispredicted())
-  //printf("%f %d\n", instsCommitted[0].value(), inst->mispredicted());
+  //printf("%lu %d %lx %lx %lx\n", (unsigned long)instsCommitted[0].value(), inst->fetchMispredicted(), inst->fetchPredInstAddr(), inst->nextInstAddr(), inst->instAddr());
 }
 
 #endif//__CPU_O3_COMMIT_IMPL_HH__

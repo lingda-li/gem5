@@ -39,6 +39,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <algorithm>
+
 #include "cpu/simple/atomic.hh"
 
 #include "arch/locked_mem.hh"
@@ -387,9 +389,6 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
     dcache_latency = 0;
 
     req->taskId(taskId());
-    for (int i = 0; i < 4; i++)
-      req->writebacks[i] = 0;
-    req->clearAccessDepth();
 
     Addr frag_addr = addr;
     int frag_size = 0;
@@ -412,6 +411,9 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
             !req->getFlags().isSet(Request::NO_ACCESS)) {
             Packet pkt(req, Packet::makeReadCmd(req));
             pkt.dataStatic(data);
+            for (int i = 0; i < 4; i++)
+              req->writebacks[i] = 0;
+            req->clearAccessDepth();
 
             if (req->isLocalAccess()) {
                 dcache_latency += req->localAccessor(thread->getTC(), &pkt);
@@ -421,9 +423,9 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t * data, unsigned size,
             dcache_access = true;
             d_addr = addr;
             d_size = size;
-            d_depth = req->getAccessDepth();
+            d_depth = std::max(d_depth, req->getAccessDepth());
             for (int i = 0; i < 4; i++)
-              d_writebacks[i] = req->writebacks[i];
+              d_writebacks[i] = std::max(d_writebacks[i], req->writebacks[i]);
 
             assert(!pkt.isError());
 
@@ -485,9 +487,6 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
     dcache_latency = 0;
 
     req->taskId(taskId());
-    for (int i = 0; i < 4; i++)
-      req->writebacks[i] = 0;
-    req->clearAccessDepth();
 
     Addr frag_addr = addr;
     int frag_size = 0;
@@ -525,6 +524,9 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
             if (do_access && !req->getFlags().isSet(Request::NO_ACCESS)) {
                 Packet pkt(req, Packet::makeWriteCmd(req));
                 pkt.dataStatic(data);
+                for (int i = 0; i < 4; i++)
+                  req->writebacks[i] = 0;
+                req->clearAccessDepth();
 
                 if (req->isLocalAccess()) {
                     dcache_latency +=
@@ -538,9 +540,10 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
                 dcache_access = true;
                 d_addr = addr;
                 d_size = size;
-                d_depth = req->getAccessDepth();
+                d_depth = std::max(d_depth, req->getAccessDepth());
                 for (int i = 0; i < 4; i++)
-                  d_writebacks[i] = req->writebacks[i];
+                  d_writebacks[i] =
+                      std::max(d_writebacks[i], req->writebacks[i]);
                 assert(!pkt.isError());
 
                 if (req->isSwap()) {
@@ -806,7 +809,7 @@ AtomicSimpleCPU::tick()
         if (fault != NoFault || !t_info.stayAtPC)
             advancePC(fault);
         if (need_dump)
-            dumpInst(curStaticInst);
+            dumpInst(curStaticInst, pcState.instAddr());
     }
 
     if (tryCompleteDrain())
@@ -835,18 +838,15 @@ AtomicSimpleCPU::printAddr(Addr a)
     dcachePort.printAddr(a);
 }
 
-void AtomicSimpleCPU::dumpInst(StaticInstPtr inst) {
-  SimpleExecContext &t_info = *threadInfo[curThread];
-  SimpleThread *thread = t_info.thread;
-
+void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, Addr pc) {
   fprintf(tptr, "0 0 0  ");
-  fprintf(tptr, "%d %d %d %d %d %d %d ", inst->opClass(),
-          inst->isMicroop(), inst->isCondCtrl(), inst->isUncondCtrl(),
+  fprintf(tptr, "%d %d %d %d %d %d %d %d ", inst->opClass(), inst->isMicroop(),
+          inst->isCondCtrl(), inst->isUncondCtrl(), inst->isDirectCtrl(),
           inst->isSquashAfter(), inst->isSerializeAfter(),
           inst->isSerializeBefore());
   fprintf(tptr, "%d  ", mis_pred);
   fprintf(tptr, "%d %d %d %lu  ", inst->isMemBarrier(), inst->isQuiesce(),
-          inst->isNonSpeculative(), thread->pcState().instAddr() % 64);
+          inst->isNonSpeculative(), pc % 64);
   fprintf(tptr, "%d ", inst->numSrcRegs());
   for (int i = 0; i < inst->numSrcRegs(); i++) {
     fprintf(tptr, "%d %hu ", inst->srcRegIdx(i).classValue(),
@@ -871,7 +871,7 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst) {
     fprintf(tptr, " %d", d_writebacks[i]);
   }
 
-  fprintf(tptr, "  %lx %d", thread->pcState().instAddr(), i_depth);
+  fprintf(tptr, "  %lx %d", pc, i_depth);
   assert(iw_depths[0] == -1 && dw_depths[0] == -1);
   for (int i = 1; i < 4; i++) {
     fprintf(tptr, " %d", iw_depths[i]);
@@ -886,8 +886,11 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst) {
   fprintf(tptr, "\n");
   //if (d_depth>0)
   //printf("%lu %d\n", instCnt, d_depth);
+  //SimpleExecContext& t_info = *threadInfo[curThread];
+  //SimpleThread* thread = t_info.thread;
   //if (mis_pred)
-  //printf("%lu %lx %lx\n", instCnt, t_info.predPC.instAddr(), thread->pcState().instAddr());
+  //if (inst->isUncondCtrl())
+  //printf("%lu %d %lx %lx %lx\n", instCnt, mis_pred, t_info.predPC.instAddr(), thread->pcState().instAddr(), pc);
 }
 
 ////////////////////////////////////////////////////////////////////////
