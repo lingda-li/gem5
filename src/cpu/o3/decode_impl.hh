@@ -750,7 +750,7 @@ DefaultDecode<Impl>::decodeInsts(ThreadID tid)
                         "Updating predictions: PredPC: %s\n",
                         tid, inst->seqNum, target);
                 //The micro pc after an instruction level branch should be 0
-                inst->setPredTarg(target);
+                inst->setPredTarg(target, false);
                 break;
             }
         }

@@ -201,6 +201,9 @@ class BaseDynInst : public ExecContext, public RefCounted
     /** Predicted PC state after this instruction. */
     TheISA::PCState predPC;
 
+    /** Predicted PC state in the fetch stage after this instruction. */
+    TheISA::PCState fetchPredPC;
+
     /** The Macroop if one exists */
     const StaticInstPtr macroop;
 
@@ -464,9 +467,11 @@ class BaseDynInst : public ExecContext, public RefCounted
     bool doneTargCalc() { return false; }
 
     /** Set the predicted target of this current instruction. */
-    void setPredTarg(const TheISA::PCState &_predPC)
+    void setPredTarg(const TheISA::PCState &_predPC, bool is_fetch = true)
     {
         predPC = _predPC;
+        if (is_fetch)
+            fetchPredPC = _predPC;
     }
 
     const TheISA::PCState &readPredTarg() { return predPC; }
@@ -497,6 +502,17 @@ class BaseDynInst : public ExecContext, public RefCounted
         TheISA::PCState tempPC = pc;
         TheISA::advancePC(tempPC, staticInst);
         return !(tempPC == predPC);
+    }
+
+    /** Returns the fetch predicted PC immediately after the branch. */
+    Addr fetchPredInstAddr() { return fetchPredPC.instAddr(); }
+
+    /** Returns whether the instruction mispredicted during fetch. */
+    bool fetchMispredicted()
+    {
+        TheISA::PCState tempPC = pc;
+        TheISA::advancePC(tempPC, staticInst);
+        return !(tempPC == fetchPredPC);
     }
 
     //

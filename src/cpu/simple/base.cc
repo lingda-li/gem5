@@ -670,11 +670,11 @@ BaseSimpleCPU::advancePC(const Fault &fault)
         }
     }
 
-    if (branchPred && curStaticInst && curStaticInst->isControl()) {
-        // Use a fake sequence number since we only have one
-        // instruction in flight at the same time.
-        const InstSeqNum cur_sn(0);
+    // Use a fake sequence number since we only have one
+    // instruction in flight at the same time.
+    const InstSeqNum cur_sn(0);
 
+    if (branchPred && curStaticInst && curStaticInst->isControl()) {
         if (t_info.predPC == thread->pcState()) {
             // Correctly predicted branch
             branchPred->update(cur_sn, curThread);
@@ -684,7 +684,8 @@ BaseSimpleCPU::advancePC(const Fault &fault)
             ++t_info.numBranchMispred;
             mis_pred = true;
         }
-    }
+    } else if (branchPred && curStaticInst)
+        branchPred->update(cur_sn, curThread);
 }
 
 void
