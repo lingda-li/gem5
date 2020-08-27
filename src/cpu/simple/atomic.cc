@@ -871,7 +871,7 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, Addr pc) {
     fprintf(tptr, " %d", d_writebacks[i]);
   }
 
-  fprintf(tptr, "  %lx %lu %d %d", pc, pc % 64, mis_pred, i_depth);
+  fprintf(tptr, "  %lx %d %d", pc, mis_pred, i_depth);
   assert(iw_depths[0] == -1 && dw_depths[0] == -1);
   for (int i = 1; i < 4; i++) {
     fprintf(tptr, " %d", iw_depths[i]);

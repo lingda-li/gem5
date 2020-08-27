@@ -1597,8 +1597,8 @@ void DefaultCommit<Impl>::dumpInst(const DynInstPtr &inst)
     fprintf(tptr, " %d", inst->dWritebacks[i]);
   }
 
-  fprintf(tptr, "  %lx %lu %d %d", inst->instAddr(), inst->instAddr() % 64,
-          inst->fetchMispredicted(), inst->fetchdepth);
+  fprintf(tptr, "  %lx %d %d", inst->instAddr(), inst->fetchMispredicted(),
+          inst->fetchdepth);
   assert(inst->iwalkDepth[0] == -1 && inst->dwalkDepth[0] == -1);
   for (int i = 1; i < 4; i++) {
     fprintf(tptr, " %d", inst->iwalkDepth[i]);
