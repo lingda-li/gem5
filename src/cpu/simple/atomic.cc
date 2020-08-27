@@ -844,9 +844,9 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, Addr pc) {
           inst->isCondCtrl(), inst->isUncondCtrl(), inst->isDirectCtrl(),
           inst->isSquashAfter(), inst->isSerializeAfter(),
           inst->isSerializeBefore());
-  fprintf(tptr, "%d  ", mis_pred);
-  fprintf(tptr, "%d %d %d %lu  ", inst->isMemBarrier(), inst->isQuiesce(),
-          inst->isNonSpeculative(), pc % 64);
+  fprintf(tptr, "%d %d %d %d %d  ", inst->isAtomic(),
+          inst->isStoreConditional(), inst->isMemBarrier(), inst->isQuiesce(),
+          inst->isNonSpeculative());
   fprintf(tptr, "%d ", inst->numSrcRegs());
   for (int i = 0; i < inst->numSrcRegs(); i++) {
     fprintf(tptr, "%d %hu ", inst->srcRegIdx(i).classValue(),
@@ -871,7 +871,7 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, Addr pc) {
     fprintf(tptr, " %d", d_writebacks[i]);
   }
 
-  fprintf(tptr, "  %lx %d", pc, i_depth);
+  fprintf(tptr, "  %lx %lu %d %d", pc, pc % 64, mis_pred, i_depth);
   assert(iw_depths[0] == -1 && dw_depths[0] == -1);
   for (int i = 1; i < 4; i++) {
     fprintf(tptr, " %d", iw_depths[i]);

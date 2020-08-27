@@ -1562,15 +1562,16 @@ void DefaultCommit<Impl>::dumpInst(const DynInstPtr &inst)
 {
   auto staticInst = inst->staticInst;
   fprintf(tptr, "%lu %lu %lu  ", inst->fetchTick,
-          inst->out_rob_tick - inst->fetchTick, curTick());
+          inst->out_rob_tick - inst->fetchTick, curTick() - inst->fetchTick);
   //fprintf(tptr, "0 0 0  ");
   lastCompleteTick = inst->out_rob_tick - inst->fetchTick;
-  fprintf(tptr, "%d %d %d %d %d %d %d %d %d  ", inst->opClass(),
-          inst->isMicroop(), inst->isCondCtrl(), inst->isUncondCtrl(),
-          inst->isDirectCtrl(), inst->isSquashAfter(), inst->isSerializeAfter(),
-          inst->isSerializeBefore(), inst->fetchMispredicted());
-  fprintf(tptr, "%d %d %d %lu  ", inst->isMemBarrier(), inst->isQuiesce(),
-          inst->isNonSpeculative(), inst->pcState().instAddr() % 64);
+  fprintf(tptr, "%d %d %d %d %d %d %d %d ", inst->opClass(), inst->isMicroop(),
+          inst->isCondCtrl(), inst->isUncondCtrl(), inst->isDirectCtrl(),
+          inst->isSquashAfter(), inst->isSerializeAfter(),
+          inst->isSerializeBefore());
+  fprintf(tptr, "%d %d %d %d %d  ", inst->isAtomic(),
+          inst->isStoreConditional(), inst->isMemBarrier(), inst->isQuiesce(),
+          inst->isNonSpeculative());
   fprintf(tptr, "%d ", staticInst->numSrcRegs());
   for (int i = 0; i < staticInst->numSrcRegs(); i++) {
     fprintf(tptr, "%d %hu ", staticInst->srcRegIdx(i).classValue(),
@@ -1596,7 +1597,8 @@ void DefaultCommit<Impl>::dumpInst(const DynInstPtr &inst)
     fprintf(tptr, " %d", inst->dWritebacks[i]);
   }
 
-  fprintf(tptr, "  %lx %d", inst->instAddr(), inst->fetchdepth);
+  fprintf(tptr, "  %lx %lu %d %d", inst->instAddr(), inst->instAddr() % 64,
+          inst->fetchMispredicted(), inst->fetchdepth);
   assert(inst->iwalkDepth[0] == -1 && inst->dwalkDepth[0] == -1);
   for (int i = 1; i < 4; i++) {
     fprintf(tptr, " %d", inst->iwalkDepth[i]);
@@ -1609,6 +1611,7 @@ void DefaultCommit<Impl>::dumpInst(const DynInstPtr &inst)
     fprintf(tptr, " %d", inst->iWritebacks[i]);
   }
   fprintf(tptr, "\n");
+  assert(inst->sqIdx == -1 || inst->cachedepth == 0);
   //if (inst->cachedepth > 0)
   //printf("%lu %d\n", (unsigned long)instsCommitted[0].value(), inst->cachedepth);
   //if (inst->mispredicted())
