@@ -141,6 +141,9 @@ class BaseO3DynInst : public BaseDynInst<Impl>
     int iWritebacks[4] = {0, 0, 0, 0};
     int dWritebacks[4] = {0, 0, 0, 0};
 
+    // Dump an instruction.
+    void dumpInst(FILE *tptr, bool FromSQ = false);
+
     /** Reads a misc. register, including any side-effects the read
      * might have as defined by the architecture.
      */

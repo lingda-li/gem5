@@ -610,6 +610,9 @@ class LSQUnit
     typedef typename CircularQueue<SQEntry>::iterator SQIterator;
     typedef CircularQueue<LQEntry> LQueue;
     typedef CircularQueue<SQEntry> SQueue;
+
+    /** Trace file. */
+    FILE *tptr;
 };
 
 template <class Impl>

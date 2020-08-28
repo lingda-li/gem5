@@ -1299,7 +1299,6 @@ DefaultCommit<Impl>::commitHead(const DynInstPtr &head_inst, unsigned inst_num)
     DPRINTF(Commit,
             "[tid:%i] [sn:%llu] Committing instruction with PC %s\n",
             tid, head_inst->seqNum, head_inst->pcState());
-    dumpInst(head_inst);
     if (head_inst->traceData) {
         head_inst->traceData->setFetchSeq(head_inst->seqNum);
         head_inst->traceData->setCPSeq(thread[tid]->numOp);
@@ -1323,10 +1322,12 @@ DefaultCommit<Impl>::commitHead(const DynInstPtr &head_inst, unsigned inst_num)
     rob->retireHead(tid);
 
 #if TRACING_ON
-    if (DTRACE(O3PipeView)) {
-        head_inst->commitTick = curTick() - head_inst->fetchTick;
-    }
+    //if (DTRACE(O3PipeView)) {
+    //    head_inst->commitTick = curTick() - head_inst->fetchTick;
+    //}
+    head_inst->commitTick = curTick() - head_inst->fetchTick;
 #endif
+    head_inst->dumpInst(tptr);
 
     // If this was a store, record it for this cycle.
     if (head_inst->isStore() || head_inst->isAtomic())
@@ -1555,67 +1556,6 @@ DefaultCommit<Impl>::oldestReady()
     } else {
         return InvalidThreadID;
     }
-}
-
-template<class Impl>
-void DefaultCommit<Impl>::dumpInst(const DynInstPtr &inst)
-{
-  auto staticInst = inst->staticInst;
-  fprintf(tptr, "%lu %lu %lu  ", inst->fetchTick,
-          inst->out_rob_tick - inst->fetchTick, curTick() - inst->fetchTick);
-  //fprintf(tptr, "0 0 0  ");
-  lastCompleteTick = inst->out_rob_tick - inst->fetchTick;
-  fprintf(tptr, "%d %d %d %d %d %d %d %d ", inst->opClass(), inst->isMicroop(),
-          inst->isCondCtrl(), inst->isUncondCtrl(), inst->isDirectCtrl(),
-          inst->isSquashAfter(), inst->isSerializeAfter(),
-          inst->isSerializeBefore());
-  fprintf(tptr, "%d %d %d %d %d  ", inst->isAtomic(),
-          inst->isStoreConditional(), inst->isMemBarrier(), inst->isQuiesce(),
-          inst->isNonSpeculative());
-  fprintf(tptr, "%d ", staticInst->numSrcRegs());
-  for (int i = 0; i < staticInst->numSrcRegs(); i++) {
-    fprintf(tptr, "%d %hu ", staticInst->srcRegIdx(i).classValue(),
-            staticInst->srcRegIdx(i).index());
-  }
-  fprintf(tptr, " %d ", staticInst->numDestRegs());
-  for (int i = 0; i < staticInst->numDestRegs(); i++) {
-    fprintf(tptr, "%d %hu ", staticInst->destRegIdx(i).classValue(),
-            staticInst->destRegIdx(i).index());
-  }
-
-  fprintf(tptr, " %d %lx %u %d", inst->effAddrValid(),
-          inst->effAddrValid() ? inst->effAddr : 0,
-          inst->effAddrValid() ? inst->effSize : 0, inst->cachedepth);
-  for (int i = 1; i < 4; i++) {
-    fprintf(tptr, " %d", inst->dwalkDepth[i]);
-  }
-  for (int i = 1; i < 4; i++) {
-    fprintf(tptr, " %lx", inst->dwalkAddr[i]);
-  }
-  assert(inst->dWritebacks[3] == 0);
-  for (int i = 0; i < 3; i++) {
-    fprintf(tptr, " %d", inst->dWritebacks[i]);
-  }
-
-  fprintf(tptr, "  %lx %d %d", inst->instAddr(), inst->fetchMispredicted(),
-          inst->fetchdepth);
-  assert(inst->iwalkDepth[0] == -1 && inst->dwalkDepth[0] == -1);
-  for (int i = 1; i < 4; i++) {
-    fprintf(tptr, " %d", inst->iwalkDepth[i]);
-  }
-  for (int i = 1; i < 4; i++) {
-    fprintf(tptr, " %lx", inst->iwalkAddr[i]);
-  }
-  assert(inst->iWritebacks[0] == 0 && inst->iWritebacks[3] == 0);
-  for (int i = 1; i < 3; i++) {
-    fprintf(tptr, " %d", inst->iWritebacks[i]);
-  }
-  fprintf(tptr, "\n");
-  assert(inst->sqIdx == -1 || inst->cachedepth == 0);
-  //if (inst->cachedepth > 0)
-  //printf("%lu %d\n", (unsigned long)instsCommitted[0].value(), inst->cachedepth);
-  //if (inst->mispredicted())
-  //printf("%lu %d %lx %lx %lx\n", (unsigned long)instsCommitted[0].value(), inst->fetchMispredicted(), inst->fetchPredInstAddr(), inst->nextInstAddr(), inst->instAddr());
 }
 
 #endif//__CPU_O3_COMMIT_IMPL_HH__

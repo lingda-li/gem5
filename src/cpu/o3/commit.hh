@@ -224,12 +224,8 @@ class DefaultCommit
      */
     void generateTCEvent(ThreadID tid);
 
-    /** Dump an instruction. */
+    /** Trace file. */
     FILE *tptr;
-    Tick lastFetchTick;
-    bool isLastBranch = false;
-    Tick lastCompleteTick;
-    void dumpInst(const DynInstPtr &inst);
 
   private:
     /** Updates the overall status of commit with the nextStatus, and

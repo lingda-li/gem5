@@ -146,6 +146,10 @@ LSQUnit<Impl>::LSQUnit(uint32_t lqEntries, uint32_t sqEntries)
       isStoreBlocked(false), storeInFlight(false), hasPendingRequest(false),
       pendingRequest(nullptr)
 {
+    // Open file sq.trace.txt in write mode.
+    tptr = fopen("sq.trace.txt", "w");
+    if (tptr == NULL)
+        printf("Could not open trace file.\n");
 }
 
 template<class Impl>
@@ -1001,8 +1005,17 @@ LSQUnit<Impl>::completeStore(typename StoreQueue::iterator store_idx)
     /* We 'need' a copy here because we may clear the entry from the
      * store queue. */
     DynInstPtr store_inst = store_idx->instruction();
+#if TRACING_ON
+    //if (DTRACE(O3PipeView)) {
+    //    store_inst->storeTick =
+    //        curTick() - store_inst->fetchTick;
+    //}
+    store_inst->storeTick = curTick() - store_inst->fetchTick;
+#endif
+
     if (store_idx == storeQueue.begin()) {
         do {
+            storeQueue.front().instruction()->dumpInst(tptr, true);
             storeQueue.front().clear();
             storeQueue.pop_front();
             --stores;
@@ -1015,13 +1028,6 @@ LSQUnit<Impl>::completeStore(typename StoreQueue::iterator store_idx)
     DPRINTF(LSQUnit, "Completing store [sn:%lli], idx:%i, store head "
             "idx:%i\n",
             store_inst->seqNum, store_idx.idx() - 1, storeQueue.head() - 1);
-
-#if TRACING_ON
-    if (DTRACE(O3PipeView)) {
-        store_inst->storeTick =
-            curTick() - store_inst->fetchTick;
-    }
-#endif
 
     if (isStalled() &&
         store_inst->seqNum == stallingStoreIsn) {
