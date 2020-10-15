@@ -205,7 +205,8 @@ BaseO3DynInst<Impl>::syscall(Fault *fault)
 
 template <class Impl>
 void BaseO3DynInst<Impl>::dumpInst(FILE *tptr, bool FromSQ) {
-  assert(FromSQ || this->sqIdx == -1 || cachedepth == 0);
+  assert(FromSQ || this->sqIdx == -1 || this->isAtomic() ||
+         this->isStoreConditional() || cachedepth == 0);
   assert(!FromSQ || this->sqIdx != -1);
   assert(
       !FromSQ ||
@@ -213,11 +214,15 @@ void BaseO3DynInst<Impl>::dumpInst(FILE *tptr, bool FromSQ) {
       ((!this->isStoreConditional() && !this->isAtomic()) && commitTick > 0));
 
   fprintf(tptr, "%d ", this->sqIdx);
-  fprintf(tptr, "%lu %lu %d ", fetchTick, this->out_rob_tick - fetchTick,
+  fprintf(tptr, "%lu %lu %d", fetchTick, this->out_rob_tick - fetchTick,
           commitTick);
   //fprintf(tptr, "0 0 0  ");
   if (FromSQ)
-    fprintf(tptr, "%d ", storeTick);
+    fprintf(tptr, " %d", storeTick);
+  else if (this->sqIdx != -1) {
+    fprintf(tptr, "\n");
+    return;
+  }
   fprintf(tptr, " %d %d %d %d %d %d %d %d ", this->opClass(), this->isMicroop(),
           this->isCondCtrl(), this->isUncondCtrl(), this->isDirectCtrl(),
           this->isSquashAfter(), this->isSerializeAfter(),
