@@ -839,7 +839,7 @@ AtomicSimpleCPU::printAddr(Addr a)
 }
 
 void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, Addr pc) {
-  fprintf(tptr, "0 0 0  ");
+  fprintf(tptr, "-1 0 0 0  ");
   fprintf(tptr, "%d %d %d %d %d %d %d %d ", inst->opClass(), inst->isMicroop(),
           inst->isCondCtrl(), inst->isUncondCtrl(), inst->isDirectCtrl(),
           inst->isSquashAfter(), inst->isSerializeAfter(),
