@@ -94,9 +94,13 @@ AtomicSimpleCPU::AtomicSimpleCPU(AtomicSimpleCPUParams *p)
     data_amo_req = std::make_shared<Request>();
 
     // Open file trace.txt in write mode.
-    tptr = fopen((name() + ".trace.txt").c_str(), "w");
-    if (tptr == NULL)
+    size_t found = name().find("bigCluster");
+    if (found != string::npos) {
+      tptr = fopen("trace.txt", "w");
+      if (tptr == NULL)
         printf("Could not open trace file.\n");
+    } else
+      tptr = NULL;
 }
 
 
@@ -808,7 +812,7 @@ AtomicSimpleCPU::tick()
         }
         if (fault != NoFault || !t_info.stayAtPC)
             advancePC(fault);
-        if (need_dump)
+        if (need_dump && tptr)
             dumpInst(curStaticInst, pcState.instAddr());
     }
 
@@ -839,7 +843,11 @@ AtomicSimpleCPU::printAddr(Addr a)
 }
 
 void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, Addr pc) {
-  fprintf(tptr, "-1 0 0 0  ");
+  if (inst->isStore() || inst->isAtomic())
+    fprintf(tptr, "0 ");
+  else
+    fprintf(tptr, "-1 ");
+  fprintf(tptr, "0 0 0  ");
   fprintf(tptr, "%d %d %d %d %d %d %d %d ", inst->opClass(), inst->isMicroop(),
           inst->isCondCtrl(), inst->isUncondCtrl(), inst->isDirectCtrl(),
           inst->isSquashAfter(), inst->isSerializeAfter(),

@@ -212,6 +212,10 @@ void BaseO3DynInst<Impl>::dumpInst(FILE *tptr, bool FromSQ) {
       !FromSQ ||
       ((this->isStoreConditional() || this->isAtomic()) && commitTick == -1) ||
       ((!this->isStoreConditional() && !this->isAtomic()) && commitTick > 0));
+  if (this->sqIdx >= 0)
+    assert(this->isStore() || this->isAtomic());
+  else
+    assert(!this->isStore() && !this->isAtomic());
 
   fprintf(tptr, "%d ", this->sqIdx);
   fprintf(tptr, "%lu %lu %d", fetchTick, this->out_rob_tick - fetchTick,
