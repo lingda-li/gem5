@@ -96,7 +96,7 @@ AtomicSimpleCPU::AtomicSimpleCPU(AtomicSimpleCPUParams *p)
     // Open file trace.txt in write mode.
     size_t found = name().find("bigCluster");
     if (found != string::npos) {
-      tptr = fopen("trace.txt", "w");
+      tptr = fopen("actrace.txt", "w");
       if (tptr == NULL)
         printf("Could not open trace file.\n");
     } else
@@ -525,6 +525,11 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
                 }
             }
 
+            if (!req->getFlags().isSet(Request::NO_ACCESS)) {
+                dcache_access = true;
+                d_addr = addr;
+                d_size = size;
+            }
             if (do_access && !req->getFlags().isSet(Request::NO_ACCESS)) {
                 Packet pkt(req, Packet::makeWriteCmd(req));
                 pkt.dataStatic(data);
@@ -541,9 +546,6 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
                     // Notify other threads on this CPU of write
                     threadSnoop(&pkt, curThread);
                 }
-                dcache_access = true;
-                d_addr = addr;
-                d_size = size;
                 d_depth = std::max(d_depth, req->getAccessDepth());
                 for (int i = 0; i < 4; i++)
                   d_writebacks[i] =
@@ -847,7 +849,7 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, Addr pc) {
     fprintf(tptr, "0 ");
   else
     fprintf(tptr, "-1 ");
-  fprintf(tptr, "0 0 0  ");
+  fprintf(tptr, "0 0 0 ");
   fprintf(tptr, "%d %d %d %d %d %d %d %d ", inst->opClass(), inst->isMicroop(),
           inst->isCondCtrl(), inst->isUncondCtrl(), inst->isDirectCtrl(),
           inst->isSquashAfter(), inst->isSerializeAfter(),

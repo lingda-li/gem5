@@ -90,6 +90,16 @@ class AtomicCacheCluster(devices.CpuCluster):
         for cpu in self.cpus:
             cpu.branchPred = O3_ARM_v7a_BP()
 
+class PostkCluster(devices.CpuCluster):
+    def __init__(self, system, num_cpus, cpu_clock,
+                 cpu_voltage="1.0V"):
+        import common.cores.arm.O3_PostK as core
+        cpu_config = [ ObjectList.cpu_list.get("O3_ARM_PostK_3"),
+            core.O3_ARM_PostK_ICache, core.O3_ARM_PostK_DCache,
+            core.O3_ARM_PostK_WalkCache, core.O3_ARM_PostK_L2 ]
+        super(PostkCluster, self).__init__(system, num_cpus, cpu_clock,
+                                           cpu_voltage, *cpu_config)
+
 class BigCluster(devices.CpuCluster):
     def __init__(self, system, num_cpus, cpu_clock,
                  cpu_voltage="1.0V"):
@@ -161,6 +171,7 @@ cpu_types = {
     "ac"     : (AtomicCacheCluster, AtomicCacheCluster),
     "timing" : (BigCluster, LittleCluster),
     "exynos" : (Ex5BigCluster, Ex5LittleCluster),
+    "postk"  : (PostkCluster, LittleCluster),
 }
 
 # Only add the KVM CPU if it has been compiled into gem5
