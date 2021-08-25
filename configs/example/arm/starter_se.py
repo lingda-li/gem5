@@ -70,7 +70,9 @@ cpu_types = {
     "hpi" : ( HPI.HPI,
               HPI.HPI_ICache, HPI.HPI_DCache,
               HPI.HPI_WalkCache,
-              HPI.HPI_L2)
+              HPI.HPI_L2),
+    "timing" : (ObjectList.cpu_list.get("O3_ARM_v7a_3"),
+            devices.L1I, devices.L1D, devices.WalkCache, devices.L2)
 }
 
 
@@ -117,6 +119,11 @@ class SimpleSeSystem(System):
             self.cpu_cluster.addL1()
             self.cpu_cluster.addL2(self.cpu_cluster.clk_domain)
         self.cpu_cluster.connectMemSide(self.membus)
+
+        if args.maxinsts:
+            for i in range(args.num_cores):
+                self.cpu_cluster.cpus[i].max_insts_all_threads = \
+                    args.maxinsts
 
         # Tell gem5 about the memory mode used by the CPUs we are
         # simulating.
@@ -186,10 +193,10 @@ def main():
     parser.add_argument("--cpu", type=str, choices=list(cpu_types.keys()),
                         default="atomic",
                         help="CPU model to use")
-    parser.add_argument("--cpu-freq", type=str, default="4GHz")
+    parser.add_argument("--cpu-freq", type=str, default="2GHz")
     parser.add_argument("--num-cores", type=int, default=1,
                         help="Number of CPU cores")
-    parser.add_argument("--mem-type", default="DDR3_1600_8x8",
+    parser.add_argument("--mem-type", default="DDR4_2400_16x4",
                         choices=ObjectList.mem_list.get_names(),
                         help = "type of memory to use")
     parser.add_argument("--mem-channels", type=int, default=2,
@@ -199,6 +206,8 @@ def main():
     parser.add_argument("--mem-size", action="store", type=str,
                         default="2GB",
                         help="Specify the physical memory size")
+    parser.add_argument("--maxinsts", type=int, default=0, help="Total " \
+                        "number of instructions to simulate")
 
     args = parser.parse_args()
 

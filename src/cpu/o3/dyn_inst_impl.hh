@@ -243,24 +243,24 @@ void BaseO3DynInst<Impl>::dumpInst(FILE *tptr, bool FromSQ) {
     fprintf(tptr, "%d %hu ", this->staticInst->destRegIdx(i).classValue(),
             this->staticInst->destRegIdx(i).index());
 
-  fprintf(tptr, " %d %lx %u %d", this->effAddrValid(),
+  fprintf(tptr, " %d %lu %u %d", this->effAddrValid(),
           this->effAddrValid() ? this->effAddr : 0,
           this->effAddrValid() ? this->effSize : 0, cachedepth);
   for (int i = 1; i < 4; i++)
     fprintf(tptr, " %d", dwalkDepth[i]);
   for (int i = 1; i < 4; i++)
-    fprintf(tptr, " %lx", dwalkAddr[i]);
+    fprintf(tptr, " %lu", dwalkAddr[i]);
   assert(dWritebacks[3] == 0);
   for (int i = 0; i < 3; i++)
     fprintf(tptr, " %d", dWritebacks[i]);
 
-  fprintf(tptr, "  %lx %d %d", this->instAddr(), this->fetchMispredicted(),
+  fprintf(tptr, "  %lu %d %d", this->instAddr(), this->fetchMispredicted(),
           fetchdepth);
   assert(iwalkDepth[0] == -1 && dwalkDepth[0] == -1);
   for (int i = 1; i < 4; i++)
     fprintf(tptr, " %d", iwalkDepth[i]);
   for (int i = 1; i < 4; i++)
-    fprintf(tptr, " %lx", iwalkAddr[i]);
+    fprintf(tptr, " %lu", iwalkAddr[i]);
   assert(iWritebacks[0] == 0 && iWritebacks[3] == 0);
   for (int i = 1; i < 3; i++)
     fprintf(tptr, " %d", iWritebacks[i]);

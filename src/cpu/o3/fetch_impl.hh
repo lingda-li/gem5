@@ -144,6 +144,8 @@ DefaultFetch<Impl>::DefaultFetch(O3CPU *_cpu, DerivO3CPUParams *params)
         // which may not hold the entire cache line.
         fetchBuffer[tid] = new uint8_t[fetchBufferSize];
     }
+
+    phaseSquash = false;
 }
 
 template <class Impl>
@@ -812,6 +814,18 @@ DefaultFetch<Impl>::doSquash(const TheISA::PCState &newPC,
     delayedCommit[tid] = true;
 
     ++fetchSquashCycles;
+
+    if (phaseSquash) {
+        macroop[tid] = NULL;
+
+        delayedCommit[tid] = false;
+        assert(memReq[tid] == NULL);
+
+        assert(!stalls[tid].drain);
+
+        fetchBufferPC[tid] = 0;
+        fetchBufferValid[tid] = false;
+    }
 }
 
 template<class Impl>
@@ -1018,6 +1032,11 @@ DefaultFetch<Impl>::checkSignalsAndUpdate(ThreadID tid)
     // Check squash signals from commit.
     if (fromCommit->commitInfo[tid].squash) {
 
+        if (cpu->phaseSquash) {
+            //printf("fetch squash from commit %lu\n", curTick());
+            phaseSquash = true;
+            cpu->phaseSquash = false;
+        }
         DPRINTF(Fetch, "[tid:%i] Squashing instructions due to squash "
                 "from commit.\n",tid);
         // In any case, squash.
@@ -1180,6 +1199,10 @@ DefaultFetch<Impl>::fetch(bool &status_change)
     }
 
     DPRINTF(Fetch, "Attempting to fetch from [tid:%i]\n", tid);
+    if (phaseSquash) {
+        //printf("fetch starts at %lu\n", curTick());
+        phaseSquash = false;
+    }
 
     // The current PC.
     TheISA::PCState thisPC = pc[tid];

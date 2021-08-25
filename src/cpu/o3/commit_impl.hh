@@ -129,6 +129,7 @@ DefaultCommit<Impl>::DefaultCommit(O3CPU *_cpu, DerivO3CPUParams *params)
     tptr = fopen("trace.txt", "w");
     if (tptr == NULL)
         printf("Could not open trace file.\n");
+    numPhaseInsts = 0;
 }
 
 template <class Impl>
@@ -1102,6 +1103,17 @@ DefaultCommit<Impl>::commitInsts()
                                       head_inst->isLastMicroop() ||
                                       !head_inst->isDelayedCommit();
 
+#define PHASE_SIZE 1024
+                if (numPhaseInsts >= PHASE_SIZE && onInstBoundary) {
+                    //printf("Commit squash %lu\n", curTick());
+                    fprintf(tptr, "-99 %lu\n", curTick());
+                    assert(pc[tid].microPC() == 0 && interrupt == NoFault &&
+                           !thread[tid]->trapPending);
+                    squashAfter(tid, head_inst);
+                    cpu->phaseSquash = true;
+                    numPhaseInsts = 0;
+                }
+
                 if (onInstBoundary) {
                     int count = 0;
                     Addr oldpc;
@@ -1328,6 +1340,7 @@ DefaultCommit<Impl>::commitHead(const DynInstPtr &head_inst, unsigned inst_num)
     head_inst->commitTick = curTick() - head_inst->fetchTick;
 #endif
     head_inst->dumpInst(tptr);
+    numPhaseInsts++;
 
     // If this was a store, record it for this cycle.
     if (head_inst->isStore() || head_inst->isAtomic())

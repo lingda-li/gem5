@@ -517,6 +517,9 @@ class DefaultCommit
 
     /** Number of cycles where the commit bandwidth limit is reached. */
     Stats::Scalar commitEligibleSamples;
+
+    // Number of committed instructions in this phase
+    int numPhaseInsts;
 };
 
 #endif // __CPU_O3_COMMIT_HH__

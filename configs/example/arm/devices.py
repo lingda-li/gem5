@@ -91,9 +91,11 @@ class L2(L2Cache):
     mshrs = 32
     tgts_per_mshr = 8
     size = '1MB'
+#    size = '256kB'
     assoc = 16
     write_buffers = 8
     clusivity='mostly_excl'
+#    replacement_policy = RRIPRP()
 
 
 class L3(Cache):

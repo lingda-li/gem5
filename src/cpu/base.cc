@@ -193,6 +193,8 @@ BaseCPU::BaseCPU(Params *p, bool is_checker)
         fatal("Number of ISAs (%i) assigned to the CPU does not equal number "
               "of threads (%i).\n", params()->isa.size(), numThreads);
     }
+
+    phaseSquash = false;
 }
 
 void

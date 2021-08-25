@@ -605,6 +605,8 @@ class DefaultFetch
     // Last itlb table walking depth.
     int walkDepth[4] = {-1, -1, -1, -1};
     Addr walkAddr[4] = {0, 0, 0, 0};
+    // In the status of phase squash.
+    bool phaseSquash;
 };
 
 #endif //__CPU_O3_FETCH_HH__

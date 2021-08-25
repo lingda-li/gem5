@@ -405,6 +405,28 @@ Cache::handleTimingReqMiss(PacketPtr pkt, CacheBlk *blk, Tick forward_time,
 void
 Cache::recvTimingReq(PacketPtr pkt)
 {
+//#define PERFECT_CACHE
+#if defined(PERFECT_CACHE)
+    //if (name().find("icache") != string::npos ||
+    //    name().find("walker_cache") != string::npos) {
+      //std::cout << name() << "\n";
+      if (pkt->needsResponse()) {
+        // std::cout << "pkt " << pkt->print() << "\n";
+        if (pkt->isLLSC() && pkt->isWrite()) {
+          functionalAccess(pkt, true);
+          pkt->req->setExtraData(1);
+        } else if (pkt->isClean()) {
+          pkt->makeTimingResponse();
+        } else
+          functionalAccess(pkt, true);
+        // pkt->makeTimingResponse();
+        Tick request_time = clockEdge(lookupLatency) + pkt->headerDelay;
+        pkt->headerDelay = pkt->payloadDelay = 0;
+        cpuSidePort.schedTimingResp(pkt, request_time);
+      }
+      return;
+    //}
+#endif
     DPRINTF(CacheTags, "%s tags:\n%s\n", __func__, tags->print());
 
     promoteWholeLineWrites(pkt);

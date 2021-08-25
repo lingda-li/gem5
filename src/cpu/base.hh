@@ -624,6 +624,10 @@ class BaseCPU : public ClockedObject
     const Cycles pwrGatingLatency;
     const bool powerGatingOnIdle;
     EventFunctionWrapper enterPwrGatingEvent;
+
+  public:
+    // Whether the commit is doing squash to refresh pipeline.
+    bool phaseSquash;
 };
 
 #endif // THE_ISA == NULL_ISA

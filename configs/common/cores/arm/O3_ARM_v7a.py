@@ -102,6 +102,26 @@ class O3_ARM_v7a_BP(BiModeBP):
     RASSize = 16
     instShiftAmt = 2
 
+class O3_ARM_S_BP(BiModeBP):
+    globalPredictorSize = 1024
+    globalCtrBits = 2
+    choicePredictorSize = 1024
+    choiceCtrBits = 2
+    BTBEntries = 256
+    BTBTagSize = 18
+    RASSize = 8
+    instShiftAmt = 2
+
+class O3_ARM_PostK_BP(BiModeBP):
+    globalPredictorSize = 16384
+    globalCtrBits = 2
+    choicePredictorSize = 16384
+    choiceCtrBits = 2
+    BTBEntries = 4096
+    BTBTagSize = 18
+    RASSize = 8
+    instShiftAmt = 2
+
 class O3_ARM_v7a_3(DerivO3CPU):
     LQEntries = 16
     SQEntries = 16
@@ -145,6 +165,10 @@ class O3_ARM_v7a_3(DerivO3CPU):
 
     switched_out = False
     branchPred = O3_ARM_v7a_BP()
+    #branchPred = TAGE_SC_L_64KB()
+    #branchPred = MultiperspectivePerceptron64KB()
+    #branchPred = O3_ARM_PostK_BP()
+    #branchPred = O3_ARM_S_BP()
 
 # Instruction Cache
 class O3_ARM_v7a_ICache(Cache):
