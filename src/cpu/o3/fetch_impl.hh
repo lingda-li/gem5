@@ -790,6 +790,8 @@ DefaultFetch<Impl>::doSquash(const TheISA::PCState &newPC,
                 tid);
         memReq[tid] = NULL;
     }
+    assert(!phaseSquash || memReq[tid] == NULL ||
+           fetchStatus[tid] == IcacheWaitRetry);
 
     // Get rid of the retrying packet if it was from this thread.
     if (retryTid == tid) {
@@ -819,7 +821,7 @@ DefaultFetch<Impl>::doSquash(const TheISA::PCState &newPC,
         macroop[tid] = NULL;
 
         delayedCommit[tid] = false;
-        assert(memReq[tid] == NULL);
+        memReq[tid] = NULL;
 
         assert(!stalls[tid].drain);
 

@@ -231,17 +231,9 @@ void BaseO3DynInst<Impl>::dumpInst(FILE *tptr, bool FromSQ) {
           this->isCondCtrl(), this->isUncondCtrl(), this->isDirectCtrl(),
           this->isSquashAfter(), this->isSerializeAfter(),
           this->isSerializeBefore());
-  fprintf(tptr, "%d %d %d %d %d  ", this->isAtomic(),
+  fprintf(tptr, "%d %d %d %d %d ", this->isAtomic(),
           this->isStoreConditional(), this->isMemBarrier(), this->isQuiesce(),
           this->isNonSpeculative());
-  fprintf(tptr, "%d ", this->staticInst->numSrcRegs());
-  for (int i = 0; i < this->staticInst->numSrcRegs(); i++)
-    fprintf(tptr, "%d %hu ", this->staticInst->srcRegIdx(i).classValue(),
-            this->staticInst->srcRegIdx(i).index());
-  fprintf(tptr, " %d ", this->staticInst->numDestRegs());
-  for (int i = 0; i < this->staticInst->numDestRegs(); i++)
-    fprintf(tptr, "%d %hu ", this->staticInst->destRegIdx(i).classValue(),
-            this->staticInst->destRegIdx(i).index());
 
   fprintf(tptr, " %d %lu %u %d", this->effAddrValid(),
           this->effAddrValid() ? this->effAddr : 0,
@@ -254,8 +246,8 @@ void BaseO3DynInst<Impl>::dumpInst(FILE *tptr, bool FromSQ) {
   for (int i = 0; i < 3; i++)
     fprintf(tptr, " %d", dWritebacks[i]);
 
-  fprintf(tptr, "  %lu %d %d", this->instAddr(), this->fetchMispredicted(),
-          fetchdepth);
+  fprintf(tptr, "  %lu %d %d %d", this->instAddr(), this->pcState().branching(),
+          this->fetchMispredicted(), fetchdepth);
   assert(iwalkDepth[0] == -1 && dwalkDepth[0] == -1);
   for (int i = 1; i < 4; i++)
     fprintf(tptr, " %d", iwalkDepth[i]);
@@ -264,6 +256,16 @@ void BaseO3DynInst<Impl>::dumpInst(FILE *tptr, bool FromSQ) {
   assert(iWritebacks[0] == 0 && iWritebacks[3] == 0);
   for (int i = 1; i < 3; i++)
     fprintf(tptr, " %d", iWritebacks[i]);
+
+  fprintf(tptr, "  %d %d ", this->staticInst->numSrcRegs(),
+          this->staticInst->numDestRegs());
+  for (int i = 0; i < this->staticInst->numSrcRegs(); i++)
+    fprintf(tptr, " %d %hu", this->staticInst->srcRegIdx(i).classValue(),
+            this->staticInst->srcRegIdx(i).index());
+  fprintf(tptr, " ");
+  for (int i = 0; i < this->staticInst->numDestRegs(); i++)
+    fprintf(tptr, " %d %hu", this->staticInst->destRegIdx(i).classValue(),
+            this->staticInst->destRegIdx(i).index());
   fprintf(tptr, "\n");
   // if (cachedepth > 0)
   // printf("%lu %d\n", (unsigned long)instsCommitted[0].value(),
