@@ -206,7 +206,7 @@ BaseO3DynInst<Impl>::syscall(Fault *fault)
 template <class Impl>
 void BaseO3DynInst<Impl>::dumpInst(FILE *tptr, bool FromSQ) {
   assert(FromSQ || this->sqIdx == -1 || this->isAtomic() ||
-         this->isStoreConditional() || cachedepth == 0);
+         this->isStoreConditional() || cachedepth == -1);
   assert(!FromSQ || this->sqIdx != -1);
   assert(
       !FromSQ ||

@@ -1372,6 +1372,7 @@ DefaultFetch<Impl>::fetch(bool &status_change)
             instruction->fetchTick = curTick();
 #endif
             if (status_change && numInst == 1) {
+              // Return from icache access.
               instruction->fetchdepth = depth;
               for (int i = 0; i < 4; i++) {
                 instruction->iwalkDepth[i] = walkDepth[i];
@@ -1380,7 +1381,7 @@ DefaultFetch<Impl>::fetch(bool &status_change)
               for (int i = 0; i < 4; i++)
                 instruction->iWritebacks[i] = writebacks[i];
             } else {
-              instruction->fetchdepth = 0;
+              instruction->fetchdepth = -1;
               for (int i = 0; i < 4; i++) {
                 instruction->iwalkDepth[i] = -1;
                 instruction->iwalkAddr[i] = 0;

@@ -132,8 +132,8 @@ class BaseO3DynInst : public BaseDynInst<Impl>
 #endif
 
     // For instruction tracing.
-    int cachedepth = 0;
-    int fetchdepth = 0;
+    int cachedepth = -1;
+    int fetchdepth = -1;
     int iwalkDepth[4] = {-1, -1, -1, -1};
     int dwalkDepth[4] = {-1, -1, -1, -1};
     Addr iwalkAddr[4] = {0, 0, 0, 0};
