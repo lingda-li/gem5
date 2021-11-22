@@ -71,6 +71,8 @@ cpu_types = {
               HPI.HPI_ICache, HPI.HPI_DCache,
               HPI.HPI_WalkCache,
               HPI.HPI_L2),
+    "ac" : (AtomicSimpleCPU,
+            devices.L1I, devices.L1D, devices.WalkCache, devices.L2),
     "timing" : (ObjectList.cpu_list.get("O3_ARM_v7a_3"),
             devices.L1I, devices.L1D, devices.WalkCache, devices.L2)
 }
@@ -118,12 +120,20 @@ class SimpleSeSystem(System):
         if self.cpu_cluster.memoryMode() == "timing":
             self.cpu_cluster.addL1()
             self.cpu_cluster.addL2(self.cpu_cluster.clk_domain)
+        elif args.cpu == "ac":
+            self.cpu_cluster.addL1()
+            self.cpu_cluster.addL2(self.cpu_cluster.clk_domain)
         self.cpu_cluster.connectMemSide(self.membus)
 
         if args.maxinsts:
             for i in range(args.num_cores):
                 self.cpu_cluster.cpus[i].max_insts_all_threads = \
                     args.maxinsts
+
+        if args.simpoint_profile:
+            for i in range(args.num_cores):
+                self.cpu_cluster.cpus[i].addSimPointProbe(
+                    args.simpoint_interval)
 
         # Tell gem5 about the memory mode used by the CPUs we are
         # simulating.
@@ -208,6 +218,10 @@ def main():
                         help="Specify the physical memory size")
     parser.add_argument("--maxinsts", type=int, default=0, help="Total " \
                         "number of instructions to simulate")
+    parser.add_argument("--simpoint-profile", action="store_true",
+                        help="Enable basic block profiling for SimPoints")
+    parser.add_argument("--simpoint-interval", type=int, default=10000000,
+                        help="SimPoint interval in num of instructions")
 
     args = parser.parse_args()
 
