@@ -94,8 +94,8 @@ AtomicSimpleCPU::AtomicSimpleCPU(AtomicSimpleCPUParams *p)
     data_amo_req = std::make_shared<Request>();
 
     // Open file trace.txt in write mode.
-    size_t found = name().find("bigCluster");
-    if (found != string::npos) {
+    size_t found = name().find("littleCluster");
+    if (found == string::npos) {
       tptr = fopen("actrace.txt", "w");
       if (tptr == NULL)
         printf("Could not open trace file.\n");
@@ -812,10 +812,15 @@ AtomicSimpleCPU::tick()
             }
 
         }
+        if (need_dump && tptr) {
+            TheISA::PCState pc = thread->pcState();
+            dumpInst(curStaticInst, pc);
+            assert(fault == NoFault);
+            //if (fault != NoFault)
+            //  fprintf(tptr, "f: %s\n", fault->name());
+        }
         if (fault != NoFault || !t_info.stayAtPC)
             advancePC(fault);
-        if (need_dump && tptr)
-            dumpInst(curStaticInst, pcState.instAddr());
     }
 
     if (tryCompleteDrain())
@@ -844,7 +849,7 @@ AtomicSimpleCPU::printAddr(Addr a)
     dcachePort.printAddr(a);
 }
 
-void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, Addr pc) {
+void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, TheISA::PCState &pc) {
   if (inst->isStore() || inst->isAtomic())
     fprintf(tptr, "0 ");
   else
@@ -857,41 +862,43 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, Addr pc) {
   fprintf(tptr, "%d %d %d %d %d  ", inst->isAtomic(),
           inst->isStoreConditional(), inst->isMemBarrier(), inst->isQuiesce(),
           inst->isNonSpeculative());
-  fprintf(tptr, "%d ", inst->numSrcRegs());
-  for (int i = 0; i < inst->numSrcRegs(); i++) {
-    fprintf(tptr, "%d %hu ", inst->srcRegIdx(i).classValue(),
-            inst->srcRegIdx(i).index());
-  }
-  fprintf(tptr, " %d ", inst->numDestRegs());
-  for (int i = 0; i < inst->numDestRegs(); i++) {
-    fprintf(tptr, "%d %hu ", inst->destRegIdx(i).classValue(),
-            inst->destRegIdx(i).index());
-  }
 
-  fprintf(tptr, " %d %lx %u %d", dcache_access, dcache_access ? d_addr : 0,
+  fprintf(tptr, " %d %lu %u %d", dcache_access, dcache_access ? d_addr : 0,
           dcache_access ? d_size : 0, d_depth);
   for (int i = 1; i < 4; i++) {
     fprintf(tptr, " %d", dw_depths[i]);
   }
   for (int i = 1; i < 4; i++) {
-    fprintf(tptr, " %lx", dw_addrs[i]);
+    fprintf(tptr, " %lu", dw_addrs[i]);
   }
   assert(d_writebacks[3] == 0);
   for (int i = 0; i < 3; i++) {
     fprintf(tptr, " %d", d_writebacks[i]);
   }
 
-  fprintf(tptr, "  %lx %d %d", pc, mis_pred, i_depth);
+  fprintf(tptr, "  %lu %d %d %d", pc.instAddr(), pc.branching(), mis_pred,
+          i_depth);
   assert(iw_depths[0] == -1 && dw_depths[0] == -1);
   for (int i = 1; i < 4; i++) {
     fprintf(tptr, " %d", iw_depths[i]);
   }
   for (int i = 1; i < 4; i++) {
-    fprintf(tptr, " %lx", iw_addrs[i]);
+    fprintf(tptr, " %lu", iw_addrs[i]);
   }
   assert(i_writebacks[0] == 0 && i_writebacks[3] == 0);
   for (int i = 1; i < 3; i++) {
     fprintf(tptr, " %d", i_writebacks[i]);
+  }
+
+  fprintf(tptr, "  %d %d ", inst->numSrcRegs(), inst->numDestRegs());
+  for (int i = 0; i < inst->numSrcRegs(); i++) {
+    fprintf(tptr, " %d %hu", inst->srcRegIdx(i).classValue(),
+            inst->srcRegIdx(i).index());
+  }
+  fprintf(tptr, " ");
+  for (int i = 0; i < inst->numDestRegs(); i++) {
+    fprintf(tptr, " %d %hu", inst->destRegIdx(i).classValue(),
+            inst->destRegIdx(i).index());
   }
   fprintf(tptr, "\n");
   //if (d_depth>0)
