@@ -68,6 +68,9 @@
 
 using namespace std;
 
+//#define PHASE_DUMP
+#define PHASE_SIZE 1024
+
 template <class Impl>
 void
 DefaultCommit<Impl>::processTrapEvent(ThreadID tid)
@@ -1103,7 +1106,7 @@ DefaultCommit<Impl>::commitInsts()
                                       head_inst->isLastMicroop() ||
                                       !head_inst->isDelayedCommit();
 
-#define PHASE_SIZE 1024
+#ifdef PHASE_DUMP
                 if (numPhaseInsts >= PHASE_SIZE && onInstBoundary) {
                     //printf("Commit squash %lu\n", curTick());
                     fprintf(tptr, "-99 %lu\n", curTick());
@@ -1113,6 +1116,7 @@ DefaultCommit<Impl>::commitInsts()
                     cpu->phaseSquash = true;
                     numPhaseInsts = 0;
                 }
+#endif
 
                 if (onInstBoundary) {
                     int count = 0;
@@ -1340,7 +1344,9 @@ DefaultCommit<Impl>::commitHead(const DynInstPtr &head_inst, unsigned inst_num)
     head_inst->commitTick = curTick() - head_inst->fetchTick;
 #endif
     head_inst->dumpInst(tptr);
+#ifdef PHASE_DUMP
     numPhaseInsts++;
+#endif
 
     // If this was a store, record it for this cycle.
     if (head_inst->isStore() || head_inst->isAtomic())
