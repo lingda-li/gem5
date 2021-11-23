@@ -842,6 +842,7 @@ DefaultRename<Impl>::sortInsts()
         if (DTRACE(O3PipeView)) {
             inst->renameTick = curTick() - inst->fetchTick;
         }
+        inst->renameTick = curTick() - inst->fetchTick;
 #endif
     }
 }

@@ -713,6 +713,7 @@ DefaultDecode<Impl>::decodeInsts(ThreadID tid)
         if (DTRACE(O3PipeView)) {
             inst->decodeTick = curTick() - inst->fetchTick;
         }
+        inst->decodeTick = curTick() - inst->fetchTick;
 #endif
 
         // Ensure that if it was predicted as a branch, it really is a

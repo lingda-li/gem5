@@ -220,6 +220,8 @@ void BaseO3DynInst<Impl>::dumpInst(FILE *tptr, bool FromSQ) {
   fprintf(tptr, "%d ", this->sqIdx);
   fprintf(tptr, "%lu %lu %d", fetchTick, this->out_rob_tick - fetchTick,
           commitTick);
+  fprintf(tptr, " %d %d %d %d", decodeTick, renameTick, dispatchTick,
+          issueTick);
   //fprintf(tptr, "0 0 0  ");
   if (FromSQ)
     fprintf(tptr, " %d %lu", storeTick, curTick() - fetchTick);
