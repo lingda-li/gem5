@@ -53,6 +53,7 @@ m5.util.addToPath('../..')
 from common import ObjectList
 from common import MemConfig
 from common.cores.arm import HPI
+from common.cores.arm.O3_ARM_v7a import *
 
 import devices
 
@@ -123,6 +124,8 @@ class SimpleSeSystem(System):
         elif args.cpu == "ac":
             self.cpu_cluster.addL1()
             self.cpu_cluster.addL2(self.cpu_cluster.clk_domain)
+            for i in range(args.num_cores):
+                self.cpu_cluster.cpus[i].branchPred = O3_ARM_v7a_BP()
         self.cpu_cluster.connectMemSide(self.membus)
 
         if args.maxinsts:
