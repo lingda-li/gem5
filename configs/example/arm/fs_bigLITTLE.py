@@ -237,6 +237,12 @@ def addOptions(parser):
                         help=Options.vio_9p_help)
     parser.add_argument("--maxinsts", type=int, default=0, help="Total " \
                         "number of instructions to simulate")
+    parser.add_argument("--simpoint-profile", action="store_true",
+                        help="Enable basic block profiling for SimPoints")
+    parser.add_argument("--simpoint-interval", type=int, default=10000000,
+                        help="SimPoint interval in num of instructions")
+    parser.add_argument("--checkpoint-at-end", action="store_true",
+                        help="take a checkpoint at end of run")
     return parser
 
 def build(options):
@@ -288,6 +294,10 @@ def build(options):
             for i in range(options.big_cpus):
                 system.bigCluster.cpus[i].max_insts_all_threads = \
                     options.maxinsts
+        if options.simpoint_profile:
+            for i in range(options.big_cpus):
+                system.bigCluster.cpus[i].addSimPointProbe(
+                    options.simpoint_interval)
 
     # little cluster
     if options.little_cpus > 0:
@@ -381,7 +391,7 @@ def instantiate(options, checkpoint_dir=None):
         m5.instantiate()
 
 
-def run(checkpoint_dir=m5.options.outdir):
+def run(options, checkpoint_dir=m5.options.outdir):
     # start simulation (and drop checkpoints when requested)
     while True:
         event = m5.simulate()
@@ -395,6 +405,11 @@ def run(checkpoint_dir=m5.options.outdir):
             print(exit_msg, " @ ", m5.curTick())
             break
 
+    if options.checkpoint_at_end:
+        print("Dropping checkpoint at the end tick %d" % m5.curTick())
+        m5.checkpoint(os.path.join(checkpoint_dir, "cpt"))
+        print("Checkpoint done.")
+
     sys.exit(event.getCode())
 
 
@@ -406,7 +421,7 @@ def main():
     root = build(options)
     root.apply_config(options.param)
     instantiate(options)
-    run()
+    run(options)
 
 
 if __name__ == "__m5_main__":

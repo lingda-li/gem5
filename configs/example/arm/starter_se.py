@@ -225,6 +225,9 @@ def main():
                         help="Enable basic block profiling for SimPoints")
     parser.add_argument("--simpoint-interval", type=int, default=10000000,
                         help="SimPoint interval in num of instructions")
+    parser.add_argument("--checkpoint-at-end", action="store_true",
+                        help="take a checkpoint at end of run")
+    parser.add_argument("--restore", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -240,12 +243,18 @@ def main():
 
     # Instantiate the C++ object hierarchy. After this point,
     # SimObjects can't be instantiated anymore.
-    m5.instantiate()
+    if args.restore is not None:
+        m5.instantiate(args.restore)
+    else:
+        m5.instantiate()
 
     # Start the simulator. This gives control to the C++ world and
     # starts the simulator. The returned event tells the simulation
     # script why the simulator exited.
     event = m5.simulate()
+
+    if args.checkpoint_at_end:
+        m5.checkpoint(os.path.join(m5.options.outdir, "cpt.%d" % m5.curTick()))
 
     # Print the reason for the simulation exit. Some exit codes are
     # requests for service (e.g., checkpoints) from the simulation
