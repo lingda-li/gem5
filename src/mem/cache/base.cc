@@ -272,6 +272,8 @@ BaseCache::handleTimingReqMiss(PacketPtr pkt, MSHR *mshr, CacheBlk *blk,
 
                 assert(pkt->req->masterId() < system->maxMasters());
                 stats.cmdStats(pkt).mshr_hits[pkt->req->masterId()]++;
+                // Clear the depth of an access that hits in MSHR.
+                pkt->req->clearAccessDepth();
 
                 // We use forward_time here because it is the same
                 // considering new targets. We have multiple

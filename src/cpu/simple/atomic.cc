@@ -94,12 +94,12 @@ AtomicSimpleCPU::AtomicSimpleCPU(AtomicSimpleCPUParams *p)
     data_amo_req = std::make_shared<Request>();
 
     // Open file trace.txt in write mode.
-    size_t found = name().find("littleCluster");
-    if (found == string::npos) {
-      tptr = fopen("actrace.txt", "w");
-      if (tptr == NULL)
-        printf("Could not open trace file.\n");
-    } else
+    //size_t found = name().find("littleCluster");
+    //if (found == string::npos) {
+    //  tptr = fopen("actrace.txt", "w");
+    //  if (tptr == NULL)
+    //    printf("Could not open trace file.\n");
+    //} else
       tptr = NULL;
 }
 
