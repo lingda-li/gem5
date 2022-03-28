@@ -54,6 +54,7 @@ from common import ObjectList
 from common import MemConfig
 from common.cores.arm import HPI
 from common.cores.arm.O3_ARM_v7a import *
+import common.cores.arm.O3_PostK as PostK
 
 import devices
 
@@ -75,7 +76,10 @@ cpu_types = {
     "ac" : (AtomicSimpleCPU,
             devices.L1I, devices.L1D, devices.WalkCache, devices.L2),
     "timing" : (ObjectList.cpu_list.get("O3_ARM_v7a_3"),
-            devices.L1I, devices.L1D, devices.WalkCache, devices.L2)
+            devices.L1I, devices.L1D, devices.WalkCache, devices.L2),
+    "pk" : (ObjectList.cpu_list.get("O3_ARM_PostK_3"),
+            PostK.O3_ARM_PostK_ICache, PostK.O3_ARM_PostK_DCache,
+            PostK.O3_ARM_PostK_WalkCache, PostK.O3_ARM_PostK_L2)
 }
 
 
