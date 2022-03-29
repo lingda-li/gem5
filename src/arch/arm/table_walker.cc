@@ -1874,10 +1874,11 @@ TableWalker::doLongDescriptor()
                 currState->fault = generateLongDescFault(fault_source);
             } else {
                 insertTableEntry(currState->longDesc, true);
-                TlbEntry *te = tlb->lookup(currState->vaddr, currState->asid,
+                TlbEntry *te = mmu->lookup(currState->vaddr, currState->asid,
                                            currState->vmid, currState->isHyp,
                                            currState->isSecure, true, false,
-                                           currState->el);
+                                           currState->el, false, isStage2,
+                                           currState->mode);
                 assert(te);
                 for (int i = 0; i < 4; i++) {
                   te->walkDepth[i] = currState->depthByLevel[i];

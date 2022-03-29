@@ -274,7 +274,8 @@ class TLB : public BaseTLB
 
     Fault
     translateAtomic(const RequestPtr &req, ThreadContext *tc,
-                    BaseMMU::Mode mode) override
+                    BaseMMU::Mode mode, int *depths = NULL,
+                    Addr *addrs = NULL) override
     {
         panic("unimplemented");
     }

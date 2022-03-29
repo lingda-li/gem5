@@ -459,7 +459,7 @@ void DynInst::dumpInst(FILE *tptr, bool FromSQ) {
   else
     assert(!this->isStore() && !this->isAtomic());
 
-  fprintf(tptr, "%d ", this->sqIdx);
+  fprintf(tptr, "%ld ", this->sqIdx);
   fprintf(tptr, "%lu %lu %d", fetchTick, this->out_rob_tick - fetchTick,
           commitTick);
   fprintf(tptr, " %d %d %d %d", decodeTick, renameTick, dispatchTick,
@@ -475,9 +475,9 @@ void DynInst::dumpInst(FILE *tptr, bool FromSQ) {
           this->isCondCtrl(), this->isUncondCtrl(), this->isDirectCtrl(),
           this->isSquashAfter(), this->isSerializeAfter(),
           this->isSerializeBefore());
-  fprintf(tptr, "%d %d %d %d %d ", this->isAtomic(),
-          this->isStoreConditional(), this->isMemBarrier(), this->isQuiesce(),
-          this->isNonSpeculative());
+  fprintf(tptr, "%d %d %d %d %d %d ", this->isAtomic(),
+          this->isStoreConditional(), this->isReadBarrier(),
+          this->isWriteBarrier(), this->isQuiesce(), this->isNonSpeculative());
 
   fprintf(tptr, " %d %lu %u %d", this->effAddrValid(),
           this->effAddrValid() ? this->effAddr : 0,
@@ -490,8 +490,8 @@ void DynInst::dumpInst(FILE *tptr, bool FromSQ) {
   for (int i = 0; i < 3; i++)
     fprintf(tptr, " %d", dWritebacks[i]);
 
-  fprintf(tptr, "  %lu %d %d %d", this->instAddr(), this->pcState().branching(),
-          this->fetchMispredicted(), fetchdepth);
+  fprintf(tptr, "  %lu %d %d %d", this->pcState().instAddr(),
+          this->pcState().branching(), this->fetchMispredicted(), fetchdepth);
   assert(iwalkDepth[0] == -1 && dwalkDepth[0] == -1);
   for (int i = 1; i < 4; i++)
     fprintf(tptr, " %d", iwalkDepth[i]);

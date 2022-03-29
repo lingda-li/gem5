@@ -267,7 +267,7 @@ class AtomicSimpleCPU : public BaseSimpleCPU
     void printAddr(Addr a);
 
     FILE *tptr = nullptr;
-    void dumpInst(StaticInstPtr inst, TheISA::PCState &pc);
+    void dumpInst(StaticInstPtr inst, const PCStateBase &pc);
 };
 
 } // namespace gem5

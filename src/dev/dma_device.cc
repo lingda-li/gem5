@@ -74,13 +74,14 @@ DmaPort::handleRespPacket(PacketPtr pkt, Tick delay)
     auto *state = dynamic_cast<DmaReqState*>(pkt->senderState);
     assert(state);
 
-    handleResp(state, pkt->getAddr(), pkt->req->getSize(), delay);
+    handleResp(state, pkt->getAddr(), pkt->req->getSize(), delay, pkt);
 
     delete pkt;
 }
 
 void
-DmaPort::handleResp(DmaReqState *state, Addr addr, Addr size, Tick delay)
+DmaPort::handleResp(DmaReqState *state, Addr addr, Addr size, Tick delay,
+                    PacketPtr pkt)
 {
     DPRINTF(DMA, "Received response %s for addr: %#x size: %d nb: %d,"  \
             " tot: %d sched %d\n",
@@ -97,9 +98,10 @@ DmaPort::handleResp(DmaReqState *state, Addr addr, Addr size, Tick delay)
     // If we have reached the total number of bytes for this DMA request,
     // then signal the completion and delete the sate.
     if (state->totBytes == state->numBytes) {
-        if (TableWalker *walker_device =
-                dynamic_cast<TableWalker *>(device))
-          walker_device->LastDepth = pkt->req->getAccessDepth();
+        if (gem5::ArmISA::TableWalker *walker_device =
+                dynamic_cast<gem5::ArmISA::TableWalker *>(device))
+          if (pkt)
+            walker_device->LastDepth = pkt->req->getAccessDepth();
         assert(pendingCount != 0);
         pendingCount--;
         if (state->completionEvent) {

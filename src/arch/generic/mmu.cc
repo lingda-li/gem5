@@ -102,9 +102,10 @@ BaseMMU::demapPage(Addr vaddr, uint64_t asn)
 
 Fault
 BaseMMU::translateAtomic(const RequestPtr &req, ThreadContext *tc,
-                         BaseMMU::Mode mode)
+                         BaseMMU::Mode mode, int *depths,
+                         Addr *addrs)
 {
-    return getTlb(mode)->translateAtomic(req, tc, mode);
+    return getTlb(mode)->translateAtomic(req, tc, mode, depths, addrs);
 }
 
 void

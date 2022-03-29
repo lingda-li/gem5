@@ -490,8 +490,6 @@ BaseSimpleCPU::advancePC(const Fault &fault)
             branchPred->update(cur_sn, curThread);
         } else {
             // Mis-predicted branch
-            branchPred->squash(cur_sn, thread->pcState(), branching, curThread);
-            ++t_info.numBranchMispred;
             branchPred->squash(cur_sn, thread->pcState(), branching,
                     curThread);
             ++t_info.execContextStats.numBranchMispred;

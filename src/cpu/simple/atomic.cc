@@ -790,7 +790,7 @@ AtomicSimpleCPU::tick()
 
         }
         if (need_dump && tptr) {
-            TheISA::PCState pc = thread->pcState();
+            const PCStateBase &pc = thread->pcState();
             dumpInst(curStaticInst, pc);
             assert(fault == NoFault);
             //if (fault != NoFault)
@@ -843,7 +843,7 @@ AtomicSimpleCPU::printAddr(Addr a)
     dcachePort.printAddr(a);
 }
 
-void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, TheISA::PCState &pc) {
+void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, const PCStateBase &pc) {
   if (inst->isStore() || inst->isAtomic())
     fprintf(tptr, "0 ");
   else
@@ -853,9 +853,9 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, TheISA::PCState &pc) {
           inst->isCondCtrl(), inst->isUncondCtrl(), inst->isDirectCtrl(),
           inst->isSquashAfter(), inst->isSerializeAfter(),
           inst->isSerializeBefore());
-  fprintf(tptr, "%d %d %d %d %d  ", inst->isAtomic(),
-          inst->isStoreConditional(), inst->isMemBarrier(), inst->isQuiesce(),
-          inst->isNonSpeculative());
+  fprintf(tptr, "%d %d %d %d %d %d  ", inst->isAtomic(),
+          inst->isStoreConditional(), inst->isReadBarrier(),
+          inst->isWriteBarrier(), inst->isQuiesce(), inst->isNonSpeculative());
 
   fprintf(tptr, " %d %lu %u %d", dcache_access, dcache_access ? d_addr : 0,
           dcache_access ? d_size : 0, d_depth);
@@ -902,16 +902,6 @@ void AtomicSimpleCPU::dumpInst(StaticInstPtr inst, TheISA::PCState &pc) {
   //if (mis_pred)
   //if (inst->isUncondCtrl())
   //printf("%lu %d %lx %lx %lx\n", instCnt, mis_pred, t_info.predPC.instAddr(), thread->pcState().instAddr(), pc);
-}
-
-////////////////////////////////////////////////////////////////////////
-//
-//  AtomicSimpleCPU Simulation Object
-//
-AtomicSimpleCPU *
-AtomicSimpleCPUParams::create()
-{
-    return new AtomicSimpleCPU(this);
 }
 
 } // namespace gem5
