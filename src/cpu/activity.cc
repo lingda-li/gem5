@@ -33,9 +33,10 @@
 #include "cpu/timebuf.hh"
 #include "debug/Activity.hh"
 
-using namespace std;
+namespace gem5
+{
 
-ActivityRecorder::ActivityRecorder(const string &name, int num_stages,
+ActivityRecorder::ActivityRecorder(const std::string &name, int num_stages,
     int longest_latency, int activity)
     : _name(name), activityBuffer(longest_latency, 0),
       longestLatency(longest_latency), activityCount(activity),
@@ -165,3 +166,5 @@ ActivityRecorder::validate()
 
     assert(count == activityCount);
 }
+
+} // namespace gem5

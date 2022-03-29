@@ -46,9 +46,14 @@
 #ifndef __SIM_PORT_HH__
 #define __SIM_PORT_HH__
 
+#include <cassert>
+#include <ostream>
 #include <string>
 
 #include "base/types.hh"
+
+namespace gem5
+{
 
 /**
  * Ports are used to interface objects to each other.
@@ -62,6 +67,10 @@ class Port
     const std::string portName;
 
   protected:
+
+    class UnboundPortException {};
+
+    [[noreturn]] void reportUnbound() const;
 
     /**
      * A numeric identifier to distinguish ports in a vector, and set
@@ -149,5 +158,7 @@ operator << (std::ostream &os, const Port &port)
     os << port.name();
     return os;
 }
+
+} // namespace gem5
 
 #endif //__SIM_PORT_HH__

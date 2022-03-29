@@ -47,6 +47,9 @@
 #include "params/I2CDevice.hh"
 #include "sim/sim_object.hh"
 
+namespace gem5
+{
+
 class I2CDevice : public SimObject
 {
 
@@ -56,8 +59,8 @@ class I2CDevice : public SimObject
 
   public:
 
-    I2CDevice(const I2CDeviceParams* p)
-        : SimObject(p), _addr(p->i2c_addr)
+    I2CDevice(const I2CDeviceParams &p)
+        : SimObject(p), _addr(p.i2c_addr)
     { }
 
     virtual ~I2CDevice() { }
@@ -90,5 +93,7 @@ class I2CDevice : public SimObject
     uint8_t i2cAddr() const { return _addr; }
 
 };
+
+} // namespace gem5
 
 #endif // __DEV_I2C_DEVICE__

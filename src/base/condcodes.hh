@@ -31,6 +31,9 @@
 
 #include "base/bitfield.hh"
 
+namespace gem5
+{
+
 /**
  * Calculate the carry flag from an addition. This should work even when
  * a carry value is also added in.
@@ -74,6 +77,8 @@
  *   If we have a carry in, but no carry out:
  *     src1 and src2 can neither be 1. So the overall result bit is 1. Hence:
  *     ~1 + 0 + 0 => 0. We return false.
+ *
+ * @ingroup api_base_utils
  */
 static inline bool
 findCarry(int width, uint64_t dest, uint64_t src1, uint64_t src2)
@@ -86,6 +91,8 @@ findCarry(int width, uint64_t dest, uint64_t src1, uint64_t src2)
 
 /**
  * Calculate the overflow flag from an addition.
+ *
+ * @ingroup api_base_utils
  */
 static inline bool
 findOverflow(int width, uint64_t dest, uint64_t src1, uint64_t src2)
@@ -109,6 +116,8 @@ findOverflow(int width, uint64_t dest, uint64_t src1, uint64_t src2)
  *   If the intermediate is still one, then there is exactly one high bit
  *   which does not have a corresponding high bit. Therefore, the value must
  *   have odd parity, and we return 1 accordingly. Otherwise we return 0.
+ *
+ * @ingroup api_base_utils
  */
 static inline bool
 findParity(int width, uint64_t dest)
@@ -125,6 +134,8 @@ findParity(int width, uint64_t dest)
 
 /**
  * Calculate the negative flag.
+ *
+ * @ingroup api_base_utils
  */
 static inline bool
 findNegative(int width, uint64_t dest)
@@ -134,11 +145,15 @@ findNegative(int width, uint64_t dest)
 
 /**
  * Calculate the zero flag.
+ *
+ * @ingroup api_base_utils
  */
 static inline bool
 findZero(int width, uint64_t dest)
 {
     return !(dest & mask(width));
 }
+
+} // namespace gem5
 
 #endif // __BASE_CONDCODE_HH__

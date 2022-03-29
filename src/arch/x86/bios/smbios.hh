@@ -44,10 +44,14 @@
 #include <string>
 #include <vector>
 
+#include "base/compiler.hh"
 #include "base/types.hh"
 #include "enums/Characteristic.hh"
 #include "enums/ExtCharacteristic.hh"
 #include "sim/sim_object.hh"
+
+namespace gem5
+{
 
 class PortProxy;
 struct X86SMBiosBiosInformationParams;
@@ -57,7 +61,8 @@ struct X86SMBiosSMBiosTableParams;
 namespace X86ISA
 {
 
-namespace SMBios
+GEM5_DEPRECATED_NAMESPACE(SMBios, smbios);
+namespace smbios
 {
 
 class SMBiosStructure : public SimObject
@@ -92,7 +97,7 @@ class SMBiosStructure : public SimObject
   protected:
     bool stringFields;
 
-    SMBiosStructure(Params * p, uint8_t _type);
+    SMBiosStructure(const Params &p, uint8_t _type);
 
     std::vector<std::string> strings;
 
@@ -102,9 +107,9 @@ class SMBiosStructure : public SimObject
 
   public:
 
-    int addString(std::string & newString);
+    int addString(const std::string &new_string);
     std::string readString(int n);
-    void setString(int n, std::string & newString);
+    void setString(int n, const std::string &new_string);
 };
 
 class BiosInformation : public SMBiosStructure
@@ -140,7 +145,7 @@ class BiosInformation : public SMBiosStructure
     // Offset 17h, 1 byte
     uint8_t embContFirmwareMinor;
 
-    BiosInformation(Params * p);
+    BiosInformation(const Params &p);
 
     uint8_t getLength() { return 0x18; }
     uint16_t writeOut(PortProxy& proxy, Addr addr);
@@ -209,7 +214,7 @@ class SMBiosTable : public SimObject
     std::vector<SMBiosStructure *> structures;
 
   public:
-    SMBiosTable(Params * p);
+    SMBiosTable(const Params &p);
 
     Addr getTableAddr()
     {
@@ -225,7 +230,8 @@ class SMBiosTable : public SimObject
             Addr &headerSize, Addr &structSize);
 };
 
-} //SMBios
-} //X86ISA
+} // namespace smbios
+} // namespace X86ISA
+} // namespace gem5
 
 #endif

@@ -32,7 +32,7 @@ from slicc.symbols import Var
 
 class LocalVariableAST(StatementAST):
     def __init__(self, slicc, type_ast, ident, pointer = False):
-        super(LocalVariableAST, self).__init__(slicc)
+        super().__init__(slicc)
         self.type_ast = type_ast
         self.ident    = ident
         self.pointer = pointer
@@ -52,7 +52,7 @@ class LocalVariableAST(StatementAST):
         else:
             return code
 
-    def generate(self, code):
+    def generate(self, code, **kwargs):
         type = self.type_ast.type;
         ident = "%s" % self.ident;
 

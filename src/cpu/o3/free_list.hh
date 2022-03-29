@@ -44,13 +44,20 @@
 
 #include <iostream>
 #include <queue>
-#include <vector>
 
 #include "base/logging.hh"
 #include "base/trace.hh"
 #include "cpu/o3/comm.hh"
 #include "cpu/o3/regfile.hh"
 #include "debug/FreeList.hh"
+
+namespace gem5
+{
+
+namespace o3
+{
+
+class UnifiedRenameMap;
 
 /**
  * Free list for a single class of registers (e.g., integer
@@ -78,7 +85,7 @@ class SimpleFreeList
     void
     addRegs(InputIt first, InputIt last) {
         std::for_each(first, last, [this](typename InputIt::value_type& reg) {
-            this->freeRegs.push(&reg);
+            freeRegs.push(&reg);
         });
     }
 
@@ -336,5 +343,7 @@ UnifiedFreeList::addReg(PhysRegIdPtr freed_reg)
     // assert(freeFloatRegs.size() <= numPhysicalFloatRegs);
 }
 
+} // namespace o3
+} // namespace gem5
 
 #endif // __CPU_O3_FREE_LIST_HH__

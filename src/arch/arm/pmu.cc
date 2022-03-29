@@ -47,19 +47,22 @@
 #include "dev/arm/generic_timer.hh"
 #include "params/ArmPMU.hh"
 
+namespace gem5
+{
+
 namespace ArmISA {
 
 const RegVal PMU::reg_pmcr_wr_mask = 0x39;
 
-PMU::PMU(const ArmPMUParams *p)
+PMU::PMU(const ArmPMUParams &p)
     : SimObject(p), BaseISADevice(),
       reg_pmcnten(0), reg_pmcr(0),
       reg_pmselr(0), reg_pminten(0), reg_pmovsr(0),
       reg_pmceid0(0),reg_pmceid1(0),
       clock_remainder(0),
-      maximumCounterCount(p->eventCounters),
+      maximumCounterCount(p.eventCounters),
       cycleCounter(*this, maximumCounterCount),
-      cycleCounterEventId(p->cycleEventId),
+      cycleCounterEventId(p.cycleEventId),
       swIncrementEvent(nullptr),
       reg_pmcr_conf(0),
       interrupt(nullptr)
@@ -71,13 +74,13 @@ PMU::PMU(const ArmPMUParams *p)
               maximumCounterCount);
     }
 
-    warn_if(!p->interrupt, "ARM PMU: No interrupt specified, interrupt " \
+    warn_if(!p.interrupt, "ARM PMU: No interrupt specified, interrupt " \
             "delivery disabled.\n");
 
     /* Setup the performance counter ID registers */
     reg_pmcr_conf.imp = 0x41;    // ARM Ltd.
     reg_pmcr_conf.idcode = 0x00;
-    reg_pmcr_conf.n = p->eventCounters;
+    reg_pmcr_conf.n = p.eventCounters;
 
     // Setup the hard-coded cycle counter, which is equivalent to
     // architected counter event type 0x11.
@@ -92,10 +95,10 @@ void
 PMU::setThreadContext(ThreadContext *tc)
 {
     DPRINTF(PMUVerbose, "Assigning PMU to ContextID %i.\n", tc->contextId());
-    auto pmu_params = static_cast<const ArmPMUParams *>(params());
+    const auto &pmu_params = static_cast<const ArmPMUParams &>(params());
 
-    if (pmu_params->interrupt)
-        interrupt = pmu_params->interrupt->get(tc);
+    if (pmu_params.interrupt)
+        interrupt = pmu_params.interrupt->get(tc);
 }
 
 void
@@ -115,7 +118,7 @@ PMU::addSoftwareIncrementEvent(unsigned int id)
     fatal_if(old_event != eventMap.end(), "An event with id %d has "
              "been previously defined\n", id);
 
-    swIncrementEvent = new SWIncrementEvent();
+    swIncrementEvent = std::make_shared<SWIncrementEvent>();
     eventMap[id] = swIncrementEvent;
     registerEvent(id);
 }
@@ -127,18 +130,14 @@ PMU::addEventProbe(unsigned int id, SimObject *obj, const char *probe_name)
     DPRINTF(PMUVerbose, "PMU: Adding Probe Driven event with id '0x%x'"
         "as probe %s:%s\n",id, obj->name(), probe_name);
 
-    RegularEvent *event = nullptr;
+    std::shared_ptr<RegularEvent> event;
     auto event_entry = eventMap.find(id);
     if (event_entry == eventMap.end()) {
-
-        event = new RegularEvent();
+        event = std::make_shared<RegularEvent>();
         eventMap[id] = event;
-
     } else {
-        event = dynamic_cast<RegularEvent*>(event_entry->second);
-        if (!event) {
-            fatal("Event with id %d is not probe driven\n", id);
-        }
+        event = std::dynamic_pointer_cast<RegularEvent>(event_entry->second);
+        fatal_if(!event, "Event with id %d is not probe driven\n", id);
     }
     event->addMicroarchitectureProbe(obj, probe_name);
 
@@ -179,7 +178,7 @@ PMU::regProbeListeners()
         counters.emplace_back(*this, index);
     }
 
-    PMUEvent *event = getEvent(cycleCounterEventId);
+    std::shared_ptr<PMUEvent> event = getEvent(cycleCounterEventId);
     panic_if(!event, "core cycle event is not present\n");
     cycleCounter.enabled = true;
     cycleCounter.attach(event);
@@ -492,10 +491,8 @@ PMU::CounterState::isFiltered() const
     assert(pmu.isa);
 
     const PMEVTYPER_t filter(this->filter);
-    const SCR scr(pmu.isa->readMiscRegNoEffect(MISCREG_SCR));
-    const CPSR cpsr(pmu.isa->readMiscRegNoEffect(MISCREG_CPSR));
-    const ExceptionLevel el(currEL(cpsr));
-    const bool secure(inSecureState(scr, cpsr));
+    const ExceptionLevel el(pmu.isa->currEL());
+    const bool secure(pmu.isa->inSecureState());
 
     switch (el) {
       case EL0:
@@ -528,7 +525,7 @@ PMU::CounterState::detach()
 }
 
 void
-PMU::CounterState::attach(PMUEvent* event)
+PMU::CounterState::attach(const std::shared_ptr<PMUEvent> &event)
 {
     if (!resetValue) {
       value = 0;
@@ -731,7 +728,7 @@ PMU::unserialize(CheckpointIn &cp)
     cycleCounter.unserializeSection(cp, "cycleCounter");
 }
 
-PMU::PMUEvent*
+std::shared_ptr<PMU::PMUEvent>
 PMU::getEvent(uint64_t eventId)
 {
     auto entry = eventMap.find(eventId);
@@ -807,9 +804,4 @@ PMU::SWIncrementEvent::write(uint64_t val)
 }
 
 } // namespace ArmISA
-
-ArmISA::PMU *
-ArmPMUParams::create()
-{
-    return new ArmISA::PMU(this);
-}
+} // namespace gem5

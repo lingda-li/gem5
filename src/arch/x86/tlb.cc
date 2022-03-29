@@ -57,11 +57,14 @@
 #include "sim/process.hh"
 #include "sim/pseudo_inst.hh"
 
+namespace gem5
+{
+
 namespace X86ISA {
 
-TLB::TLB(const Params *p)
-    : BaseTLB(p), configAddress(0), size(p->size),
-      tlb(size), lruSeq(0), m5opRange(p->system->m5opRange())
+TLB::TLB(const Params &p)
+    : BaseTLB(p), configAddress(0), size(p.size),
+      tlb(size), lruSeq(0), m5opRange(p.system->m5opRange()), stats(this)
 {
     if (!size)
         fatal("TLBs must have a non-zero size.\n");
@@ -71,7 +74,7 @@ TLB::TLB(const Params *p)
         freeList.push_back(&tlb[x]);
     }
 
-    walker = p->walker;
+    walker = p.walker;
     walker->setTLB(this);
 }
 
@@ -256,20 +259,20 @@ TLB::translateInt(bool read, RequestPtr req, ThreadContext *tc)
 
 Fault
 TLB::finalizePhysical(const RequestPtr &req,
-                      ThreadContext *tc, Mode mode) const
+                      ThreadContext *tc, BaseMMU::Mode mode) const
 {
     Addr paddr = req->getPaddr();
 
     if (m5opRange.contains(paddr)) {
         req->setFlags(Request::STRICT_ORDER);
         uint8_t func;
-        PseudoInst::decodeAddrOffset(paddr - m5opRange.start(), func);
+        pseudo_inst::decodeAddrOffset(paddr - m5opRange.start(), func);
         req->setLocalAccessor(
             [func, mode](ThreadContext *tc, PacketPtr pkt) -> Cycles
             {
                 uint64_t ret;
-                PseudoInst::pseudoInst<X86PseudoInstABI>(tc, func, ret);
-                if (mode == Read)
+                pseudo_inst::pseudoInst<X86PseudoInstABI, true>(tc, func, ret);
+                if (mode == BaseMMU::Read)
                     pkt->setLE(ret);
                 return Cycles(1);
             }
@@ -305,19 +308,19 @@ TLB::finalizePhysical(const RequestPtr &req,
 
 Fault
 TLB::translate(const RequestPtr &req,
-        ThreadContext *tc, Translation *translation,
-        Mode mode, bool &delayedResponse, bool timing)
+        ThreadContext *tc, BaseMMU::Translation *translation,
+        BaseMMU::Mode mode, bool &delayedResponse, bool timing)
 {
     Request::Flags flags = req->getFlags();
     int seg = flags & SegmentFlagMask;
-    bool storeCheck = flags & (StoreCheck << FlagShift);
+    bool storeCheck = flags & Request::READ_MODIFY_WRITE;
 
     delayedResponse = false;
 
     // If this is true, we're dealing with a request to a non-memory address
     // space.
     if (seg == SEGMENT_REG_MS) {
-        return translateInt(mode == Read, req, tc);
+        return translateInt(mode == BaseMMU::Read, req, tc);
     }
 
     Addr vaddr = req->getVaddr();
@@ -339,9 +342,9 @@ TLB::translate(const RequestPtr &req,
             bool expandDown = false;
             SegAttr attr = tc->readMiscRegNoEffect(MISCREG_SEG_ATTR(seg));
             if (seg >= SEGMENT_REG_ES && seg <= SEGMENT_REG_HS) {
-                if (!attr.writable && (mode == Write || storeCheck))
+                if (!attr.writable && (mode == BaseMMU::Write || storeCheck))
                     return std::make_shared<GeneralProtection>(0);
-                if (!attr.readable && mode == Read)
+                if (!attr.readable && mode == BaseMMU::Read)
                     return std::make_shared<GeneralProtection>(0);
                 expandDown = attr.expandDown;
 
@@ -372,19 +375,19 @@ TLB::translate(const RequestPtr &req,
             DPRINTF(TLB, "Paging enabled.\n");
             // The vaddr already has the segment base applied.
             TlbEntry *entry = lookup(vaddr);
-            if (mode == Read) {
-                rdAccesses++;
+            if (mode == BaseMMU::Read) {
+                stats.rdAccesses++;
             } else {
-                wrAccesses++;
+                stats.wrAccesses++;
             }
             if (!entry) {
                 DPRINTF(TLB, "Handling a TLB miss for "
                         "address %#x at pc %#x.\n",
-                        vaddr, tc->instAddr());
-                if (mode == Read) {
-                    rdMisses++;
+                        vaddr, tc->pcState().instAddr());
+                if (mode == BaseMMU::Read) {
+                    stats.rdMisses++;
                 } else {
-                    wrMisses++;
+                    stats.wrMisses++;
                 }
                 if (FullSystem) {
                     Fault fault = walker->start(tc, translation, req, mode);
@@ -422,7 +425,8 @@ TLB::translate(const RequestPtr &req,
                     !(flags & (CPL0FlagBit << FlagShift)));
             CR0 cr0 = tc->readMiscRegNoEffect(MISCREG_CR0);
             bool badWrite = (!entry->writable && (inUser || cr0.wp));
-            if ((inUser && !entry->user) || (mode == Write && badWrite)) {
+            if ((inUser && !entry->user) ||
+                (mode == BaseMMU::Write && badWrite)) {
                 // The page must have been present to get into the TLB in
                 // the first place. We'll assume the reserved bits are
                 // fine even though we're not checking them.
@@ -432,8 +436,8 @@ TLB::translate(const RequestPtr &req,
             if (storeCheck && badWrite) {
                 // This would fault if this were a write, so return a page
                 // fault that reflects that happening.
-                return std::make_shared<PageFault>(vaddr, true, Write, inUser,
-                                                   false);
+                return std::make_shared<PageFault>(
+                    vaddr, true, BaseMMU::Write, inUser, false);
             }
 
             Addr paddr = entry->paddr | (vaddr & mask(entry->logBytes));
@@ -458,14 +462,16 @@ TLB::translate(const RequestPtr &req,
 }
 
 Fault
-TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode)
+TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc,
+    BaseMMU::Mode mode)
 {
     bool delayedResponse;
     return TLB::translate(req, tc, NULL, mode, delayedResponse, false);
 }
 
 Fault
-TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
+TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc,
+    BaseMMU::Mode mode)
 {
     unsigned logBytes;
     const Addr vaddr = req->getVaddr();
@@ -480,7 +486,7 @@ TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
         Process *process = tc->getProcessPtr();
         const auto *pte = process->pTable->lookup(vaddr);
 
-        if (!pte && mode != Execute) {
+        if (!pte && mode != BaseMMU::Execute) {
             // Check if we just need to grow the stack.
             if (process->fixupFault(vaddr)) {
                 // If we did, lookup the entry for the new page.
@@ -500,7 +506,7 @@ TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
 
 void
 TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
-        Translation *translation, Mode mode)
+    BaseMMU::Translation *translation, BaseMMU::Mode mode)
 {
     bool delayedResponse;
     assert(translation);
@@ -518,27 +524,17 @@ TLB::getWalker()
     return walker;
 }
 
-void
-TLB::regStats()
+TLB::TlbStats::TlbStats(statistics::Group *parent)
+  : statistics::Group(parent),
+    ADD_STAT(rdAccesses, statistics::units::Count::get(),
+             "TLB accesses on read requests"),
+    ADD_STAT(wrAccesses, statistics::units::Count::get(),
+             "TLB accesses on write requests"),
+    ADD_STAT(rdMisses, statistics::units::Count::get(),
+             "TLB misses on read requests"),
+    ADD_STAT(wrMisses, statistics::units::Count::get(),
+             "TLB misses on write requests")
 {
-    using namespace Stats;
-    BaseTLB::regStats();
-    rdAccesses
-        .name(name() + ".rdAccesses")
-        .desc("TLB accesses on read requests");
-
-    wrAccesses
-        .name(name() + ".wrAccesses")
-        .desc("TLB accesses on write requests");
-
-    rdMisses
-        .name(name() + ".rdMisses")
-        .desc("TLB misses on read requests");
-
-    wrMisses
-        .name(name() + ".wrMisses")
-        .desc("TLB misses on write requests");
-
 }
 
 void
@@ -585,9 +581,4 @@ TLB::getTableWalkerPort()
 }
 
 } // namespace X86ISA
-
-X86ISA::TLB *
-X86TLBParams::create()
-{
-    return new X86ISA::TLB(this);
-}
+} // namespace gem5

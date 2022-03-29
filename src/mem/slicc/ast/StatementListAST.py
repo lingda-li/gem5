@@ -29,7 +29,7 @@ from slicc.ast.AST import AST
 
 class StatementListAST(AST):
     def __init__(self, slicc, statements):
-        super(StatementListAST, self).__init__(slicc)
+        super().__init__(slicc)
         if not isinstance(statements, (list, tuple)):
             statements = [ statements ]
         self.statements = statements
@@ -37,9 +37,9 @@ class StatementListAST(AST):
     def __repr__(self):
         return "[StatementListAST: %r]" % self.statements
 
-    def generate(self, code, return_type):
+    def generate(self, code, return_type, **kwargs):
         for statement in self.statements:
-            statement.generate(code, return_type)
+            statement.generate(code, return_type, **kwargs)
 
     def findResources(self, resources):
         for statement in self.statements:

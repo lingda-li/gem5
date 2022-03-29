@@ -47,6 +47,9 @@ class NonCachingSimpleCPU(AtomicSimpleCPU):
 
     type = 'NonCachingSimpleCPU'
     cxx_header = "cpu/simple/noncaching.hh"
+    cxx_class = 'gem5::NonCachingSimpleCPU'
+
+    numThreads = 1
 
     @classmethod
     def memory_mode(cls):
@@ -55,4 +58,3 @@ class NonCachingSimpleCPU(AtomicSimpleCPU):
     @classmethod
     def support_take_over(cls):
         return True
-

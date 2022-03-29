@@ -30,22 +30,14 @@
 
 #include <cassert>
 
-#include "dev/x86/pc.hh"
+namespace gem5
+{
 
 using namespace X86ISA;
 
-SouthBridge::SouthBridge(const Params *p) : SimObject(p),
-    platform(p->platform), pit(p->pit), pic1(p->pic1), pic2(p->pic2),
-    cmos(p->cmos), speaker(p->speaker), ioApic(p->io_apic)
-{
-    // Let the platform know where we are
-    Pc * pc = dynamic_cast<Pc *>(platform);
-    assert(pc);
-    pc->southBridge = this;
-}
+SouthBridge::SouthBridge(const Params &p) : SimObject(p),
+    pit(p.pit), pic1(p.pic1), pic2(p.pic2), cmos(p.cmos), speaker(p.speaker),
+    ioApic(p.io_apic)
+{}
 
-SouthBridge *
-SouthBridgeParams::create()
-{
-    return new SouthBridge(this);
-}
+} // namespace gem5

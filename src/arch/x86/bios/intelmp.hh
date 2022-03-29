@@ -42,12 +42,16 @@
 #include <vector>
 
 #include "base/bitfield.hh"
+#include "base/compiler.hh"
 #include "enums/X86IntelMPAddressType.hh"
 #include "enums/X86IntelMPInterruptType.hh"
 #include "enums/X86IntelMPPolarity.hh"
 #include "enums/X86IntelMPRangeList.hh"
 #include "enums/X86IntelMPTriggerMode.hh"
 #include "sim/sim_object.hh"
+
+namespace gem5
+{
 
 class PortProxy;
 
@@ -80,7 +84,8 @@ uint8_t writeOutString(PortProxy& proxy, Addr addr, std::string str,
 namespace X86ISA
 {
 
-namespace IntelMP
+GEM5_DEPRECATED_NAMESPACE(IntelMP, intelmp);
+namespace intelmp
 {
 
 class FloatingPointer : public SimObject
@@ -109,7 +114,7 @@ class FloatingPointer : public SimObject
         tableAddr = addr;
     }
 
-    FloatingPointer(Params * p);
+    FloatingPointer(const Params &p);
 };
 
 class BaseConfigEntry : public SimObject
@@ -123,7 +128,7 @@ class BaseConfigEntry : public SimObject
 
     virtual Addr writeOut(PortProxy& proxy, Addr addr, uint8_t &checkSum);
 
-    BaseConfigEntry(Params * p, uint8_t _type);
+    BaseConfigEntry(const Params &p, uint8_t _type);
 };
 
 class ExtConfigEntry : public SimObject
@@ -138,7 +143,7 @@ class ExtConfigEntry : public SimObject
 
     virtual Addr writeOut(PortProxy& proxy, Addr addr, uint8_t &checkSum);
 
-    ExtConfigEntry(Params * p, uint8_t _type, uint8_t _length);
+    ExtConfigEntry(const Params &p, uint8_t _type, uint8_t _length);
 };
 
 class ConfigTable : public SimObject
@@ -161,7 +166,7 @@ class ConfigTable : public SimObject
   public:
     Addr writeOut(PortProxy& proxy, Addr addr);
 
-    ConfigTable(Params * p);
+    ConfigTable(const Params &p);
 };
 
 class Processor : public BaseConfigEntry
@@ -178,7 +183,7 @@ class Processor : public BaseConfigEntry
   public:
     Addr writeOut(PortProxy& proxy, Addr addr, uint8_t &checkSum);
 
-    Processor(Params * p);
+    Processor(const Params &p);
 };
 
 class Bus : public BaseConfigEntry
@@ -192,7 +197,7 @@ class Bus : public BaseConfigEntry
   public:
     Addr writeOut(PortProxy& proxy, Addr addr, uint8_t &checkSum);
 
-    Bus(Params * p);
+    Bus(const Params &p);
 };
 
 class IOAPIC : public BaseConfigEntry
@@ -208,7 +213,7 @@ class IOAPIC : public BaseConfigEntry
   public:
     Addr writeOut(PortProxy& proxy, Addr addr, uint8_t &checkSum);
 
-    IOAPIC(Params * p);
+    IOAPIC(const Params &p);
 };
 
 class IntAssignment : public BaseConfigEntry
@@ -227,10 +232,10 @@ class IntAssignment : public BaseConfigEntry
   public:
     Addr writeOut(PortProxy& proxy, Addr addr, uint8_t &checkSum);
 
-    IntAssignment(X86IntelMPBaseConfigEntryParams * p,
-            Enums::X86IntelMPInterruptType _interruptType,
-            Enums::X86IntelMPPolarity polarity,
-            Enums::X86IntelMPTriggerMode trigger,
+    IntAssignment(const X86IntelMPBaseConfigEntryParams &p,
+            enums::X86IntelMPInterruptType _interruptType,
+            enums::X86IntelMPPolarity polarity,
+            enums::X86IntelMPTriggerMode trigger,
             uint8_t _type,
             uint8_t _sourceBusID, uint8_t _sourceBusIRQ,
             uint8_t _destApicID, uint8_t _destApicIntIn) :
@@ -239,8 +244,8 @@ class IntAssignment : public BaseConfigEntry
         sourceBusID(_sourceBusID), sourceBusIRQ(_sourceBusIRQ),
         destApicID(_destApicID), destApicIntIn(_destApicIntIn)
     {
-        replaceBits(flags, 0, 1, polarity);
-        replaceBits(flags, 2, 3, trigger);
+        replaceBits(flags, 1, 0, polarity);
+        replaceBits(flags, 3, 2, trigger);
     }
 };
 
@@ -250,7 +255,7 @@ class IOIntAssignment : public IntAssignment
     typedef X86IntelMPIOIntAssignmentParams Params;
 
   public:
-    IOIntAssignment(Params * p);
+    IOIntAssignment(const Params &p);
 };
 
 class LocalIntAssignment : public IntAssignment
@@ -259,7 +264,7 @@ class LocalIntAssignment : public IntAssignment
     typedef X86IntelMPLocalIntAssignmentParams Params;
 
   public:
-    LocalIntAssignment(Params * p);
+    LocalIntAssignment(const Params &p);
 };
 
 class AddrSpaceMapping : public ExtConfigEntry
@@ -275,7 +280,7 @@ class AddrSpaceMapping : public ExtConfigEntry
   public:
     Addr writeOut(PortProxy& proxy, Addr addr, uint8_t &checkSum);
 
-    AddrSpaceMapping(Params * p);
+    AddrSpaceMapping(const Params &p);
 };
 
 class BusHierarchy : public ExtConfigEntry
@@ -290,7 +295,7 @@ class BusHierarchy : public ExtConfigEntry
   public:
     Addr writeOut(PortProxy& proxy, Addr addr, uint8_t &checkSum);
 
-    BusHierarchy(Params * p);
+    BusHierarchy(const Params &p);
 };
 
 class CompatAddrSpaceMod : public ExtConfigEntry
@@ -305,11 +310,11 @@ class CompatAddrSpaceMod : public ExtConfigEntry
   public:
     Addr writeOut(PortProxy& proxy, Addr addr, uint8_t &checkSum);
 
-    CompatAddrSpaceMod(Params * p);
+    CompatAddrSpaceMod(const Params &p);
 };
 
-} //IntelMP
-
-} //X86ISA
+} // namespace intelmp
+} // namespace X86ISA
+} // namespace gem5
 
 #endif

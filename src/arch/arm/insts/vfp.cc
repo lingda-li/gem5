@@ -37,6 +37,11 @@
 
 #include "arch/arm/insts/vfp.hh"
 
+namespace gem5
+{
+
+using namespace ArmISA;
+
 /*
  * The asm statements below are to keep gcc from reordering code. Otherwise
  * the rounding mode might be set after the operation it was intended for, the
@@ -45,7 +50,7 @@
 
 std::string
 FpCondCompRegOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
@@ -60,7 +65,7 @@ FpCondCompRegOp::generateDisassembly(
 
 std::string
 FpCondSelOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
@@ -76,7 +81,7 @@ FpCondSelOp::generateDisassembly(
 
 std::string
 FpRegRegOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -88,7 +93,7 @@ FpRegRegOp::generateDisassembly(
 
 std::string
 FpRegImmOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -99,7 +104,7 @@ FpRegImmOp::generateDisassembly(
 
 std::string
 FpRegRegImmOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -112,7 +117,7 @@ FpRegRegImmOp::generateDisassembly(
 
 std::string
 FpRegRegRegOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -126,7 +131,7 @@ FpRegRegRegOp::generateDisassembly(
 
 std::string
 FpRegRegRegCondOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab)
+        Addr pc, const loader::SymbolTable *symtab)
     const
 {
     std::stringstream ss;
@@ -142,7 +147,7 @@ FpRegRegRegCondOp::generateDisassembly(
 
 std::string
 FpRegRegRegRegOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -158,7 +163,7 @@ FpRegRegRegRegOp::generateDisassembly(
 
 std::string
 FpRegRegRegImmOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -229,7 +234,7 @@ fixDest(bool flush, bool defaultNan, fpType val, fpType op1)
     fpType junk = 0.0;
     if (fpClass == FP_NAN) {
         const bool single = (sizeof(val) == sizeof(float));
-        const uint64_t qnan = single ? 0x7fc00000 : ULL(0x7ff8000000000000);
+        const uint64_t qnan = single ? 0x7fc00000 : 0x7ff8000000000000ULL;
         const bool nan = std::isnan(op1);
         if (!nan || defaultNan) {
             val = bitsToFp(qnan, junk);
@@ -238,7 +243,7 @@ fixDest(bool flush, bool defaultNan, fpType val, fpType op1)
         }
     } else if (fpClass == FP_SUBNORMAL && flush == 1) {
         // Turn val into a zero with the correct sign;
-        uint64_t bitMask = ULL(0x1) << (sizeof(fpType) * 8 - 1);
+        uint64_t bitMask = 0x1ULL << (sizeof(fpType) * 8 - 1);
         val = bitsToFp(fpToBits(val) & bitMask, junk);
         feclearexcept(FeInexact);
         feraiseexcept(FeUnderflow);
@@ -259,7 +264,7 @@ fixDest(bool flush, bool defaultNan, fpType val, fpType op1, fpType op2)
     fpType junk = 0.0;
     if (fpClass == FP_NAN) {
         const bool single = (sizeof(val) == sizeof(float));
-        const uint64_t qnan = single ? 0x7fc00000 : ULL(0x7ff8000000000000);
+        const uint64_t qnan = single ? 0x7fc00000 : 0x7ff8000000000000ULL;
         const bool nan1 = std::isnan(op1);
         const bool nan2 = std::isnan(op2);
         const bool signal1 = nan1 && ((fpToBits(op1) & qnan) != qnan);
@@ -277,7 +282,7 @@ fixDest(bool flush, bool defaultNan, fpType val, fpType op1, fpType op2)
         }
     } else if (fpClass == FP_SUBNORMAL && flush) {
         // Turn val into a zero with the correct sign;
-        uint64_t bitMask = ULL(0x1) << (sizeof(fpType) * 8 - 1);
+        uint64_t bitMask = 0x1ULL << (sizeof(fpType) * 8 - 1);
         val = bitsToFp(fpToBits(val) & bitMask, junk);
         feclearexcept(FeInexact);
         feraiseexcept(FeUnderflow);
@@ -301,8 +306,8 @@ fixDivDest(bool flush, bool defaultNan, fpType val, fpType op1, fpType op2)
     const fpType junk = 0.0;
     if ((single && (val == bitsToFp(0x00800000, junk) ||
                     val == bitsToFp(0x80800000, junk))) ||
-        (!single && (val == bitsToFp(ULL(0x0010000000000000), junk) ||
-                     val == bitsToFp(ULL(0x8010000000000000), junk)))
+        (!single && (val == bitsToFp(0x0010000000000000ULL, junk) ||
+                     val == bitsToFp(0x8010000000000000ULL, junk)))
         ) {
         __asm__ __volatile__("" : "=m" (op1) : "m" (op1));
         fesetround(FeRoundZero);
@@ -377,8 +382,8 @@ fixFpSFpDDest(FPSCR fpscr, float val)
         op1 = bitsToFp(op1Bits, junk);
     }
     double mid = fixDest(fpscr.fz, fpscr.dn, (double)val, op1);
-    if (mid == bitsToFp(ULL(0x0010000000000000), junk) ||
-        mid == bitsToFp(ULL(0x8010000000000000), junk)) {
+    if (mid == bitsToFp(0x0010000000000000ULL, junk) ||
+        mid == bitsToFp(0x8010000000000000ULL, junk)) {
         __asm__ __volatile__("" : "=m" (val) : "m" (val));
         fesetround(FeRoundZero);
         double temp = 0.0;
@@ -690,9 +695,9 @@ vfpSFixedToFpS(bool flush, bool defaultNan,
 {
     fesetround(FeRoundNearest);
     if (width == 16)
-        val = sext<16>(val & mask(16));
+        val = szext<16>(val);
     else if (width == 32)
-        val = sext<32>(val & mask(32));
+        val = szext<32>(val);
     else if (width != 64)
         panic("Unsupported width %d", width);
 
@@ -729,9 +734,9 @@ vfpSFixedToFpD(bool flush, bool defaultNan,
 {
     fesetround(FeRoundNearest);
     if (width == 16)
-        val = sext<16>(val & mask(16));
+        val = szext<16>(val);
     else if (width == 32)
-        val = sext<32>(val & mask(32));
+        val = szext<32>(val);
     else if (width != 64)
         panic("Unsupported width %d", width);
 
@@ -788,11 +793,11 @@ fprSqrtEstimate(FPSCR &fpscr, float op)
         double scaled;
         if (bits(opBits, 23)) {
             scaled = bitsToFp((0 << 0) | (bits(opBits, 22, 0) << 29) |
-                              (ULL(0x3fd) << 52) | (bits(opBits, 31) << 63),
+                              (0x3fdULL << 52) | (bits(opBits, 31) << 63),
                               (double)0.0);
         } else {
             scaled = bitsToFp((0 << 0) | (bits(opBits, 22, 0) << 29) |
-                              (ULL(0x3fe) << 52) | (bits(opBits, 31) << 63),
+                              (0x3feULL << 52) | (bits(opBits, 31) << 63),
                               (double)0.0);
         }
         uint64_t resultExp = (380 - bits(opBits, 30, 23)) / 2;
@@ -813,13 +818,13 @@ unsignedRSqrtEstimate(uint32_t op)
     } else {
         double dpOp;
         if (bits(op, 31)) {
-            dpOp = bitsToFp((ULL(0) << 63) |
-                            (ULL(0x3fe) << 52) |
+            dpOp = bitsToFp((0ULL << 63) |
+                            (0x3feULL << 52) |
                             (bits((uint64_t)op, 30, 0) << 21) |
                             (0 << 0), (double)0.0);
         } else {
-            dpOp = bitsToFp((ULL(0) << 63) |
-                            (ULL(0x3fd) << 52) |
+            dpOp = bitsToFp((0ULL << 63) |
+                            (0x3fdULL << 52) |
                             (bits((uint64_t)op, 29, 0) << 22) |
                             (0 << 0), (double)0.0);
         }
@@ -868,7 +873,7 @@ fpRecipEstimate(FPSCR &fpscr, float op)
         uint64_t opBits = fpToBits(op);
         double scaled;
         scaled = bitsToFp((0 << 0) | (bits(opBits, 22, 0) << 29) |
-                          (ULL(0x3fe) << 52) | (ULL(0) << 63),
+                          (0x3feULL << 52) | (0ULL << 63),
                           (double)0.0);
         uint64_t resultExp = 253 - bits(opBits, 30, 23);
 
@@ -887,8 +892,8 @@ unsignedRecipEstimate(uint32_t op)
         return -1;
     } else {
         double dpOp;
-        dpOp = bitsToFp((ULL(0) << 63) |
-                        (ULL(0x3fe) << 52) |
+        dpOp = bitsToFp((0ULL << 63) |
+                        (0x3feULL << 52) |
                         (bits((uint64_t)op, 30, 0) << 21) |
                         (0 << 0), (double)0.0);
         uint64_t estimate = fpToBits(recipEstimate(dpOp));
@@ -917,7 +922,7 @@ FpOp::processNans(FPSCR &fpscr, bool &done, bool defaultNan,
     fpType dest = 0.0;
     const bool single = (sizeof(fpType) == sizeof(float));
     const uint64_t qnan =
-        single ? 0x7fc00000 : ULL(0x7ff8000000000000);
+        single ? 0x7fc00000 : 0x7ff8000000000000ULL;
     const bool nan1 = std::isnan(op1);
     const bool nan2 = std::isnan(op2);
     const bool signal1 = nan1 && ((fpToBits(op1) & qnan) != qnan);
@@ -972,7 +977,7 @@ FpOp::ternaryOp(FPSCR &fpscr, fpType op1, fpType op2, fpType op3,
     // Get NAN behavior right. This varies between x86 and ARM.
     if (fpClass == FP_NAN) {
         const uint64_t qnan =
-            single ? 0x7fc00000 : ULL(0x7ff8000000000000);
+            single ? 0x7fc00000 : 0x7ff8000000000000ULL;
         const bool nan1 = std::isnan(op1);
         const bool nan2 = std::isnan(op2);
         const bool nan3 = std::isnan(op3);
@@ -1000,8 +1005,8 @@ FpOp::ternaryOp(FPSCR &fpscr, fpType op1, fpType op2, fpType op3,
                 (single && (dest == bitsToFp(0x00800000, junk) ||
                      dest == bitsToFp(0x80800000, junk))) ||
                 (!single &&
-                    (dest == bitsToFp(ULL(0x0010000000000000), junk) ||
-                     dest == bitsToFp(ULL(0x8010000000000000), junk)))
+                    (dest == bitsToFp(0x0010000000000000ULL, junk) ||
+                     dest == bitsToFp(0x8010000000000000ULL, junk)))
                ) && rMode != VfpRoundZero) {
         /*
          * Correct for the fact that underflow is detected -before- rounding
@@ -1049,7 +1054,7 @@ FpOp::binaryOp(FPSCR &fpscr, fpType op1, fpType op2,
     // Get NAN behavior right. This varies between x86 and ARM.
     if (std::isnan(dest)) {
         const uint64_t qnan =
-            single ? 0x7fc00000 : ULL(0x7ff8000000000000);
+            single ? 0x7fc00000 : 0x7ff8000000000000ULL;
         const bool nan1 = std::isnan(op1);
         const bool nan2 = std::isnan(op2);
         const bool signal1 = nan1 && ((fpToBits(op1) & qnan) != qnan);
@@ -1071,8 +1076,8 @@ FpOp::binaryOp(FPSCR &fpscr, fpType op1, fpType op2,
                 (single && (dest == bitsToFp(0x00800000, junk) ||
                      dest == bitsToFp(0x80800000, junk))) ||
                 (!single &&
-                    (dest == bitsToFp(ULL(0x0010000000000000), junk) ||
-                     dest == bitsToFp(ULL(0x8010000000000000), junk)))
+                    (dest == bitsToFp(0x0010000000000000ULL, junk) ||
+                     dest == bitsToFp(0x8010000000000000ULL, junk)))
                ) && rMode != VfpRoundZero) {
         /*
          * Correct for the fact that underflow is detected -before- rounding
@@ -1119,7 +1124,7 @@ FpOp::unaryOp(FPSCR &fpscr, fpType op1, fpType (*func)(fpType),
     // Get NAN behavior right. This varies between x86 and ARM.
     if (std::isnan(dest)) {
         const uint64_t qnan =
-            single ? 0x7fc00000 : ULL(0x7ff8000000000000);
+            single ? 0x7fc00000 : 0x7ff8000000000000ULL;
         const bool nan = std::isnan(op1);
         if (!nan || fpscr.dn == 1) {
             dest = bitsToFp(qnan, junk);
@@ -1132,8 +1137,8 @@ FpOp::unaryOp(FPSCR &fpscr, fpType op1, fpType (*func)(fpType),
                 (single && (dest == bitsToFp(0x00800000, junk) ||
                      dest == bitsToFp(0x80800000, junk))) ||
                 (!single &&
-                    (dest == bitsToFp(ULL(0x0010000000000000), junk) ||
-                     dest == bitsToFp(ULL(0x8010000000000000), junk)))
+                    (dest == bitsToFp(0x0010000000000000ULL, junk) ||
+                     dest == bitsToFp(0x8010000000000000ULL, junk)))
                ) && rMode != VfpRoundZero) {
         /*
          * Correct for the fact that underflow is detected -before- rounding
@@ -1202,4 +1207,5 @@ VfpMacroOp::nextIdxs(IntRegIndex &dest)
     dest = addStride(dest, stride);
 }
 
-}
+} // namespace ArmISA
+} // namespace gem5

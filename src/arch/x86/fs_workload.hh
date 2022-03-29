@@ -43,38 +43,34 @@
 
 #include "arch/x86/regs/misc.hh"
 #include "arch/x86/regs/segment.hh"
+#include "arch/x86/remote_gdb.hh"
 #include "base/types.hh"
 #include "cpu/thread_context.hh"
 #include "params/X86FsWorkload.hh"
 #include "sim/kernel_workload.hh"
 
+namespace gem5
+{
+
 namespace X86ISA
 {
 
-namespace SMBios
+GEM5_DEPRECATED_NAMESPACE(SMBios, smbios);
+namespace smbios
 {
 
 class SMBiosTable;
 
-} // namespace SMBios
-namespace IntelMP
+} // namespace smbios
+
+GEM5_DEPRECATED_NAMESPACE(IntelMP, intelmp);
+namespace intelmp
 {
 
 class FloatingPointer;
 class ConfigTable;
 
-} // namespace IntelMP
-
-/* memory mappings for KVMCpu in SE mode */
-const Addr syscallCodeVirtAddr = 0xffff800000000000;
-const Addr GDTVirtAddr = 0xffff800000001000;
-const Addr IDTVirtAddr = 0xffff800000002000;
-const Addr TSSVirtAddr = 0xffff800000003000;
-const Addr TSSPhysAddr = 0x63000;
-const Addr ISTVirtAddr = 0xffff800000004000;
-const Addr PFHandlerVirtAddr = 0xffff800000005000;
-const Addr MMIORegionVirtAddr = 0xffffc90000000000;
-const Addr MMIORegionPhysAddr = 0xffff0000;
+} // namespace intelmp
 
 void installSegDesc(ThreadContext *tc, SegmentRegIndex seg,
                     SegDescriptor desc, bool longmode);
@@ -82,17 +78,26 @@ void installSegDesc(ThreadContext *tc, SegmentRegIndex seg,
 class FsWorkload : public KernelWorkload
 {
   public:
-    typedef X86FsWorkloadParams Params;
-    FsWorkload(Params *p);
+    using Params = X86FsWorkloadParams;
+    FsWorkload(const Params &p);
 
   public:
     void initState() override;
 
+    void
+    setSystem(System *sys) override
+    {
+        KernelWorkload::setSystem(sys);
+        gdb = BaseRemoteGDB::build<RemoteGDB>(system);
+    }
+
+    ByteOrder byteOrder() const override { return ByteOrder::little; }
+
   protected:
 
-    SMBios::SMBiosTable *smbiosTable;
-    IntelMP::FloatingPointer *mpFloatingPointer;
-    IntelMP::ConfigTable *mpConfigTable;
+    smbios::SMBiosTable *smbiosTable;
+    intelmp::FloatingPointer *mpFloatingPointer;
+    intelmp::ConfigTable *mpConfigTable;
     ACPI::RSDP *rsdp;
 
     void writeOutSMBiosTable(Addr header,
@@ -101,9 +106,10 @@ class FsWorkload : public KernelWorkload
     void writeOutMPTable(Addr fp,
             Addr &fpSize, Addr &tableSize, Addr table=0);
 
-    const Params *params() const { return (const Params *)&_params; }
+    void writeOutACPITables(Addr begin, Addr &size);
 };
 
 } // namespace X86ISA
+} // namespace gem5
 
 #endif // __ARCH_X86_FS_WORKLOAD_HH__

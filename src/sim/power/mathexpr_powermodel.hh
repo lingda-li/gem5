@@ -44,7 +44,12 @@
 #include "sim/mathexpr.hh"
 #include "sim/power/power_model.hh"
 
-namespace Stats {
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(Stats, statistics);
+namespace statistics
+{
     class Info;
 }
 
@@ -57,7 +62,7 @@ class MathExprPowerModel : public PowerModelState
   public:
 
     typedef MathExprPowerModelParams Params;
-    MathExprPowerModel(const Params *p);
+    MathExprPowerModel(const Params &p);
 
     /**
      * Get the dynamic power consumption.
@@ -99,7 +104,9 @@ class MathExprPowerModel : public PowerModelState
     MathExpr dyn_expr, st_expr;
 
     // Map that contains relevant stats for this power model
-    std::unordered_map<std::string, const Stats::Info*> statsMap;
+    std::unordered_map<std::string, const statistics::Info*> statsMap;
 };
+
+} // namespace gem5
 
 #endif

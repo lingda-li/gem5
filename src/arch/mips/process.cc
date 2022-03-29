@@ -28,7 +28,8 @@
 
 #include "arch/mips/process.hh"
 
-#include "arch/mips/isa_traits.hh"
+#include "arch/mips/page_size.hh"
+#include "arch/mips/regs/int.hh"
 #include "base/loader/elf_object.hh"
 #include "base/loader/object_file.hh"
 #include "base/logging.hh"
@@ -37,20 +38,24 @@
 #include "mem/page_table.hh"
 #include "params/Process.hh"
 #include "sim/aux_vector.hh"
+#include "sim/byteswap.hh"
 #include "sim/process.hh"
 #include "sim/process_impl.hh"
 #include "sim/syscall_return.hh"
 #include "sim/system.hh"
 
-using namespace std;
+namespace gem5
+{
+
 using namespace MipsISA;
 
-MipsProcess::MipsProcess(ProcessParams *params, ::Loader::ObjectFile *objFile)
+MipsProcess::MipsProcess(const ProcessParams &params,
+                         loader::ObjectFile *objFile)
     : Process(params,
-              new EmulationPageTable(params->name, params->pid, PageBytes),
+              new EmulationPageTable(params.name, params.pid, PageBytes),
               objFile)
 {
-    fatal_if(params->useArchPT, "Arch page tables not implemented.");
+    fatal_if(params.useArchPT, "Arch page tables not implemented.");
     // Set up stack. On MIPS, stack starts at the top of kuseg
     // user address space. MIPS stack grows down from here
     Addr stack_base = 0x7FFFFFFF;
@@ -67,9 +72,9 @@ MipsProcess::MipsProcess(ProcessParams *params, ::Loader::ObjectFile *objFile)
     // Set up region for mmaps.  Start it 1GB above the top of the heap.
     Addr mmap_end = brk_point + 0x40000000L;
 
-    memState = make_shared<MemState>(this, brk_point, stack_base,
-                                     max_stack_size, next_thread_stack_base,
-                                     mmap_end);
+    memState = std::make_shared<MemState>(
+            this, brk_point, stack_base, max_stack_size,
+            next_thread_stack_base, mmap_end);
 }
 
 void
@@ -86,37 +91,37 @@ MipsProcess::argsInit(int pageSize)
 {
     int intSize = sizeof(IntType);
 
-    std::vector<AuxVector<IntType>> auxv;
+    std::vector<gem5::auxv::AuxVector<IntType>> auxv;
 
-    auto *elfObject = dynamic_cast<::Loader::ElfObject *>(objFile);
+    auto *elfObject = dynamic_cast<loader::ElfObject *>(objFile);
     if (elfObject)
     {
         // Set the system page size
-        auxv.emplace_back(M5_AT_PAGESZ, MipsISA::PageBytes);
+        auxv.emplace_back(gem5::auxv::Pagesz, MipsISA::PageBytes);
         // Set the frequency at which time() increments
-        auxv.emplace_back(M5_AT_CLKTCK, 100);
+        auxv.emplace_back(gem5::auxv::Clktck, 100);
         // For statically linked executables, this is the virtual
         // address of the program header tables if they appear in the
         // executable image.
-        auxv.emplace_back(M5_AT_PHDR, elfObject->programHeaderTable());
+        auxv.emplace_back(gem5::auxv::Phdr, elfObject->programHeaderTable());
         DPRINTF(Loader, "auxv at PHDR %08p\n",
                 elfObject->programHeaderTable());
         // This is the size of a program header entry from the elf file.
-        auxv.emplace_back(M5_AT_PHENT, elfObject->programHeaderSize());
+        auxv.emplace_back(gem5::auxv::Phent, elfObject->programHeaderSize());
         // This is the number of program headers from the original elf file.
-        auxv.emplace_back(M5_AT_PHNUM, elfObject->programHeaderCount());
+        auxv.emplace_back(gem5::auxv::Phnum, elfObject->programHeaderCount());
         // This is the base address of the ELF interpreter; it should be
         // zero for static executables or contain the base address for
         // dynamic executables.
-        auxv.emplace_back(M5_AT_BASE, getBias());
+        auxv.emplace_back(gem5::auxv::Base, getBias());
         //The entry point to the program
-        auxv.emplace_back(M5_AT_ENTRY, objFile->entryPoint());
+        auxv.emplace_back(gem5::auxv::Entry, objFile->entryPoint());
         //Different user and group IDs
-        auxv.emplace_back(M5_AT_UID, uid());
-        auxv.emplace_back(M5_AT_EUID, euid());
-        auxv.emplace_back(M5_AT_GID, gid());
-        auxv.emplace_back(M5_AT_EGID, egid());
-        auxv.emplace_back(M5_AT_RANDOM, 0);
+        auxv.emplace_back(gem5::auxv::Uid, uid());
+        auxv.emplace_back(gem5::auxv::Euid, euid());
+        auxv.emplace_back(gem5::auxv::Gid, gid());
+        auxv.emplace_back(gem5::auxv::Egid, egid());
+        auxv.emplace_back(gem5::auxv::Random, 0);
     }
 
     // Calculate how much space we need for arg & env & auxv arrays.
@@ -125,7 +130,7 @@ MipsProcess::argsInit(int pageSize)
     int auxv_array_size = intSize * 2 * (auxv.size() + 1);
 
     int arg_data_size = 0;
-    for (vector<string>::size_type i = 0; i < argv.size(); ++i) {
+    for (std::vector<std::string>::size_type i = 0; i < argv.size(); ++i) {
         arg_data_size += argv[i].size() + 1;
     }
 
@@ -133,7 +138,7 @@ MipsProcess::argsInit(int pageSize)
     int aux_data_size = numRandomBytes;
 
     int env_data_size = 0;
-    for (vector<string>::size_type i = 0; i < envp.size(); ++i) {
+    for (std::vector<std::string>::size_type i = 0; i < envp.size(); ++i) {
         env_data_size += envp[i].size() + 1;
     }
 
@@ -170,30 +175,30 @@ MipsProcess::argsInit(int pageSize)
     initVirtMem->writeBlob(memState->getStackMin(), &argc, intSize);
 
     copyStringArray(argv, argv_array_base, arg_data_base,
-                    LittleEndianByteOrder, *initVirtMem);
+                    ByteOrder::little, *initVirtMem);
 
     copyStringArray(envp, envp_array_base, env_data_base,
-                    LittleEndianByteOrder, *initVirtMem);
+                    ByteOrder::little, *initVirtMem);
 
     // Fix up the aux vectors which point to data.
     for (auto &aux: auxv) {
-        if (aux.type == M5_AT_RANDOM)
+        if (aux.type == gem5::auxv::Random)
             aux.val = aux_data_base;
     }
 
     // Copy the aux vector
     Addr auxv_array_end = auxv_array_base;
     for (const auto &aux: auxv) {
-        initVirtMem->write(auxv_array_end, aux, GuestByteOrder);
+        initVirtMem->write(auxv_array_end, aux, ByteOrder::little);
         auxv_array_end += sizeof(aux);
     }
 
     // Write out the terminating zeroed auxilliary vector
-    const AuxVector<IntType> zero(0, 0);
+    const gem5::auxv::AuxVector<IntType> zero(0, 0);
     initVirtMem->write(auxv_array_end, zero);
     auxv_array_end += sizeof(zero);
 
-    ThreadContext *tc = system->getThreadContext(contextIds[0]);
+    ThreadContext *tc = system->threads[contextIds[0]];
 
     tc->setIntReg(FirstArgumentReg, argc);
     tc->setIntReg(FirstArgumentReg + 1, argv_array_base);
@@ -202,6 +207,4 @@ MipsProcess::argsInit(int pageSize)
     tc->pcState(getStartPC());
 }
 
-const std::vector<int> MipsProcess::SyscallABI::ArgumentRegs = {
-    4, 5, 6, 7, 8, 9
-};
+} // namespace gem5

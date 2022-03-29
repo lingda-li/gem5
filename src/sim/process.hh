@@ -37,26 +37,29 @@
 #include <string>
 #include <vector>
 
-#include "arch/registers.hh"
 #include "base/loader/memory_image.hh"
 #include "base/statistics.hh"
 #include "base/types.hh"
-#include "config/the_isa.hh"
 #include "mem/se_translating_port_proxy.hh"
 #include "sim/fd_array.hh"
 #include "sim/fd_entry.hh"
 #include "sim/mem_state.hh"
 #include "sim/sim_object.hh"
 
-namespace Loader
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(Loader, loader);
+namespace loader
 {
 class ObjectFile;
-} // namespace Loader
+} // namespace loader
 
 struct ProcessParams;
 
 class EmulatedDriver;
 class EmulationPageTable;
+class SEWorkload;
 class SyscallDesc;
 class SyscallReturn;
 class System;
@@ -65,8 +68,8 @@ class ThreadContext;
 class Process : public SimObject
 {
   public:
-    Process(ProcessParams *params, EmulationPageTable *pTable,
-            ::Loader::ObjectFile *obj_file);
+    Process(const ProcessParams &params, EmulationPageTable *pTable,
+            loader::ObjectFile *obj_file);
 
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
@@ -75,7 +78,7 @@ class Process : public SimObject
     void initState() override;
     DrainState drain() override;
 
-    virtual void syscall(ThreadContext *tc, Fault *fault) { numSyscalls++; }
+    virtual void syscall(ThreadContext *tc) { numSyscalls++; }
 
     inline uint64_t uid() { return _uid; }
     inline uint64_t euid() { return _euid; }
@@ -103,12 +106,20 @@ class Process : public SimObject
     void updateBias();
     Addr getBias();
     Addr getStartPC();
-    ::Loader::ObjectFile *getInterpreter();
+    loader::ObjectFile *getInterpreter();
 
-    // override of virtual SimObject method: register statistics
-    void regStats() override;
-
-    void allocateMem(Addr vaddr, int64_t size, bool clobber = false);
+    // This function allocates physical memory as backing store, and then maps
+    // it into the virtual address space of the process. The range of virtual
+    // addresses being configured starts at the address "vaddr" and is of size
+    // "size" bytes. If some part of this range of virtual addresses is already
+    // configured, this function will error out unless "clobber" is set. If
+    // clobber is set, then those existing mappings will be replaced.
+    //
+    // If the beginning or end of the virtual address range does not perfectly
+    // align to page boundaries, it will be expanded in either direction until
+    // it does. This function will therefore set up *at least* the range
+    // requested, and may configure more if necessary.
+    void allocateMem(Addr vaddr, int64_t size, bool clobber=false);
 
     /// Attempt to fix up a fault at vaddr by allocating a page on the stack.
     /// @return Whether the fault has been fixed.
@@ -162,7 +173,7 @@ class Process : public SimObject
     // system object which owns this process
     System *system;
 
-    Stats::Scalar numSyscalls;  // track how many system calls are executed
+    SEWorkload *seWorkload;
 
     // flag for using architecture specific page table
     bool useArchPT;
@@ -201,18 +212,18 @@ class Process : public SimObject
          * error like file IO errors, etc., those should fail non-silently
          * with a panic or fail as normal.
          */
-        virtual Process *load(ProcessParams *params,
-                              ::Loader::ObjectFile *obj_file) = 0;
+        virtual Process *load(const ProcessParams &params,
+                              loader::ObjectFile *obj_file) = 0;
     };
 
     // Try all the Loader instance's "load" methods one by one until one is
     // successful. If none are, complain and fail.
-    static Process *tryLoaders(ProcessParams *params,
-                               ::Loader::ObjectFile *obj_file);
+    static Process *tryLoaders(const ProcessParams &params,
+                               loader::ObjectFile *obj_file);
 
-    ::Loader::ObjectFile *objFile;
-    ::Loader::MemoryImage image;
-    ::Loader::MemoryImage interpImage;
+    loader::ObjectFile *objFile;
+    loader::MemoryImage image;
+    loader::MemoryImage interpImage;
     std::vector<std::string> argv;
     std::vector<std::string> envp;
     std::string executable;
@@ -286,6 +297,14 @@ class Process : public SimObject
 
     // Process was forked with SIGCHLD set.
     bool *sigchld;
+
+    // Contexts to wake up when this thread exits or calls execve
+    std::vector<ContextID> vforkContexts;
+
+    // Track how many system calls are executed
+    statistics::Scalar numSyscalls;
 };
+
+} // namespace gem5
 
 #endif // __PROCESS_HH__

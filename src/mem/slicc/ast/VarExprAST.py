@@ -31,7 +31,7 @@ from slicc.symbols import Type, Var
 
 class VarExprAST(ExprAST):
     def __init__(self, slicc, var):
-        super(VarExprAST, self).__init__(slicc)
+        super().__init__(slicc)
         self._var = var
 
     def __repr__(self):
@@ -60,7 +60,7 @@ class VarExprAST(ExprAST):
                        "'%s' is expected to be type '%s' not '%s'",
                        self.var.ident, expected_type, self.var.type)
 
-    def generate(self, code):
+    def generate(self, code, **kwargs):
         fix = code.nofix()
         code("${{self.var.code}}")
         code.fix(fix)

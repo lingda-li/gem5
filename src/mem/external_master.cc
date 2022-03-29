@@ -44,16 +44,19 @@
 #include "debug/ExternalPort.hh"
 #include "sim/system.hh"
 
+namespace gem5
+{
+
 std::map<std::string, ExternalMaster::Handler *>
     ExternalMaster::portHandlers;
 
-ExternalMaster::ExternalMaster(ExternalMasterParams *params) :
+ExternalMaster::ExternalMaster(const ExternalMasterParams &params) :
     SimObject(params),
     externalPort(NULL),
-    portName(params->name + ".port"),
-    portType(params->port_type),
-    portData(params->port_data),
-    masterId(params->system->getMasterId(this))
+    portName(params.name + ".port"),
+    portType(params.port_type),
+    portData(params.port_data),
+    id(params.system->getRequestorId(this))
 {}
 
 Port &
@@ -93,15 +96,11 @@ ExternalMaster::init()
     }
 }
 
-ExternalMaster *
-ExternalMasterParams::create()
-{
-    return new ExternalMaster(this);
-}
-
 void
 ExternalMaster::registerHandler(const std::string &handler_name,
     Handler *handler)
 {
     portHandlers[handler_name] = handler;
 }
+
+} // namespace gem5

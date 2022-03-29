@@ -30,63 +30,59 @@
 #define __ARCH_GENERIC_LINUX_THREADINFO_HH__
 
 #include "cpu/thread_context.hh"
+#include "mem/translating_port_proxy.hh"
 #include "sim/system.hh"
-#include "sim/vptr.hh"
 
-namespace Linux {
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(Linux, linux);
+namespace linux
+{
 
 class ThreadInfo
 {
   private:
     ThreadContext *tc;
     System *sys;
-    Addr pcbb;
+
+    ByteOrder byteOrder;
 
     template <typename T>
     bool
     get_data(const char *symbol, T &data)
     {
-        Addr addr = 0;
-        if (!sys->workload->symtab(tc)->findAddress(symbol, addr)) {
+        auto &symtab = sys->workload->symtab(tc);
+        auto it = symtab.find(symbol);
+        if (it == symtab.end()) {
             warn_once("Unable to find kernel symbol %s\n", symbol);
             warn_once("Kernel not compiled with task_struct info; can't get "
                       "currently executing task/process/thread name/ids!\n");
             return false;
         }
 
-        data = tc->getVirtProxy().read<T>(addr, TheISA::GuestByteOrder);
+        data = TranslatingPortProxy(tc).read<T>(it->address, byteOrder);
 
         return true;
     }
 
   public:
-    ThreadInfo(ThreadContext *_tc, Addr _pcbb = 0)
-        : tc(_tc), sys(tc->getSystemPtr()), pcbb(_pcbb)
+    ThreadInfo(ThreadContext *_tc)
+        : tc(_tc), sys(tc->getSystemPtr()),
+        byteOrder(tc->getSystemPtr()->getGuestByteOrder())
     {
 
     }
     ~ThreadInfo()
     {}
 
-    inline Addr
+    virtual Addr
     curThreadInfo()
     {
-        if (!TheISA::CurThreadInfoImplemented)
-            panic("curThreadInfo() not implemented for this ISA");
-
-        Addr addr = pcbb;
-        Addr sp;
-
-        if (!addr)
-            addr = tc->readMiscRegNoEffect(TheISA::CurThreadInfoReg);
-
-        PortProxy &p = tc->getPhysProxy();
-        p.readBlob(addr, &sp, sizeof(Addr));
-
-        return sp & ~ULL(0x3fff);
+        panic("curThreadInfo() not implemented.");
     }
 
-    inline Addr
+    Addr
     curTaskInfo(Addr thread_info = 0)
     {
         // Note that in Linux 4.10 the thread_info struct will no longer have a
@@ -99,16 +95,17 @@ class ThreadInfo
         if (!thread_info)
             thread_info = curThreadInfo();
 
-        return tc->getVirtProxy().read<Addr>(thread_info + offset);
+        return TranslatingPortProxy(tc).read<Addr>(thread_info + offset);
     }
 
     int32_t
-    curTaskPIDFromTaskStruct(Addr task_struct) {
+    curTaskPIDFromTaskStruct(Addr task_struct)
+    {
         int32_t offset = 0;
         if (!get_data("task_struct_pid", offset))
             return -1;
 
-        return tc->getVirtProxy().read<int32_t>(task_struct + offset);
+        return TranslatingPortProxy(tc).read<int32_t>(task_struct + offset);
     }
 
     int32_t
@@ -124,7 +121,7 @@ class ThreadInfo
         if (!get_data("task_struct_tgid", offset))
             return -1;
 
-        return tc->getVirtProxy().read<int32_t>(task_struct + offset);
+        return TranslatingPortProxy(tc).read<int32_t>(task_struct + offset);
     }
 
     int32_t
@@ -142,7 +139,7 @@ class ThreadInfo
 
         // start_time is actually of type timespec, but if we just
         // grab the first long, we'll get the seconds out of it
-        return tc->getVirtProxy().read<int64_t>(task_struct + offset);
+        return TranslatingPortProxy(tc).read<int64_t>(task_struct + offset);
     }
 
     int64_t
@@ -164,7 +161,8 @@ class ThreadInfo
             return "FailureIn_curTaskName";
 
         char buffer[size + 1];
-        tc->getVirtProxy().readString(buffer, task_struct + offset, size);
+        TranslatingPortProxy(tc).readString(
+                buffer, task_struct + offset, size);
 
         return buffer;
     }
@@ -182,7 +180,7 @@ class ThreadInfo
         if (!get_data("task_struct_mm", offset))
             return -1;
 
-        return tc->getVirtProxy().read<int32_t>(task_struct + offset);
+        return TranslatingPortProxy(tc).read<int32_t>(task_struct + offset);
     }
 
     int32_t
@@ -192,6 +190,7 @@ class ThreadInfo
     }
 };
 
-} // namespace Linux
+} // namespace linux
+} // namespace gem5
 
 #endif // __ARCH_GENERIC_LINUX_THREADINFO_HH__

@@ -48,6 +48,12 @@
 #include "cpu/pred/bpred_unit.hh"
 #include "params/TournamentBP.hh"
 
+namespace gem5
+{
+
+namespace branch_prediction
+{
+
 /**
  * Implements a tournament branch predictor, hopefully identical to the one
  * used in the 21264.  It has a local predictor, which uses a local history
@@ -62,7 +68,7 @@ class TournamentBP : public BPredUnit
     /**
      * Default branch predictor constructor.
      */
-    TournamentBP(const TournamentBPParams *params);
+    TournamentBP(const TournamentBPParams &params);
 
     /**
      * Looks up the given address in the branch predictor and returns
@@ -151,7 +157,8 @@ class TournamentBP : public BPredUnit
      * when the BP can use this information to update/restore its
      * state properly.
      */
-    struct BPHistory {
+    struct BPHistory
+    {
 #ifdef DEBUG
         BPHistory()
         { newCount++; }
@@ -180,7 +187,7 @@ class TournamentBP : public BPredUnit
     unsigned localCtrBits;
 
     /** Local counters. */
-    std::vector<SatCounter> localCtrs;
+    std::vector<SatCounter8> localCtrs;
 
     /** Array of local history table entries. */
     std::vector<unsigned> localHistoryTable;
@@ -198,7 +205,7 @@ class TournamentBP : public BPredUnit
     unsigned globalCtrBits;
 
     /** Array of counters that make up the global predictor. */
-    std::vector<SatCounter> globalCtrs;
+    std::vector<SatCounter8> globalCtrs;
 
     /** Global history register. Contains as much history as specified by
      *  globalHistoryBits. Actual number of bits used is determined by
@@ -228,7 +235,7 @@ class TournamentBP : public BPredUnit
     unsigned choiceCtrBits;
 
     /** Array of counters that make up the choice predictor. */
-    std::vector<SatCounter> choiceCtrs;
+    std::vector<SatCounter8> choiceCtrs;
 
     /** Thresholds for the counter value; above the threshold is taken,
      *  equal to or below the threshold is not taken.
@@ -237,5 +244,8 @@ class TournamentBP : public BPredUnit
     unsigned globalThreshold;
     unsigned choiceThreshold;
 };
+
+} // namespace branch_prediction
+} // namespace gem5
 
 #endif // __CPU_PRED_TOURNAMENT_PRED_HH__

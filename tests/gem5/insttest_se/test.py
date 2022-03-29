@@ -23,61 +23,46 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Bobby R. Bruce
 
-'''
-Test file for the insttest binary running on the RISCV and SPARC
-'''
+"""
+Test file for the insttest binary running on the SPARC ISA
+"""
 from testlib import *
 
-test_progs = {
-    'riscv': ('insttest-rv64a', 'insttest-rv64c', 'insttest-rv64d',
-        'insttest-rv64f', 'insttest-rv64i', 'insttest-rv64m'),
-    'sparc': ('insttest',)
-}
-#o3-timing  simple-atomic  simple-timing
-cpu_types = {
-    'riscv' : ('AtomicSimpleCPU', 'TimingSimpleCPU', 'DerivO3CPU', 'MinorCPU'),
-    'sparc' : ('AtomicSimpleCPU', 'TimingSimpleCPU')
-}
-supported_os = {
-    'riscv' : ('linux',),
-    'sparc' : ('linux',)
-}
+test_progs = {constants.sparc_tag: ("sparc-insttest",)}
+
+cpu_types = {constants.sparc_tag: ("atomic", "timing")}
 
 if config.bin_path:
-    base_path = config.bin_path
+    resource_path = config.bin_path
 else:
-    base_path = joinpath(absdirpath(__file__), '..', 'test-progs')
+    resource_path = joinpath(absdirpath(__file__), "..", "resources")
 
-urlbase = config.resource_url + '/test-progs/insttest/bin/'
 for isa in test_progs:
     for binary in test_progs[isa]:
-        for  operating_s in supported_os[isa]:
-            import os
-            url = urlbase + isa + '/' + operating_s + '/' + binary
-            path = joinpath(base_path, isa, operating_s, binary)
+        ref_path = joinpath(getcwd(), "ref")
+        verifiers = (
+            verifier.MatchStdoutNoPerf(joinpath(ref_path, "simout")),
+        )
 
-            try:
-                program = DownloadedProgram(url, path, binary)
-            except:
-                continue
-
-            ref_path = joinpath(getcwd(), 'ref', isa, operating_s, binary)
-            verifiers = (
-                verifier.MatchStdoutNoPerf(joinpath(ref_path, 'simout')),
+        for cpu in cpu_types[isa]:
+            gem5_verify_config(
+                name="test-" + binary + "-" + cpu,
+                fixtures=(),
+                verifiers=verifiers,
+                config=joinpath(
+                    config.base_dir,
+                    "tests",
+                    "gem5",
+                    "configs",
+                    "simple_binary_run.py",
+                ),
+                config_args=[
+                    binary,
+                    cpu,
+                    "--resource-directory",
+                    resource_path,
+                ],
+                valid_isas=(isa,),
+                length=constants.long_tag,
             )
-
-            for cpu in cpu_types[isa]:
-
-                gem5_verify_config(
-                    name='test-'+binary + '-' + operating_s + '-' + cpu,
-                    fixtures=(program,),
-                    verifiers=verifiers,
-                    config=joinpath(config.base_dir, 'configs',
-                        'example','se.py'),
-                    config_args=['--cmd', joinpath(path, binary),
-                        '--cpu-type', cpu, '--caches'],
-                    valid_isas=(isa.upper(),),
-                )

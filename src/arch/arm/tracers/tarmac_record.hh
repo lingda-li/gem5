@@ -43,11 +43,16 @@
 #ifndef __ARCH_ARM_TRACERS_TARMAC_RECORD_HH__
 #define __ARCH_ARM_TRACERS_TARMAC_RECORD_HH__
 
+#include <memory>
+
+#include "arch/arm/regs/misc.hh"
 #include "arch/arm/tracers/tarmac_base.hh"
 #include "base/printable.hh"
-#include "config/the_isa.hh"
 #include "cpu/reg_class.hh"
 #include "cpu/static_inst.hh"
+
+namespace gem5
+{
 
 namespace Trace {
 
@@ -157,7 +162,7 @@ class TarmacTracerRecord : public TarmacBaseRecord
         /** True if register entry is valid */
         bool regValid;
         /** Register class */
-        RegClass regClass;
+        RegClassType regClass;
         /** Register arch number */
         RegIndex regRel;
         /** Register name to be printed */
@@ -182,7 +187,7 @@ class TarmacTracerRecord : public TarmacBaseRecord
 
   public:
     TarmacTracerRecord(Tick _when, ThreadContext *_thread,
-                       const StaticInstPtr _staticInst, ArmISA::PCState _pc,
+                       const StaticInstPtr _staticInst, const PCStateBase &_pc,
                        TarmacTracer& _tracer,
                        const StaticInstPtr _macroStaticInst = NULL);
 
@@ -246,7 +251,7 @@ class TarmacTracerRecord : public TarmacBaseRecord
             if (cpsr_it == queue.end()) {
                 RegId reg(MiscRegClass, ArmISA::MISCREG_CPSR);
                 queue.push_back(
-                    m5::make_unique<RegEntry>(
+                    std::make_unique<RegEntry>(
                         genRegister<RegEntry>(tarmCtx, reg))
                 );
             }
@@ -265,5 +270,6 @@ class TarmacTracerRecord : public TarmacBaseRecord
 };
 
 } // namespace Trace
+} // namespace gem5
 
 #endif // __ARCH_ARM_TRACERS_TARMAC_RECORD_HH__

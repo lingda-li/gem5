@@ -42,6 +42,11 @@
 
 #include "cpu/exec_context.hh"
 
+namespace gem5
+{
+
+using namespace ArmISA;
+
 DecoderFaultInst::DecoderFaultInst(ExtMachInst _machInst)
     : ArmStaticInst("gem5decoderFault", _machInst, No_OpClass),
       faultId(static_cast<DecoderFault>(
@@ -55,8 +60,7 @@ DecoderFaultInst::DecoderFaultInst(ExtMachInst _machInst)
 Fault
 DecoderFaultInst::execute(ExecContext *xc, Trace::InstRecord *traceData) const
 {
-    const PCState pc_state(xc->pcState());
-    const Addr pc(pc_state.instAddr());
+    const Addr pc = xc->pcState().instAddr();
 
     switch (faultId) {
       case DecoderFault::UNALIGNED:
@@ -98,7 +102,7 @@ DecoderFaultInst::faultName() const
 
 std::string
 DecoderFaultInst::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     return csprintf("gem5fault %s", faultName());
 }
@@ -133,7 +137,7 @@ FailUnimplemented::execute(ExecContext *xc, Trace::InstRecord *traceData) const
 
 std::string
 FailUnimplemented::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     return csprintf("%-10s (unimplemented)",
                     fullMnemonic.size() ? fullMnemonic.c_str() : mnemonic);
@@ -175,7 +179,7 @@ WarnUnimplemented::execute(ExecContext *xc, Trace::InstRecord *traceData) const
 
 std::string
 WarnUnimplemented::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     return csprintf("%-10s (unimplemented)",
                     fullMnemonic.size() ? fullMnemonic.c_str() : mnemonic);
@@ -190,3 +194,24 @@ IllegalExecInst::execute(ExecContext *xc, Trace::InstRecord *traceData) const
 {
     return std::make_shared<IllegalInstSetStateFault>();
 }
+
+DebugStep::DebugStep(ExtMachInst _machInst)
+    : ArmStaticInst("DebugStep", _machInst, No_OpClass)
+{ }
+
+Fault
+DebugStep::execute(ExecContext *xc, Trace::InstRecord *traceData) const
+{
+    PCState pc_state = xc->pcState().as<PCState>();
+    pc_state.debugStep(false);
+    xc->pcState(pc_state);
+
+    SelfDebug *sd = ArmISA::ISA::getSelfDebug(xc->tcBase());
+
+    bool ldx = sd->getSstep()->getLdx();
+
+    return std::make_shared<SoftwareStepFault>(machInst, ldx,
+                                               pc_state.stepped());
+}
+
+} // namespace gem5

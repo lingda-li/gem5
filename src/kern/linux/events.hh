@@ -44,18 +44,24 @@
 #include <functional>
 #include <string>
 
+#include "base/compiler.hh"
 #include "base/trace.hh"
 #include "debug/DebugPrintf.hh"
 #include "kern/linux/printk.hh"
 #include "kern/system_events.hh"
+#include "mem/se_translating_port_proxy.hh"
 #include "sim/guest_abi.hh"
+
+namespace gem5
+{
 
 class ThreadContext;
 
-namespace Linux
+GEM5_DEPRECATED_NAMESPACE(Linux, linux);
+namespace linux
 {
 
-template <typename Base>
+template <typename ABI, typename Base>
 class DebugPrintk : public Base
 {
   public:
@@ -63,14 +69,14 @@ class DebugPrintk : public Base
     void
     process(ThreadContext *tc) override
     {
-        if (DTRACE(DebugPrintf)) {
+        if (debug::DebugPrintf) {
             std::string str;
             std::function<int(ThreadContext *, Addr, PrintkVarArgs)> func =
                 [&str](ThreadContext *tc, Addr format_ptr,
                     PrintkVarArgs args) -> int {
                 return printk(str, tc, format_ptr, args);
             };
-            invokeSimcall<typename Base::ABI>(tc, func);
+            invokeSimcall<ABI>(tc, func);
             DPRINTFN("%s", str);
         }
         Base::process(tc);
@@ -81,7 +87,7 @@ class DebugPrintk : public Base
  * Dump the guest kernel's dmesg buffer to a file in gem5's output
  * directory and print a warning.
  *
- * @warn This event uses Linux::dumpDmesg() and comes with the same
+ * @warn This event uses linux::dumpDmesg() and comes with the same
  * limitations. Most importantly, the kernel's address mappings must
  * be available to the translating proxy.
  */
@@ -102,7 +108,7 @@ class DmesgDump : public PCEvent
  * Dump the guest kernel's dmesg buffer to a file in gem5's output
  * directory and panic.
  *
- * @warn This event uses Linux::dumpDmesg() and comes with the same
+ * @warn This event uses linux::dumpDmesg() and comes with the same
  * limitations. Most importantly, the kernel's address mappings must
  * be available to the translating proxy.
  */
@@ -119,7 +125,7 @@ class KernelPanic : public PCEvent
     void process(ThreadContext *tc) override;
 };
 
-void onUDelay(ThreadContext *tc, uint64_t div, uint64_t mul);
+void onUDelay(ThreadContext *tc, uint64_t div, uint64_t mul, uint64_t time);
 
 /**
  * A class to skip udelay() and related calls in the kernel.
@@ -127,7 +133,7 @@ void onUDelay(ThreadContext *tc, uint64_t div, uint64_t mul);
  * and manipulated it to come up with ns and eventually ticks to quiesce for.
  * See descriptions of argDivToNs and argMultToNs below.
  */
-template <typename Base>
+template <typename ABI, typename Base>
 class SkipUDelay : public Base
 {
   private:
@@ -155,11 +161,18 @@ class SkipUDelay : public Base
     void
     process(ThreadContext *tc) override
     {
-        onUDelay(tc, argDivToNs, argMultToNs);
+        // Use Addr since it's handled specially and will act as a natively
+        // sized data type.
+        std::function<void(ThreadContext *, Addr)> call_udelay =
+            [this](ThreadContext *tc, Addr time) {
+            onUDelay(tc, argDivToNs, argMultToNs, time);
+        };
+        invokeSimcall<ABI>(tc, call_udelay);
         Base::process(tc);
     }
 };
 
-} // namespace Linux
+} // namespace linux
+} // namespace gem5
 
 #endif // __KERN_LINUX_EVENTS_HH__

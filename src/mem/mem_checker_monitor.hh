@@ -44,6 +44,9 @@
 #include "sim/sim_object.hh"
 #include "sim/system.hh"
 
+namespace gem5
+{
+
 /**
  * Implements a MemChecker monitor, to be inserted between two ports.
  */
@@ -52,16 +55,14 @@ class MemCheckerMonitor : public SimObject
   public:
 
     /** Parameters of memchecker monitor */
-    typedef MemCheckerMonitorParams Params;
-    const Params* params() const
-    { return reinterpret_cast<const Params*>(_params); }
+    using Params = MemCheckerMonitorParams;
 
     /**
      * Constructor based on the Python params
      *
      * @param params Python parameters
      */
-    MemCheckerMonitor(Params* params);
+    MemCheckerMonitor(const Params &params);
 
     /** Destructor */
     ~MemCheckerMonitor();
@@ -83,18 +84,18 @@ class MemCheckerMonitor : public SimObject
     };
 
     /**
-     * This is the master port of the communication monitor. All recv
+     * This is the request port of the communication monitor. All recv
      * functions call a function in MemCheckerMonitor, where the
-     * send function of the slave port is called. Besides this, these
+     * send function of the response port is called. Besides this, these
      * functions can also perform actions for capturing statistics.
      */
-    class MonitorMasterPort : public MasterPort
+    class MonitorRequestPort : public RequestPort
     {
 
       public:
 
-        MonitorMasterPort(const std::string& _name, MemCheckerMonitor& _mon)
-            : MasterPort(_name, &_mon), mon(_mon)
+        MonitorRequestPort(const std::string& _name, MemCheckerMonitor& _mon)
+            : RequestPort(_name, &_mon), mon(_mon)
         { }
 
       protected:
@@ -140,22 +141,22 @@ class MemCheckerMonitor : public SimObject
 
     };
 
-    /** Instance of master port, facing the memory side */
-    MonitorMasterPort masterPort;
+    /** Instance of request port, facing the memory side */
+    MonitorRequestPort memSidePort;
 
     /**
-     * This is the slave port of the communication monitor. All recv
+     * This is the response port of the communication monitor. All recv
      * functions call a function in MemCheckerMonitor, where the
-     * send function of the master port is called. Besides this, these
+     * send function of the request port is called. Besides this, these
      * functions can also perform actions for capturing statistics.
      */
-    class MonitorSlavePort : public SlavePort
+    class MonitorResponsePort : public ResponsePort
     {
 
       public:
 
-        MonitorSlavePort(const std::string& _name, MemCheckerMonitor& _mon)
-            : SlavePort(_name, &_mon), mon(_mon)
+        MonitorResponsePort(const std::string& _name, MemCheckerMonitor& _mon)
+            : ResponsePort(_name, &_mon), mon(_mon)
         { }
 
       protected:
@@ -196,8 +197,8 @@ class MemCheckerMonitor : public SimObject
 
     };
 
-    /** Instance of slave port, i.e. on the CPU side */
-    MonitorSlavePort slavePort;
+    /** Instance of response port, i.e. on the CPU side */
+    MonitorResponsePort cpuSidePort;
 
     void recvFunctional(PacketPtr pkt);
 
@@ -229,5 +230,7 @@ class MemCheckerMonitor : public SimObject
 
     MemChecker *memchecker;
 };
+
+} // namespace gem5
 
 #endif //__MEM_MEM_CHECKER_MONITOR_HH__

@@ -32,6 +32,9 @@
 #include "base/types.hh"
 #include "cpu/nativetrace.hh"
 
+namespace gem5
+{
+
 class ThreadContext;
 
 namespace Trace {
@@ -39,12 +42,13 @@ namespace Trace {
 class SparcNativeTrace : public NativeTrace
 {
   public:
-    SparcNativeTrace(const Params *p) : NativeTrace(p)
+    SparcNativeTrace(const Params &p) : NativeTrace(p)
     {}
 
     void check(NativeTraceRecord *record);
 };
 
 } // namespace Trace
+} // namespace gem5
 
 #endif // __CPU_NATIVETRACE_HH__

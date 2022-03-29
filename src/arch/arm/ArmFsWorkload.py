@@ -1,4 +1,4 @@
-# Copyright (c) 2009, 2012-2013, 2015-2019 ARM Limited
+# Copyright (c) 2009, 2012-2013, 2015-2020 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -48,7 +48,7 @@ class ArmMachineType(Enum):
 class ArmFsWorkload(KernelWorkload):
     type = 'ArmFsWorkload'
     cxx_header = "arch/arm/fs_workload.hh"
-    cxx_class = "ArmISA::FsWorkload"
+    cxx_class = 'gem5::ArmISA::FsWorkload'
 
     boot_loader = VectorParam.String([],
         "File that contains the boot loader code. Zero or more files may be "
@@ -57,11 +57,11 @@ class ArmFsWorkload(KernelWorkload):
 
     dtb_filename = Param.String("",
         "File that contains the Device Tree Blob. Don't use DTB if empty.")
+    dtb_addr = Param.Addr(0, "DTB or ATAGS address")
+    cpu_release_addr = Param.Addr(0, "cpu-release-addr property")
 
     machine_type = Param.ArmMachineType('DTOnly',
         "Machine id from http://www.arm.linux.org.uk/developer/machines/")
-    atags_addr = Param.Addr("Address where default atags structure should " \
-                                "be written")
     early_kernel_symbols = Param.Bool(False,
         "enable early kernel symbol tables before MMU")
     enable_context_switch_stats_dump = Param.Bool(False,
@@ -75,7 +75,7 @@ class ArmFsWorkload(KernelWorkload):
 class ArmFsLinux(ArmFsWorkload):
     type = 'ArmFsLinux'
     cxx_header = "arch/arm/linux/fs_workload.hh"
-    cxx_class = "ArmISA::FsLinux"
+    cxx_class = 'gem5::ArmISA::FsLinux'
 
     load_addr_mask = 0
 
@@ -87,4 +87,4 @@ class ArmFsLinux(ArmFsWorkload):
 class ArmFsFreebsd(ArmFsWorkload):
     type = 'ArmFsFreebsd'
     cxx_header = "arch/arm/freebsd/fs_workload.hh"
-    cxx_class = "ArmISA::FsFreebsd"
+    cxx_class = 'gem5::ArmISA::FsFreebsd'

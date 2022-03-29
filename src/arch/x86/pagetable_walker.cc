@@ -62,11 +62,14 @@
 #include "mem/packet_access.hh"
 #include "mem/request.hh"
 
+namespace gem5
+{
+
 namespace X86ISA {
 
 Fault
-Walker::start(ThreadContext * _tc, BaseTLB::Translation *_translation,
-              const RequestPtr &_req, BaseTLB::Mode _mode)
+Walker::start(ThreadContext * _tc, BaseMMU::Translation *_translation,
+              const RequestPtr &_req, BaseMMU::Mode _mode)
 {
     // TODO: in timing mode, instead of blocking when there are other
     // outstanding requests, see if this request can be coalesced with
@@ -91,7 +94,7 @@ Walker::start(ThreadContext * _tc, BaseTLB::Translation *_translation,
 
 Fault
 Walker::startFunctional(ThreadContext * _tc, Addr &addr, unsigned &logBytes,
-              BaseTLB::Mode _mode)
+              BaseMMU::Mode _mode)
 {
     funcState.initState(_tc, _mode);
     return funcState.startFunctional(addr, logBytes);
@@ -176,7 +179,7 @@ Walker::getPort(const std::string &if_name, PortID idx)
 
 void
 Walker::WalkerState::initState(ThreadContext * _tc,
-        BaseTLB::Mode _mode, bool _isTiming)
+        BaseMMU::Mode _mode, bool _isTiming)
 {
     assert(state == Ready);
     started = false;
@@ -292,7 +295,7 @@ Walker::WalkerState::stepWalk(PacketPtr &write)
     bool doWrite = false;
     bool doTLBInsert = false;
     bool doEndWalk = false;
-    bool badNX = pte.nx && mode == BaseTLB::Execute && enableNX;
+    bool badNX = pte.nx && mode == BaseMMU::Execute && enableNX;
     switch(state) {
       case LongPML4:
         DPRINTF(PageTableWalker,
@@ -519,7 +522,7 @@ Walker::WalkerState::stepWalk(PacketPtr &write)
         Request::Flags flags = oldRead->req->getFlags();
         flags.set(Request::UNCACHEABLE, uncacheable);
         RequestPtr request = std::make_shared<Request>(
-            nextRead, oldRead->getSize(), flags, walker->masterId);
+            nextRead, oldRead->getSize(), flags, walker->requestorId);
         read = new Packet(request, MemCmd::ReadReq);
         read->allocate();
         // If we need to write, adjust the read packet to write the modified
@@ -588,7 +591,7 @@ Walker::WalkerState::setupWalk(Addr vaddr)
         flags.set(Request::UNCACHEABLE);
 
     RequestPtr request = std::make_shared<Request>(
-        topAddr, dataSize, flags, walker->masterId);
+        topAddr, dataSize, flags, walker->requestorId);
 
     read = new Packet(request, MemCmd::ReadReq);
     read->allocate();
@@ -729,16 +732,11 @@ Walker::WalkerState::pageFault(bool present)
 {
     DPRINTF(PageTableWalker, "Raising page fault.\n");
     HandyM5Reg m5reg = tc->readMiscRegNoEffect(MISCREG_M5_REG);
-    if (mode == BaseTLB::Execute && !enableNX)
-        mode = BaseTLB::Read;
+    if (mode == BaseMMU::Execute && !enableNX)
+        mode = BaseMMU::Read;
     return std::make_shared<PageFault>(entry.vaddr, present, mode,
                                        m5reg.cpl == 3, false);
 }
 
-/* end namespace X86ISA */ }
-
-X86ISA::Walker *
-X86PagetableWalkerParams::create()
-{
-    return new X86ISA::Walker(this);
-}
+} // namespace X86ISA
+} // namespace gem5

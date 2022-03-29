@@ -30,14 +30,13 @@
 
 #include <iostream>
 
-SimpleObject::SimpleObject(SimpleObjectParams *params) :
+namespace gem5
+{
+
+SimpleObject::SimpleObject(const SimpleObjectParams &params) :
     SimObject(params)
 {
     std::cout << "Hello World! From a SimObject!" << std::endl;
 }
 
-SimpleObject*
-SimpleObjectParams::create()
-{
-    return new SimpleObject(this);
-}
+} // namespace gem5

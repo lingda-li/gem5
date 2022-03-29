@@ -41,6 +41,9 @@
 #include "arch/arm/generated/decoder.hh"
 #include "arch/arm/insts/pred_inst.hh"
 
+namespace gem5
+{
+
 namespace ArmISA {
 
 template <typename Element,
@@ -86,14 +89,15 @@ class SveLdStructSS : public PredMacroOp
     }
 
     Fault
-    execute(ExecContext *, Trace::InstRecord *) const
+    execute(ExecContext *, Trace::InstRecord *) const override
     {
         panic("Execute method called when it shouldn't!");
         return NoFault;
     }
 
     std::string
-    generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+    generateDisassembly(Addr pc,
+                        const loader::SymbolTable *symtab) const override
     {
         std::stringstream ss;
         printMnemonic(ss, "", false);
@@ -158,14 +162,15 @@ class SveStStructSS : public PredMacroOp
     }
 
     Fault
-    execute(ExecContext *, Trace::InstRecord *) const
+    execute(ExecContext *, Trace::InstRecord *) const override
     {
         panic("Execute method called when it shouldn't!");
         return NoFault;
     }
 
     std::string
-    generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+    generateDisassembly(Addr pc,
+                        const loader::SymbolTable *symtab) const override
     {
         std::stringstream ss;
         printMnemonic(ss, "", false);
@@ -230,14 +235,15 @@ class SveLdStructSI : public PredMacroOp
     }
 
     Fault
-    execute(ExecContext *, Trace::InstRecord *) const
+    execute(ExecContext *, Trace::InstRecord *) const override
     {
         panic("Execute method called when it shouldn't!");
         return NoFault;
     }
 
     std::string
-    generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+    generateDisassembly(Addr pc,
+                        const loader::SymbolTable *symtab) const override
     {
         std::stringstream ss;
         printMnemonic(ss, "", false);
@@ -303,14 +309,15 @@ class SveStStructSI : public PredMacroOp
     }
 
     Fault
-    execute(ExecContext *, Trace::InstRecord *) const
+    execute(ExecContext *, Trace::InstRecord *) const override
     {
         panic("Execute method called when it shouldn't!");
         return NoFault;
     }
 
     std::string
-    generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+    generateDisassembly(Addr pc,
+                        const loader::SymbolTable *symtab) const override
     {
         std::stringstream ss;
         printMnemonic(ss, "", false);
@@ -402,14 +409,15 @@ class SveIndexedMemVI : public PredMacroOp
     }
 
     Fault
-    execute(ExecContext *, Trace::InstRecord *) const
+    execute(ExecContext *, Trace::InstRecord *) const override
     {
         panic("Execute method called when it shouldn't!");
         return NoFault;
     }
 
     std::string
-    generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+    generateDisassembly(Addr pc,
+                        const loader::SymbolTable *symtab) const override
     {
         // TODO: add suffix to transfer and base registers
         std::stringstream ss;
@@ -506,14 +514,15 @@ class SveIndexedMemSV : public PredMacroOp
     }
 
     Fault
-    execute(ExecContext *, Trace::InstRecord *) const
+    execute(ExecContext *, Trace::InstRecord *) const override
     {
         panic("Execute method called when it shouldn't!");
         return NoFault;
     }
 
     std::string
-    generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+    generateDisassembly(Addr pc,
+                        const loader::SymbolTable *symtab) const override
     {
         // TODO: add suffix to transfer and base registers
         std::stringstream ss;
@@ -531,6 +540,7 @@ class SveIndexedMemSV : public PredMacroOp
     }
 };
 
-}  // namespace ArmISA
+} // namespace ArmISA
+} // namespace gem5
 
 #endif  // __ARCH_ARM_SVE_MACROMEM_HH__

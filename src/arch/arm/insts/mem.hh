@@ -42,6 +42,11 @@
 #define __ARCH_ARM_MEM_HH__
 
 #include "arch/arm/insts/pred_inst.hh"
+#include "arch/arm/pcstate.hh"
+#include "cpu/thread_context.hh"
+
+namespace gem5
+{
 
 namespace ArmISA
 {
@@ -54,15 +59,30 @@ class MightBeMicro : public PredOp
     {}
 
     void
-    advancePC(PCState &pcState) const
+    advancePC(PCStateBase &pcState) const override
     {
+        auto &apc = pcState.as<PCState>();
         if (flags[IsLastMicroop]) {
-            pcState.uEnd();
+            apc.uEnd();
         } else if (flags[IsMicroop]) {
-            pcState.uAdvance();
+            apc.uAdvance();
         } else {
-            pcState.advance();
+            apc.advance();
         }
+    }
+
+    void
+    advancePC(ThreadContext *tc) const override
+    {
+        PCState pc = tc->pcState().as<PCState>();
+        if (flags[IsLastMicroop]) {
+            pc.uEnd();
+        } else if (flags[IsMicroop]) {
+            pc.uAdvance();
+        } else {
+            pc.advance();
+        }
+        tc->pcState(pc);
     }
 };
 
@@ -70,7 +90,8 @@ class MightBeMicro : public PredOp
 class RfeOp : public MightBeMicro
 {
   public:
-    enum AddrMode {
+    enum AddrMode
+    {
         DecrementAfter,
         DecrementBefore,
         IncrementAfter,
@@ -108,14 +129,15 @@ class RfeOp : public MightBeMicro
     }
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const override;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 // The address is a base register plus an immediate.
 class SrsOp : public MightBeMicro
 {
   public:
-    enum AddrMode {
+    enum AddrMode
+    {
         DecrementAfter,
         DecrementBefore,
         IncrementAfter,
@@ -149,13 +171,14 @@ class SrsOp : public MightBeMicro
     }
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const override;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 class Memory : public MightBeMicro
 {
   public:
-    enum AddrMode {
+    enum AddrMode
+    {
         AddrMd_Offset,
         AddrMd_PreIndex,
         AddrMd_PostIndex
@@ -372,7 +395,8 @@ class MemoryOffset : public Base
     {}
 
     std::string
-    generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+    generateDisassembly(Addr pc,
+                        const loader::SymbolTable *symtab) const override
     {
         std::stringstream ss;
         this->printInst(ss, Memory::AddrMd_Offset);
@@ -422,7 +446,8 @@ class MemoryPreIndex : public Base
     {}
 
     std::string
-    generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+    generateDisassembly(Addr pc,
+                        const loader::SymbolTable *symtab) const override
     {
         std::stringstream ss;
         this->printInst(ss, Memory::AddrMd_PreIndex);
@@ -472,13 +497,16 @@ class MemoryPostIndex : public Base
     {}
 
     std::string
-    generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+    generateDisassembly(Addr pc,
+                        const loader::SymbolTable *symtab) const override
     {
         std::stringstream ss;
         this->printInst(ss, Memory::AddrMd_PostIndex);
         return ss.str();
     }
 };
-}
+
+} // namespace ArmISA
+} // namespace gem5
 
 #endif //__ARCH_ARM_INSTS_MEM_HH__

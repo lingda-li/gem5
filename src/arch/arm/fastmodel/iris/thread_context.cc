@@ -1,4 +1,16 @@
 /*
+ * Copyright (c) 2020 ARM Limited
+ * All rights reserved
+ *
+ * The license below extends only to copyright in the software and shall
+ * not be construed as granting a license to any other intellectual
+ * property including but not limited to intellectual property relating
+ * to a hardware implementation of the functionality of the software
+ * licensed hereunder.  You may use the software subject to the license
+ * terms below provided that you ensure that this notice is replicated
+ * unmodified and in its entirety in all distributions of the software,
+ * modified or unmodified, in source code or in binary form.
+ *
  * Copyright 2019 Google, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,15 +39,24 @@
 
 #include "arch/arm/fastmodel/iris/thread_context.hh"
 
+#include <cstdint>
+#include <cstring>
 #include <utility>
+#include <vector>
 
+#include "arch/arm/fastmodel/iris/cpu.hh"
+#include "arch/arm/fastmodel/iris/memory_spaces.hh"
 #include "arch/arm/system.hh"
 #include "arch/arm/utility.hh"
+#include "base/logging.hh"
 #include "iris/detail/IrisCppAdapter.h"
 #include "iris/detail/IrisObjects.h"
 #include "mem/se_translating_port_proxy.hh"
 #include "mem/translating_port_proxy.hh"
 #include "sim/pseudo_inst.hh"
+
+namespace gem5
+{
 
 namespace Iris
 {
@@ -50,6 +71,10 @@ ThreadContext::initFromIrisInstance(const ResourceMap &resources)
     suspend();
 
     call().memory_getMemorySpaces(_instId, memorySpaces);
+    for (const auto &space: memorySpaces) {
+        memorySpaceIds.emplace(
+            Iris::CanonicalMsn(space.canonicalMsn), space.spaceId);
+    }
     call().memory_getUsefulAddressTranslations(_instId, translations);
 
     typedef ThreadContext Self;
@@ -98,6 +123,13 @@ ThreadContext::extractResourceMap(
 
         ids[idx] = extractResourceId(resources, name);
     }
+}
+
+iris::MemorySpaceId
+ThreadContext::getMemorySpaceId(const Iris::CanonicalMsn& msn) const
+{
+    auto it = memorySpaceIds.find(msn);
+    return it == memorySpaceIds.end() ? iris::IRIS_UINT64_MAX : it->second;
 }
 
 void
@@ -204,9 +236,22 @@ ThreadContext::phaseInitLeave(
     std::vector<iris::ResourceInfo> resources;
     call().resource_getList(_instId, resources);
 
+    std::map<iris::ResourceId, const iris::ResourceInfo *>
+        idToResource;
+    for (const auto &resource: resources) {
+        idToResource[resource.rscId] = &resource;
+    }
     ResourceMap resourceMap;
-    for (auto &resource: resources)
-        resourceMap[resource.name] = resource;
+    for (const auto &resource: resources) {
+        std::string name = resource.name;
+        iris::ResourceId parentId = resource.parentRscId;
+        while (parentId != iris::IRIS_UINT64_MAX) {
+            const auto *parent = idToResource[parentId];
+            name = parent->name + "." + name;
+            parentId = parent->parentRscId;
+        }
+        resourceMap[name] = resource;
+    }
 
     initFromIrisInstance(resourceMap);
 
@@ -279,9 +324,10 @@ ThreadContext::semihostingEvent(
 }
 
 ThreadContext::ThreadContext(
-        BaseCPU *cpu, int id, System *system, ::BaseTLB *dtb, ::BaseTLB *itb,
-        iris::IrisConnectionInterface *iris_if, const std::string &iris_path) :
-    _cpu(cpu), _threadId(id), _system(system), _dtb(dtb), _itb(itb),
+        gem5::BaseCPU *cpu, int id, System *system, gem5::BaseMMU *mmu,
+        BaseISA *isa, iris::IrisConnectionInterface *iris_if,
+        const std::string &iris_path) :
+    _cpu(cpu), _threadId(id), _system(system), _mmu(mmu), _isa(isa),
     _irisPath(iris_path), vecRegs(ArmISA::NumVecRegs),
     vecPredRegs(ArmISA::NumVecPredRegs),
     comInstEventQueue("instruction-based event queue"),
@@ -390,6 +436,27 @@ ThreadContext::remove(PCEvent *e)
     return true;
 }
 
+void
+ThreadContext::readMem(
+    iris::MemorySpaceId space, Addr addr, void *p, size_t size)
+{
+    iris::r0master::MemoryReadResult r;
+    auto err = call().memory_read(_instId, r, space, addr, 1, size);
+    panic_if(err != iris::r0master::E_ok, "readMem failed.");
+    std::memcpy(p, r.data.data(), size);
+}
+
+void
+ThreadContext::writeMem(
+    iris::MemorySpaceId space, Addr addr, const void *p, size_t size)
+{
+    std::vector<uint64_t> data((size + 7) / 8);
+    std::memcpy(data.data(), p, size);
+    iris::MemoryWriteResult r;
+    auto err = call().memory_write(_instId, r, space, addr, 1, size, data);
+    panic_if(err != iris::r0master::E_ok, "writeMem failed.");
+}
+
 bool
 ThreadContext::translateAddress(Addr &paddr, iris::MemorySpaceId p_space,
                                 Addr vaddr, iris::MemorySpaceId v_space)
@@ -448,18 +515,21 @@ ThreadContext::getCurrentInstCount()
 }
 
 void
-ThreadContext::initMemProxies(::ThreadContext *tc)
+ThreadContext::sendFunctional(PacketPtr pkt)
 {
-    if (FullSystem) {
-        assert(!physProxy && !virtProxy);
-        physProxy.reset(new PortProxy(_cpu->getSendFunctional(),
-                                      _cpu->cacheLineSize()));
-        virtProxy.reset(new TranslatingPortProxy(tc));
-    } else {
-        assert(!virtProxy);
-        virtProxy.reset(new SETranslatingPortProxy(this,
-                        SETranslatingPortProxy::NextPage));
-    }
+    auto msn = ArmISA::isSecure(this) ?
+        Iris::PhysicalMemorySecureMsn : Iris::PhysicalMemoryNonSecureMsn;
+    auto id = getMemorySpaceId(msn);
+
+    auto addr = pkt->getAddr();
+    auto size = pkt->getSize();
+    auto data = pkt->getPtr<uint8_t>();
+
+    pkt->makeResponse();
+    if (pkt->isRead())
+        readMem(id, addr, data, size);
+    else
+        writeMem(id, addr, data, size);
 }
 
 ThreadContext::Status
@@ -483,11 +553,10 @@ ThreadContext::setStatus(Status new_status)
     _status = new_status;
 }
 
-ArmISA::PCState
+const PCStateBase &
 ThreadContext::pcState() const
 {
     ArmISA::CPSR cpsr = readMiscRegNoEffect(ArmISA::MISCREG_CPSR);
-    ArmISA::PCState pc;
 
     pc.thumb(cpsr.t);
     pc.nextThumb(pc.thumb());
@@ -509,9 +578,9 @@ ThreadContext::pcState() const
     return pc;
 }
 void
-ThreadContext::pcState(const ArmISA::PCState &val)
+ThreadContext::pcState(const PCStateBase &val)
 {
-    Addr pc = val.pc();
+    Addr pc = val.instAddr();
 
     ArmISA::CPSR cpsr = readMiscRegNoEffect(ArmISA::MISCREG_CPSR);
     if (cpsr.width && cpsr.t)
@@ -519,18 +588,6 @@ ThreadContext::pcState(const ArmISA::PCState &val)
 
     iris::ResourceWriteResult result;
     call().resource_write(_instId, result, pcRscId, pc);
-}
-
-Addr
-ThreadContext::instAddr() const
-{
-    return pcState().instAddr();
-}
-
-Addr
-ThreadContext::nextInstAddr() const
-{
-    return pcState().nextInstAddr();
 }
 
 RegVal
@@ -638,7 +695,7 @@ ThreadContext::readVecReg(const RegId &reg_id) const
     call().resource_read(_instId, result, vecRegIds.at(idx));
     size_t data_size = result.data.size() * (sizeof(*result.data.data()));
     size_t size = std::min(data_size, reg.size());
-    memcpy(reg.raw_ptr<void>(), (void *)result.data.data(), size);
+    memcpy(reg.as<uint8_t>(), (void *)result.data.data(), size);
 
     return reg;
 }
@@ -667,13 +724,13 @@ ThreadContext::readVecPredReg(const RegId &reg_id) const
     size_t num_bits = reg.NUM_BITS;
     uint8_t *bytes = (uint8_t *)result.data.data();
     while (num_bits > 8) {
-        reg.set_bits(offset, 8, *bytes);
+        reg.setBits(offset, 8, *bytes);
         offset += 8;
         num_bits -= 8;
         bytes++;
     }
     if (num_bits)
-        reg.set_bits(offset, num_bits, *bytes);
+        reg.setBits(offset, num_bits, *bytes);
 
     return reg;
 }
@@ -685,3 +742,4 @@ ThreadContext::readVecPredRegFlat(RegIndex idx) const
 }
 
 } // namespace Iris
+} // namespace gem5

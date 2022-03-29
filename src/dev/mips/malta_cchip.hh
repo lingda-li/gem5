@@ -37,6 +37,9 @@
 #include "dev/io_device.hh"
 #include "params/MaltaCChip.hh"
 
+namespace gem5
+{
+
 /**
  * Malta CChip CSR Emulation. This device includes all the interrupt
  * handling code for the chipset.
@@ -76,20 +79,14 @@ class MaltaCChip : public BasicPioDevice
     //uint64_t itint;
 
   public:
-    typedef MaltaCChipParams Params;
-
-    const Params *
-    params() const
-    {
-        return dynamic_cast<const Params *>(_params);
-    }
+    using Params = MaltaCChipParams;
 
     /**
      * Initialize the Malta CChip by setting all of the
      * device register to 0.
      * @param p params struct
      */
-    MaltaCChip(Params *p);
+    MaltaCChip(const Params &p);
 
     Tick read(PacketPtr pkt) override;
 
@@ -133,5 +130,7 @@ class MaltaCChip : public BasicPioDevice
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
 };
+
+} // namespace gem5
 
 #endif // __MALTA_CCHIP_HH__

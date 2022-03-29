@@ -37,11 +37,12 @@
 
 #include "arch/x86/bios/e820.hh"
 
-#include "arch/x86/isa_traits.hh"
 #include "mem/port_proxy.hh"
 #include "sim/byteswap.hh"
 
-using namespace std;
+namespace gem5
+{
+
 using namespace X86ISA;
 
 template<class T>
@@ -71,14 +72,4 @@ void X86ISA::E820Table::writeTo(PortProxy& proxy, Addr countAddr, Addr addr)
     }
 }
 
-E820Table *
-X86E820TableParams::create()
-{
-    return new E820Table(this);
-}
-
-E820Entry *
-X86E820EntryParams::create()
-{
-    return new E820Entry(this);
-}
+} // namespace gem5

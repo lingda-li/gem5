@@ -37,8 +37,17 @@
 
 #include "mem/ruby/system/RubyPortProxy.hh"
 
-RubyPortProxy::RubyPortProxy(const RubyPortProxyParams* p) :
-    RubyPort(p) {
+#include "base/logging.hh"
+
+namespace gem5
+{
+
+namespace ruby
+{
+
+RubyPortProxy::RubyPortProxy(const RubyPortProxyParams &p) :
+    RubyPort(p)
+{
 }
 
 RubyPortProxy::~RubyPortProxy()
@@ -61,8 +70,5 @@ RubyPortProxy::makeRequest(PacketPtr pkt)
     return RequestStatus_NULL;
 }
 
-RubyPortProxy*
-RubyPortProxyParams::create()
-{
-    return new RubyPortProxy(this);
-}
+} // namespace ruby
+} // namespace gem5

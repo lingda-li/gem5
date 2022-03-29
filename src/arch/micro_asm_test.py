@@ -24,8 +24,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import print_function
-
 from micro_asm import MicroAssembler, Combinational_Macroop, Rom_Macroop, Rom
 
 class Bah(object):
@@ -61,7 +59,7 @@ class TestMacroop(Combinational_Macroop):
         print(message)
 
     def __init__(self, name):
-        super(TestMacroop, self).__init__(name)
+        super().__init__(name)
         self.directives = {
             "tweak": self.tweak,
             "untweak": self.untweak,

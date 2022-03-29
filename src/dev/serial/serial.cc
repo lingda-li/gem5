@@ -41,8 +41,10 @@
 #include "params/SerialDevice.hh"
 #include "params/SerialNullDevice.hh"
 
-SerialDevice::SerialDevice(const SerialDeviceParams *p)
-    : SimObject(p), interfaceCallback(nullptr)
+namespace gem5
+{
+
+SerialDevice::SerialDevice(const SerialDeviceParams &p) : SimObject(p)
 {
 }
 
@@ -51,14 +53,14 @@ SerialDevice::~SerialDevice()
 }
 
 void
-SerialDevice::regInterfaceCallback(Callback *c)
+SerialDevice::regInterfaceCallback(const std::function<void()> &callback)
 {
     // This can happen if the user has connected multiple UARTs to the
     // same terminal. In that case, each of them tries to register
     // callbacks.
-    if (interfaceCallback)
-        fatal("A UART has already been associated with this device.\n");
-    interfaceCallback = c;
+    fatal_if(interfaceCallback,
+             "A UART has already been associated with this device.");
+    interfaceCallback = callback;
 }
 
 void
@@ -67,13 +69,13 @@ SerialDevice::notifyInterface()
     assert(dataAvailable());
     // Registering a callback is optional.
     if (interfaceCallback)
-        interfaceCallback->process();
+        interfaceCallback();
 }
 
 
 
 
-SerialNullDevice::SerialNullDevice(const SerialNullDeviceParams *p)
+SerialNullDevice::SerialNullDevice(const SerialNullDeviceParams &p)
     : SerialDevice(p)
 {
 }
@@ -84,10 +86,4 @@ SerialNullDevice::readData()
     panic("SerialNullDevice does not have pending data.\n");
 }
 
-
-
-SerialNullDevice *
-SerialNullDeviceParams::create()
-{
-    return new SerialNullDevice(this);
-}
+} // namespace gem5

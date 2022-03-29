@@ -41,6 +41,9 @@
 #include "arch/arm/insts/static_inst.hh"
 #include "arch/arm/tlb.hh"
 
+namespace gem5
+{
+
 namespace ArmISA
 {
 
@@ -61,13 +64,13 @@ class SveMemVecFillSpill : public ArmStaticInst
                        IntRegIndex _base, uint64_t _imm)
         : ArmStaticInst(mnem, _machInst, __opClass),
           dest(_dest), base(_base), imm(_imm),
-          memAccessFlags(ArmISA::TLB::AllowUnaligned)
+          memAccessFlags(ArmISA::MMU::AllowUnaligned)
     {
         baseIsSP = isSP(_base);
     }
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 class SveMemPredFillSpill : public ArmStaticInst
@@ -87,13 +90,13 @@ class SveMemPredFillSpill : public ArmStaticInst
                         IntRegIndex _base, uint64_t _imm)
         : ArmStaticInst(mnem, _machInst, __opClass),
           dest(_dest), base(_base), imm(_imm),
-          memAccessFlags(ArmISA::TLB::AllowUnaligned)
+          memAccessFlags(ArmISA::MMU::AllowUnaligned)
     {
         baseIsSP = isSP(_base);
     }
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 class SveContigMemSS : public ArmStaticInst
@@ -114,13 +117,13 @@ class SveContigMemSS : public ArmStaticInst
                    IntRegIndex _offset)
         : ArmStaticInst(mnem, _machInst, __opClass),
           dest(_dest), gp(_gp), base(_base), offset(_offset),
-          memAccessFlags(ArmISA::TLB::AllowUnaligned)
+          memAccessFlags(ArmISA::MMU::AllowUnaligned)
     {
         baseIsSP = isSP(_base);
     }
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 class SveContigMemSI : public ArmStaticInst
@@ -141,15 +144,16 @@ class SveContigMemSI : public ArmStaticInst
                    uint64_t _imm)
         : ArmStaticInst(mnem, _machInst, __opClass),
           dest(_dest), gp(_gp), base(_base), imm(_imm),
-          memAccessFlags(ArmISA::TLB::AllowUnaligned)
+          memAccessFlags(ArmISA::MMU::AllowUnaligned)
     {
         baseIsSP = isSP(_base);
     }
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
-}  // namespace ArmISA
+} // namespace ArmISA
+} // namespace gem5
 
 #endif  // __ARCH_ARM_SVE_MEM_HH__

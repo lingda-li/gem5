@@ -40,14 +40,19 @@
 
 #include "mem/cache/prefetch/base.hh"
 
+namespace gem5
+{
+
 struct MultiPrefetcherParams;
 
-namespace Prefetcher {
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
 
 class Multi : public Base
 {
   public: // SimObject
-    Multi(const MultiPrefetcherParams *p);
+    Multi(const MultiPrefetcherParams &p);
 
   public:
     void setCache(BaseCache *_cache) override;
@@ -68,6 +73,7 @@ class Multi : public Base
     std::list<Base*> prefetchers;
 };
 
-} // namespace Prefetcher
+} // namespace prefetch
+} // namespace gem5
 
 #endif //__MEM_CACHE_PREFETCH_MULTI_HH__

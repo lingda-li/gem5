@@ -41,15 +41,21 @@
 #include "mem/cache/prefetch/queued.hh"
 #include "mem/packet.hh"
 
+namespace gem5
+{
+
 struct BOPPrefetcherParams;
 
-namespace Prefetcher {
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
 
 class BOP : public Queued
 {
     private:
 
-        enum RRWay {
+        enum RRWay
+        {
             Left,
             Right
         };
@@ -147,13 +153,14 @@ class BOP : public Queued
 
     public:
 
-        BOP(const BOPPrefetcherParams *p);
+        BOP(const BOPPrefetcherParams &p);
         ~BOP() = default;
 
         void calculatePrefetch(const PrefetchInfo &pfi,
                                std::vector<AddrPriority> &addresses) override;
 };
 
-} // namespace Prefetcher
+} // namespace prefetch
+} // namespace gem5
 
 #endif /* __MEM_CACHE_PREFETCH_BOP_HH__ */

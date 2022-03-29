@@ -33,12 +33,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import print_function
-from __future__ import absolute_import
-
 import gzip
-import six
-import optparse
+import argparse
 import os
 
 import m5
@@ -52,9 +48,6 @@ from common import MemConfig
 
 addToPath('../../util')
 import protolib
-
-if six.PY3:
-    long = int
 
 # this script is helpful to observe the memory latency for various
 # levels in a cache hierarchy, and various cache and memory
@@ -84,22 +77,18 @@ except:
         print("Failed to import packet proto definitions")
         exit(-1)
 
-parser = optparse.OptionParser()
+parser = argparse.ArgumentParser()
 
-parser.add_option("--mem-type", type="choice", default="DDR3_1600_8x8",
-                  choices=ObjectList.mem_list.get_names(),
-                  help = "type of memory to use")
-parser.add_option("--mem-size", action="store", type="string",
-                  default="16MB",
-                  help="Specify the memory size")
-parser.add_option("--reuse-trace", action="store_true",
-                  help="Prevent generation of traces and reuse existing")
+parser.add_argument("--mem-type", default="DDR3_1600_8x8",
+                    choices=ObjectList.mem_list.get_names(),
+                    help = "type of memory to use")
+parser.add_argument("--mem-size", action="store", type=str,
+                    default="16MB",
+                    help="Specify the memory size")
+parser.add_argument("--reuse-trace", action="store_true",
+                    help="Prevent generation of traces and reuse existing")
 
-(options, args) = parser.parse_args()
-
-if args:
-    print("Error: script doesn't take any positional arguments")
-    sys.exit(1)
+args = parser.parse_args()
 
 # start by creating the system itself, using a multi-layer 2.0 GHz
 # crossbar, delivering 64 bytes / 3 cycles (one header cycle) which
@@ -109,20 +98,20 @@ system.clk_domain = SrcClockDomain(clock = '2.0GHz',
                                    voltage_domain =
                                    VoltageDomain(voltage = '1V'))
 
-mem_range = AddrRange(options.mem_size)
+mem_range = AddrRange(args.mem_size)
 system.mem_ranges = [mem_range]
 
 # do not worry about reserving space for the backing store
 system.mmap_using_noreserve = True
 
-# currently not exposed as command-line options, set here for now
-options.mem_channels = 1
-options.mem_ranks = 1
-options.external_memory_system = 0
-options.tlm_memory = 0
-options.elastic_trace_en = 0
+# currently not exposed as command-line args, set here for now
+args.mem_channels = 1
+args.mem_ranks = 1
+args.external_memory_system = 0
+args.tlm_memory = 0
+args.elastic_trace_en = 0
 
-MemConfig.config_mem(options, system)
+MemConfig.config_mem(args, system)
 
 # there is no point slowing things down by saving any data
 for ctrl in system.mem_ctrls:
@@ -130,7 +119,7 @@ for ctrl in system.mem_ctrls:
 
     # the following assumes that we are using the native DRAM
     # controller, check to be sure
-    if isinstance(ctrl, m5.objects.DRAMCtrl):
+    if isinstance(ctrl, m5.objects.MemCtrl):
         # make the DRAM refresh interval sufficiently infinite to avoid
         # latency spikes
         ctrl.tREFI = '100s'
@@ -206,8 +195,8 @@ def create_trace(filename, max_addr, burst_size, itt):
     packet.size = int(burst_size)
 
     for addr in addrs:
-        packet.tick = long(tick)
-        packet.addr = long(addr)
+        packet.tick = int(tick)
+        packet.addr = int(addr)
         protolib.encodeMessage(proto_out, packet)
         tick = tick + itt
 
@@ -218,14 +207,14 @@ print("Generating traces, please wait...")
 
 nxt_range = 0
 nxt_state = 0
-period = long(itt * (max_range / burst_size))
+period = int(itt * (max_range / burst_size))
 
 # now we create the states for each range
 for r in ranges:
     filename = os.path.join(m5.options.outdir,
                             'lat_mem_rd%d.trc.gz' % nxt_range)
 
-    if not options.reuse_trace:
+    if not args.reuse_trace:
         # create the actual random trace for this range
         create_trace(filename, r, burst_size, itt)
 
@@ -261,7 +250,7 @@ system.monitor = CommMonitor()
 system.monitor.footprint = MemFootprintProbe()
 
 # connect the traffic generator to the system
-system.tgen.port = system.monitor.slave
+system.tgen.port = system.monitor.cpu_side_port
 
 # create the actual cache hierarchy, for now just go with something
 # basic to explore some of the options
@@ -281,23 +270,23 @@ class L3Cache(Cache):
 # note that everything is in the same clock domain, 2.0 GHz as
 # specified above
 system.l1cache = L1_DCache(size = '64kB')
-system.monitor.master = system.l1cache.cpu_side
+system.monitor.mem_side_port = system.l1cache.cpu_side
 
 system.l2cache = L2Cache(size = '512kB', writeback_clean = True)
 system.l2cache.xbar = L2XBar()
-system.l1cache.mem_side = system.l2cache.xbar.slave
-system.l2cache.cpu_side = system.l2cache.xbar.master
+system.l1cache.mem_side = system.l2cache.xbar.cpu_side_ports
+system.l2cache.cpu_side = system.l2cache.xbar.mem_side_ports
 
 # make the L3 mostly exclusive, and correspondingly ensure that the L2
 # writes back also clean lines to the L3
 system.l3cache = L3Cache(size = '4MB', clusivity = 'mostly_excl')
 system.l3cache.xbar = L2XBar()
-system.l2cache.mem_side = system.l3cache.xbar.slave
-system.l3cache.cpu_side = system.l3cache.xbar.master
-system.l3cache.mem_side = system.membus.slave
+system.l2cache.mem_side = system.l3cache.xbar.cpu_side_ports
+system.l3cache.cpu_side = system.l3cache.xbar.mem_side_ports
+system.l3cache.mem_side = system.membus.cpu_side_ports
 
 # connect the system port even if it is not used in this example
-system.system_port = system.membus.slave
+system.system_port = system.membus.cpu_side_ports
 
 # every period, dump and reset all stats
 periodicStatDump(period)

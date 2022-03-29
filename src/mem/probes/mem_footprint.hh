@@ -47,6 +47,9 @@
 #include "sim/stats.hh"
 #include "sim/system.hh"
 
+namespace gem5
+{
+
 struct MemFootprintProbeParams;
 
 /// Probe to track footprint of accessed memory
@@ -56,8 +59,7 @@ class MemFootprintProbe : public BaseMemProbe
   public:
     typedef std::unordered_set<Addr> AddrSet;
 
-    MemFootprintProbe(MemFootprintProbeParams *p);
-    void regStats() override;
+    MemFootprintProbe(const MemFootprintProbeParams &p);
     // Fix footprint tracking state on stat reset
     void statReset();
 
@@ -70,16 +72,21 @@ class MemFootprintProbe : public BaseMemProbe
     const uint64_t totalPagesInMem;
 
     void insertAddr(Addr addr, AddrSet *set, uint64_t limit);
-    void handleRequest(const ProbePoints::PacketInfo &pkt_info) override;
+    void handleRequest(const probing::PacketInfo &pkt_info) override;
 
-    /// Footprint at cache line size granularity
-    Stats::Scalar fpCacheLine;
-    /// Footprint at cache line size granularity, since simulation begin
-    Stats::Scalar fpCacheLineTotal;
-    /// Footprint at page granularity
-    Stats::Scalar fpPage;
-    /// Footprint at page granularity, since simulation begin
-    Stats::Scalar fpPageTotal;
+    struct MemFootprintProbeStats : public statistics::Group
+    {
+        MemFootprintProbeStats(MemFootprintProbe *parent);
+
+        /// Footprint at cache line size granularity
+        statistics::Scalar cacheLine;
+        /// Footprint at cache line size granularity, since simulation begin
+        statistics::Scalar cacheLineTotal;
+        /// Footprint at page granularity
+        statistics::Scalar page;
+        /// Footprint at page granularity, since simulation begin
+        statistics::Scalar pageTotal;
+    };
 
     // Addr set to track unique cache lines accessed
     AddrSet cacheLines;
@@ -90,6 +97,10 @@ class MemFootprintProbe : public BaseMemProbe
     // Addr set to track unique pages accessed since simulation begin
     AddrSet pagesAll;
     System *system;
+
+    MemFootprintProbeStats stats;
 };
+
+} // namespace gem5
 
 #endif  //__MEM_PROBES_MEM_FOOTPRINT_HH__

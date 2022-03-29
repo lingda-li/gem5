@@ -37,17 +37,22 @@
 
 #include "base/stats/group.hh"
 
-#include <cassert>
-
+#include "base/compiler.hh"
+#include "base/logging.hh"
+#include "base/named.hh"
 #include "base/stats/info.hh"
 #include "base/trace.hh"
 #include "debug/Stats.hh"
-#include "sim/sim_object.hh"
 
-namespace Stats {
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(Stats, statistics);
+namespace statistics
+{
 
 Group::Group(Group *parent, const char *name)
-    : mergedParent(name ? nullptr : parent)
+    : mergedParent(nullptr)
 {
     if (parent && name) {
         parent->addStatGroup(name, this);
@@ -67,11 +72,10 @@ Group::regStats()
         g->regStats();
 
     for (auto &g : statGroups) {
-        if (DTRACE(Stats)) {
-            const SimObject M5_VAR_USED *so =
-                dynamic_cast<const SimObject *>(this);
+        if (debug::Stats) {
+            M5_VAR_USED const Named *named = dynamic_cast<const Named *>(this);
             DPRINTF(Stats, "%s: regStats in group %s\n",
-                    so ? so->name() : "?",
+                    named ? named->name() : "?",
                     g.first);
         }
         g.second->regStats();
@@ -102,7 +106,7 @@ Group::preDumpStats()
 }
 
 void
-Group::addStat(Stats::Info *info)
+Group::addStat(statistics::Info *info)
 {
     stats.push_back(info);
     if (mergedParent)
@@ -112,7 +116,10 @@ Group::addStat(Stats::Info *info)
 void
 Group::addStatGroup(const char *name, Group *block)
 {
-    assert(statGroups.find(name) == statGroups.end());
+    panic_if(!block, "Can't add null stat group %s", name);
+    panic_if(block == this, "Stat group can't be added to itself");
+    panic_if(statGroups.find(name) != statGroups.end(),
+             "Stats of the same group share the same name `%s`.\n", name);
 
     statGroups[name] = block;
 }
@@ -152,7 +159,22 @@ Group::resolveStat(std::string name) const
 void
 Group::mergeStatGroup(Group *block)
 {
+    panic_if(!block, "No stat block provided");
+    panic_if(block->mergedParent,
+             "Stat group already merged into another group");
+    panic_if(block == this, "Stat group can't merge with itself");
+
+    // Track the new stat group
     mergedStatGroups.push_back(block);
+
+    // We might not have seen stats that were associated with the
+    // child group before it was merged, so add them here.
+    for (auto &s : block->stats)
+        addStat(s);
+
+    // Setup the parent pointer so the child know that it needs to
+    // register new stats with the parent.
+    block->mergedParent = this;
 }
 
 const std::map<std::string, Group *> &
@@ -167,4 +189,5 @@ Group::getStats() const
     return stats;
 }
 
-} // namespace Stats
+} // namespace statistics
+} // namespace gem5

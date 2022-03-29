@@ -31,7 +31,11 @@
 
 #include "base/bitunion.hh"
 #include "base/logging.hh"
-#include "sim/eventq_impl.hh"
+#include "sim/core.hh"
+#include "sim/eventq.hh"
+
+namespace gem5
+{
 
 /** Real-Time Clock (MC146818) */
 class MC146818 : public EventManager
@@ -69,7 +73,7 @@ class MC146818 : public EventManager
         Tick offset;
 
         RTCTickEvent(MC146818 * _parent) :
-            parent(_parent), offset(SimClock::Int::s)
+            parent(_parent), offset(sim_clock::as_int::s)
         {}
 
         /** Event process to occur at interrupt*/
@@ -90,10 +94,12 @@ class MC146818 : public EventManager
     RTCTickEvent tickEvent;
 
     /** Data for real-time clock function */
-    union {
+    union
+    {
         uint8_t clock_data[10];
 
-        struct {
+        struct
+        {
             uint8_t sec;
             uint8_t sec_alrm;
             uint8_t min;
@@ -177,5 +183,7 @@ class MC146818 : public EventManager
      */
     void unserialize(const std::string &base, CheckpointIn &cp);
 };
+
+} // namespace gem5
 
 #endif // __DEV_MC146818_HH__

@@ -1,4 +1,4 @@
-# Copyright (c) 2009, 2012-2013, 2015-2020 ARM Limited
+# Copyright (c) 2009, 2012-2013, 2015-2021 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -43,39 +43,124 @@ from m5.objects.ArmSemihosting import ArmSemihosting
 
 class SveVectorLength(UInt8): min = 1; max = 16
 
+class ArmExtension(ScopedEnum):
+    vals = [
+        # Armv8.1
+        'FEAT_VHE',
+        'FEAT_PAN',
+        'FEAT_LSE',
+        'FEAT_HPDS',
+        'FEAT_VMID16',
+        'FEAT_RDM',
+
+        # Armv8.2
+        'FEAT_SVE',
+        'FEAT_UAO',
+        'FEAT_LVA', # Optional in Armv8.2
+        'FEAT_LPA', # Optional in Armv8.2
+
+        # Armv8.3
+        'FEAT_FCMA',
+        'FEAT_JSCVT',
+        'FEAT_PAuth',
+
+        # Armv8.4
+        'FEAT_SEL2',
+
+        # Others
+        'SECURITY',
+        'LPAE',
+        'VIRTUALIZATION',
+        'CRYPTO',
+        'TME'
+    ]
+
+class ArmRelease(SimObject):
+    type = 'ArmRelease'
+    cxx_header = "arch/arm/system.hh"
+    cxx_class = 'gem5::ArmRelease'
+
+    extensions = VectorParam.ArmExtension([], "ISA extensions")
+
+    def add(self, new_ext: ArmExtension) -> None:
+        """
+        Add the provided extension (ArmExtension) to the system
+        The method is discarding pre-existing values
+        """
+        if (new_ext.value not in
+            [ ext.value for ext in self.extensions ]):
+            self.extensions.append(new_ext)
+
+    def has(self, new_ext: ArmExtension) -> bool:
+        """
+        Is the system implementing the provided extension (ArmExtension) ?
+        """
+        if (new_ext.value not in
+            [ ext.value for ext in self.extensions ]):
+            return False
+        else:
+            return True
+
+class Armv8(ArmRelease):
+    extensions = [
+        'LPAE'
+    ]
+
+class ArmDefaultRelease(Armv8):
+    extensions = Armv8.extensions + [
+        # Armv8.1
+        'FEAT_LSE', 'FEAT_PAN', 'FEAT_HPDS', 'FEAT_VMID16', 'FEAT_RDM',
+        # Armv8.2
+        'FEAT_UAO', 'FEAT_LVA', 'FEAT_LPA', 'FEAT_SVE',
+        # Armv8.3
+        'FEAT_FCMA', 'FEAT_JSCVT', 'FEAT_PAuth',
+        # Armv8.4
+        'FEAT_SEL2'
+    ]
+
+class Armv81(Armv8):
+    extensions = Armv8.extensions + [
+        'FEAT_LSE', 'FEAT_VHE', 'FEAT_PAN',
+        'FEAT_HPDS', 'FEAT_VMID16', 'FEAT_RDM'
+    ]
+
+class Armv82(Armv81):
+    extensions = Armv81.extensions + [
+        'FEAT_UAO', 'FEAT_LVA', 'FEAT_LPA', 'FEAT_SVE'
+    ]
+
+class Armv83(Armv82):
+    extensions = Armv82.extensions + [
+        'FEAT_FCMA', 'FEAT_JSCVT', 'FEAT_PAuth',
+    ]
+
+class Armv84(Armv83):
+    extensions = Armv83.extensions + [
+        'FEAT_SEL2'
+    ]
+
 class ArmSystem(System):
     type = 'ArmSystem'
     cxx_header = "arch/arm/system.hh"
+    cxx_class = 'gem5::ArmSystem'
+
+    release = Param.ArmRelease(ArmDefaultRelease(), "Arm Release")
+
     multi_proc = Param.Bool(True, "Multiprocessor system?")
     gic_cpu_addr = Param.Addr(0, "Addres of the GIC CPU interface")
-    flags_addr = Param.Addr(0, "Address of the flags register for MP booting")
-    have_security = Param.Bool(False,
-        "True if Security Extensions are implemented")
-    have_virtualization = Param.Bool(False,
-        "True if Virtualization Extensions are implemented")
-    have_crypto = Param.Bool(False,
-        "True if Crypto Extensions is implemented")
-    have_lpae = Param.Bool(True, "True if LPAE is implemented")
     reset_addr = Param.Addr(0x0,
         "Reset address (ARMv8)")
     auto_reset_addr = Param.Bool(True,
         "Determine reset address from kernel entry point if no boot loader")
-    highest_el_is_64 = Param.Bool(False,
+    highest_el_is_64 = Param.Bool(True,
         "True if the register width of the highest implemented exception level "
         "is 64 bits (ARMv8)")
     phys_addr_range_64 = Param.UInt8(40,
         "Supported physical address range in bits when using AArch64 (ARMv8)")
     have_large_asid_64 = Param.Bool(False,
         "True if ASID is 16 bits in AArch64 (ARMv8)")
-    have_sve = Param.Bool(True,
-        "True if SVE is implemented (ARMv8)")
     sve_vl = Param.SveVectorLength(1,
         "SVE vector length in quadwords (128-bit)")
-    have_lse = Param.Bool(True,
-        "True if LSE is implemented (ARMv8.1)")
-    have_pan = Param.Bool(True,
-        "True if Priviledge Access Never is implemented (ARMv8.1)")
-
     semihosting = Param.ArmSemihosting(NULL,
         "Enable support for the Arm semihosting by settings this parameter")
 
@@ -106,7 +191,7 @@ class ArmSystem(System):
         # root instead of appended.
 
         def generateMemNode(mem_range):
-            node = FdtNode("memory@%x" % long(mem_range.start))
+            node = FdtNode("memory@%x" % int(mem_range.start))
             node.append(FdtPropertyStrings("device_type", ["memory"]))
             node.append(FdtPropertyWords("reg",
                 state.addrCells(mem_range.start) +

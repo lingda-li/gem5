@@ -37,7 +37,7 @@
 
 #endif
 
-#if USE_TUNTAP && defined(__linux__)
+#if HAVE_TUNTAP && defined(__linux__)
 #if 1 // Hide from the style checker since these have to be out of order.
 #include <sys/socket.h> // Has to be included before if.h for some reason.
 
@@ -66,8 +66,11 @@
 #include "dev/net/etherdump.hh"
 #include "dev/net/etherint.hh"
 #include "dev/net/etherpkt.hh"
+#include "sim/core.hh"
+#include "sim/cur_tick.hh"
 
-using namespace std;
+namespace gem5
+{
 
 class TapEvent : public PollEvent
 {
@@ -89,8 +92,8 @@ class TapEvent : public PollEvent
     }
 };
 
-EtherTapBase::EtherTapBase(const Params *p)
-    : SimObject(p), buflen(p->bufsz), dump(p->dump), event(NULL),
+EtherTapBase::EtherTapBase(const Params &p)
+    : SimObject(p), buflen(p.bufsz), dump(p.dump), event(NULL),
       interface(NULL),
       txEvent([this]{ retransmit(); }, "EtherTapBase retransmit")
 {
@@ -185,7 +188,7 @@ void
 EtherTapBase::sendSimulated(void *data, size_t len)
 {
     EthPacketPtr packet;
-    packet = make_shared<EthPacketData>(len);
+    packet = std::make_shared<EthPacketData>(len);
     packet->length = len;
     packet->simLength = len;
     memcpy(packet->data, data, len);
@@ -196,7 +199,7 @@ EtherTapBase::sendSimulated(void *data, size_t len)
         DPRINTF(Ethernet, "bus busy...buffer for retransmission\n");
         packetBuffer.push(packet);
         if (!txEvent.scheduled())
-            schedule(txEvent, curTick() + retryTime);
+            schedule(txEvent, curTick() + sim_clock::as_int::ns);
     } else if (dump) {
         dump->dump(packet);
     }
@@ -218,7 +221,7 @@ EtherTapBase::retransmit()
     }
 
     if (!packetBuffer.empty() && !txEvent.scheduled())
-        schedule(txEvent, curTick() + retryTime);
+        schedule(txEvent, curTick() + sim_clock::as_int::ns);
 }
 
 
@@ -261,7 +264,7 @@ TapListener::listen()
         port++;
     }
 
-    ccprintf(cerr, "Listening for tap connection on port %d\n", port);
+    ccprintf(std::cerr, "Listening for tap connection on port %d\n", port);
     event = new Event(this, listener.getfd(), POLLIN|POLLERR);
     pollQueue.schedule(event);
 }
@@ -283,12 +286,12 @@ TapListener::accept()
 }
 
 
-EtherTapStub::EtherTapStub(const Params *p) : EtherTapBase(p), socket(-1)
+EtherTapStub::EtherTapStub(const Params &p) : EtherTapBase(p), socket(-1)
 {
     if (ListenSocket::allDisabled())
         fatal("All listeners are disabled! EtherTapStub can't work!");
 
-    listener = new TapListener(this, p->port);
+    listener = new TapListener(this, p.port);
     listener->listen();
 }
 
@@ -397,18 +400,18 @@ EtherTapStub::sendReal(const void *data, size_t len)
 }
 
 
-#if USE_TUNTAP
+#if HAVE_TUNTAP
 
-EtherTap::EtherTap(const Params *p) : EtherTapBase(p)
+EtherTap::EtherTap(const Params &p) : EtherTapBase(p)
 {
-    int fd = open(p->tun_clone_device.c_str(), O_RDWR | O_NONBLOCK);
+    int fd = open(p.tun_clone_device.c_str(), O_RDWR | O_NONBLOCK);
     if (fd < 0)
-        panic("Couldn't open %s.\n", p->tun_clone_device);
+        panic("Couldn't open %s.\n", p.tun_clone_device);
 
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
     ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
-    strncpy(ifr.ifr_name, p->tap_device_name.c_str(), IFNAMSIZ - 1);
+    strncpy(ifr.ifr_name, p.tap_device_name.c_str(), IFNAMSIZ - 1);
 
     if (ioctl(fd, TUNSETIFF, (void *)&ifr) < 0)
         panic("Failed to access tap device %s.\n", ifr.ifr_name);
@@ -469,16 +472,6 @@ EtherTap::sendReal(const void *data, size_t len)
     return true;
 }
 
-EtherTap *
-EtherTapParams::create()
-{
-    return new EtherTap(this);
-}
+#endif // HAVE_TUNTAP
 
-#endif
-
-EtherTapStub *
-EtherTapStubParams::create()
-{
-    return new EtherTapStub(this);
-}
+} // namespace gem5

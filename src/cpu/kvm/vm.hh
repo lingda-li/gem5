@@ -44,6 +44,14 @@
 #include "base/addr_range.hh"
 #include "sim/sim_object.hh"
 
+struct kvm_cpuid_entry2;
+struct kvm_cpuid2;
+struct kvm_msr_list;
+struct kvm_vcpu_init;
+
+namespace gem5
+{
+
 // forward declarations
 struct KvmVMParams;
 class BaseKvmCPU;
@@ -291,7 +299,7 @@ class KvmVM : public SimObject
     friend class BaseKvmCPU;
 
   public:
-    KvmVM(KvmVMParams *params);
+    KvmVM(const KvmVMParams &params);
     virtual ~KvmVM();
 
     void notifyFork();
@@ -548,5 +556,7 @@ class KvmVM : public SimObject
     std::vector<MemorySlot> memorySlots;
     uint32_t maxMemorySlot;
 };
+
+} // namespace gem5
 
 #endif

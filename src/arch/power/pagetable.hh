@@ -32,74 +32,14 @@
 #ifndef __ARCH_POWER_PAGETABLE_H__
 #define __ARCH_POWER_PAGETABLE_H__
 
-#include "arch/power/isa_traits.hh"
-#include "arch/power/utility.hh"
+#include "base/types.hh"
+#include "sim/serialize.hh"
+
+namespace gem5
+{
 
 namespace PowerISA
 {
-
-static inline Addr PteAddr(Addr a) { return (a & PteMask) << PteShift; }
-
-struct VAddr
-{
-    static const int ImplBits = 43;
-    static const Addr ImplMask = (ULL(1) << ImplBits) - 1;
-    static const Addr UnImplMask = ~ImplMask;
-
-    Addr addr;
-
-    VAddr(Addr a)
-        : addr(a)
-    {}
-
-    operator Addr() const
-    {
-        return addr;
-    }
-
-    const VAddr
-    &operator=(Addr a)
-    {
-        addr = a;
-        return *this;
-    }
-
-    Addr
-    vpn() const
-    {
-        return (addr & ImplMask) >> PageShift;
-    }
-
-    Addr
-    page() const
-    {
-        return addr & Page_Mask;
-    }
-
-    Addr
-    offset() const
-    {
-        return addr & PageOffset;
-    }
-
-    Addr
-    level3() const
-    {
-        return PowerISA::PteAddr(addr >> PageShift);
-    }
-
-    Addr
-    level2() const
-    {
-        return PowerISA::PteAddr(addr >> (NPtePageShift + PageShift));
-    }
-
-    Addr
-    level1() const
-    {
-        return PowerISA::PteAddr(addr >> (2 * NPtePageShift + PageShift));
-    }
-};
 
 // ITB/DTB page table entry
 struct PTE
@@ -147,6 +87,6 @@ struct PTE
 };
 
 } // namespace PowerISA
+} // namespace gem5
 
 #endif // __ARCH_POWER_PAGETABLE_H__
-

@@ -35,7 +35,7 @@
 
 # duplicate banked registers into new per-cpu arrays.
 def upgrader(cpt):
-    if cpt.get('root','isa') == 'arm':
+    if cpt.get('root', 'isa', fallback='') == 'arm':
         for sec in cpt.sections():
             import re
 
@@ -68,7 +68,7 @@ def upgrader(cpt):
             b_intPriority = cpt.get(sec, '*bankedIntPriority').split()
             cpt.remove_option(sec, '*bankedIntPriority')
 
-            for cpu in xrange(0, 255):
+            for cpu in range(255):
                 if cpuEnabled[cpu] == 'true':
                     intPriority = b_intPriority[cpu*32 : (cpu+1)*32]
                     new_sec = "%s.bankedRegs%u" % (sec, cpu)

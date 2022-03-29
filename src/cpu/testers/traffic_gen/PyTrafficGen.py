@@ -1,4 +1,4 @@
-# Copyright (c) 2018 ARM Limited
+# Copyright (c) 2018-2020 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -41,6 +41,7 @@ from m5.objects.BaseTrafficGen import *
 class PyTrafficGen(BaseTrafficGen):
     type = 'PyTrafficGen'
     cxx_header = "cpu/testers/traffic_gen/pygen.hh"
+    cxx_class = 'gem5::PyTrafficGen'
 
     @cxxMethod
     def start(self, meta_generator):
@@ -58,6 +59,9 @@ class PyTrafficGen(BaseTrafficGen):
         PyBindMethod("createRandom"),
         PyBindMethod("createDram"),
         PyBindMethod("createDramRot"),
+        PyBindMethod("createHybrid"),
+        PyBindMethod("createNvm"),
+        PyBindMethod("createStrided")
     ]
 
     @cxxMethod(override=True)

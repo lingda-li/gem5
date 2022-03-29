@@ -32,6 +32,9 @@
 #include "base/types.hh"
 #include "cpu/nativetrace.hh"
 
+namespace gem5
+{
+
 class ThreadContext;
 
 namespace Trace {
@@ -44,7 +47,8 @@ class X86NativeTrace : public NativeTrace
     uint64_t oldRcxVal, oldR11Val;
     uint64_t oldRealRcxVal, oldRealR11Val;
 
-    struct ThreadState {
+    struct ThreadState
+    {
         uint64_t rax;
         uint64_t rcx;
         uint64_t rdx;
@@ -78,11 +82,12 @@ class X86NativeTrace : public NativeTrace
     bool checkXMM(int num, uint64_t mXmmBuf[], uint64_t nXmmBuf[]);
 
   public:
-    X86NativeTrace(const Params *p);
+    X86NativeTrace(const Params &p);
 
     void check(NativeTraceRecord *record);
 };
 
 } // namespace Trace
+} // namespace gem5
 
 #endif // __ARCH_X86_NATIVETRACE_HH__

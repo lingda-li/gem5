@@ -32,6 +32,7 @@
 
 #include "arch/arm/fastmodel/amba_ports.hh"
 #include "arch/arm/fastmodel/common/signal_receiver.hh"
+#include "arch/arm/fastmodel/iris/cpu.hh"
 #include "arch/arm/fastmodel/protocol/exported_clock_rate_control.hh"
 #include "mem/port_proxy.hh"
 #include "params/FastModelScxEvsCortexA76x1.hh"
@@ -46,13 +47,17 @@
 #include "systemc/ext/core/sc_module.hh"
 #include "systemc/tlm_port_wrapper.hh"
 
-namespace FastModel
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(FastModel, fastmodel);
+namespace fastmodel
 {
 
 class CortexA76Cluster;
 
 template <class Types>
-class ScxEvsCortexA76 : public Types::Base
+class ScxEvsCortexA76 : public Types::Base, public Iris::BaseCpuEvs
 {
   private:
     static const int CoreCount = Types::CoreCount;
@@ -62,11 +67,15 @@ class ScxEvsCortexA76 : public Types::Base
     SC_HAS_PROCESS(ScxEvsCortexA76);
 
     ClockRateControlInitiatorSocket clockRateControl;
+    ClockRateControlInitiatorSocket periphClockRateControl;
 
-    typedef sc_gem5::TlmTargetBaseWrapper<
+    using TlmGicTarget = sc_gem5::TlmTargetBaseWrapper<
         64, svp_gicv3_comms::gicv3_comms_fw_if,
         svp_gicv3_comms::gicv3_comms_bw_if, 1,
-        sc_core::SC_ONE_OR_MORE_BOUND> TlmGicTarget;
+        sc_core::SC_ONE_OR_MORE_BOUND>;
+
+    template <typename T>
+    using SignalInitiator = amba_pv::signal_master_port<T>;
 
     AmbaInitiator amba;
     std::vector<std::unique_ptr<TlmGicTarget>> redist;
@@ -80,19 +89,14 @@ class ScxEvsCortexA76 : public Types::Base
     std::vector<std::unique_ptr<SignalReceiver>> pmuirq;
     std::vector<std::unique_ptr<SignalReceiver>> vcpumntirq;
     std::vector<std::unique_ptr<SignalReceiver>> cntpnsirq;
+    std::vector<std::unique_ptr<SignalInitiator<uint64_t>>> rvbaraddr;
 
-    sc_core::sc_event clockChanged;
-    sc_core::sc_attribute<Tick> clockPeriod;
-    sc_core::sc_attribute<CortexA76Cluster *> gem5CpuCluster;
-    sc_core::sc_attribute<PortProxy::SendFunctionalFunc> sendFunctional;
-
-    void sendFunc(PacketPtr pkt);
-
-    void clockChangeHandler();
+    CortexA76Cluster *gem5CpuCluster;
 
     const Params &params;
 
   public:
+    ScxEvsCortexA76(const Params &p) : ScxEvsCortexA76(p.name.c_str(), p) {}
     ScxEvsCortexA76(const sc_core::sc_module_name &mod_name, const Params &p);
 
     void before_end_of_elaboration() override;
@@ -105,6 +109,16 @@ class ScxEvsCortexA76 : public Types::Base
         Base::start_of_simulation();
     }
     void start_of_simulation() override {}
+
+    void sendFunc(PacketPtr pkt) override;
+
+    void setClkPeriod(Tick clk_period) override;
+
+    void setSysCounterFrq(uint64_t sys_counter_frq) override;
+
+    void setCluster(SimObject *cluster) override;
+
+    void setResetAddr(int core, Addr addr, bool secure) override;
 };
 
 struct ScxEvsCortexA76x1Types
@@ -143,6 +157,7 @@ struct ScxEvsCortexA76x4Types
 using ScxEvsCortexA76x4 = ScxEvsCortexA76<ScxEvsCortexA76x4Types>;
 extern template class ScxEvsCortexA76<ScxEvsCortexA76x4Types>;
 
-} // namespace FastModel
+} // namespace fastmodel
+} // namespace gem5
 
 #endif // __ARCH_ARM_FASTMODEL_CORTEXA76_EVS_HH__

@@ -25,7 +25,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from m5.util.code_formatter import code_formatter
+from code_formatter import code_formatter
 
 def createSymbol(symbol, title):
     code = code_formatter()
@@ -62,7 +62,7 @@ def formatShorthand(short):
             if i + 1 < len(short):
                 # -- Proceed to next char. Yes I know that changing
                 # the loop var is ugly!
-                i,c = gen.next()
+                i,c = next(gen)
                 munged_shorthand += "<B><FONT size=+1>"
                 munged_shorthand += c
                 munged_shorthand += "</FONT></B>"

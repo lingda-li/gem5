@@ -30,37 +30,27 @@
 
 #include <iomanip>
 
-#include "config/the_isa.hh"
 #include "cpu/exetrace.hh"
 #include "cpu/static_inst.hh"
 
-using namespace std;
-using namespace TheISA;
+namespace gem5
+{
 
 namespace Trace {
 
 void
 Trace::IntelTraceRecord::dump()
 {
-    ostream &outs = Trace::output();
+    std::ostream &outs = Trace::output();
     ccprintf(outs, "%7d ) ", when);
-    outs << "0x" << hex << pc.instAddr() << ":\t";
+    outs << "0x" << std::hex << pc->instAddr() << ":\t";
     if (staticInst->isLoad()) {
         ccprintf(outs, "<RD %#x>", addr);
     } else if (staticInst->isStore()) {
         ccprintf(outs, "<WR %#x>", addr);
     }
-    outs << endl;
+    outs << std::endl;
 }
 
 } // namespace Trace
-
-////////////////////////////////////////////////////////////////////////
-//
-//  ExeTracer Simulation Object
-//
-Trace::IntelTrace *
-IntelTraceParams::create()
-{
-    return new Trace::IntelTrace(this);
-}
+} // namespace gem5

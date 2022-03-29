@@ -1,4 +1,4 @@
-# Copyright (c) 2017,2019 ARM Limited
+# Copyright (c) 2017,2019,2020 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -42,9 +42,10 @@ from m5.objects.ClockedObject import ClockedObject
 
 class RubyController(ClockedObject):
     type = 'RubyController'
-    cxx_class = 'AbstractController'
+    cxx_class = 'gem5::ruby::AbstractController'
     cxx_header = "mem/ruby/slicc_interface/AbstractController.hh"
     abstract = True
+
     version = Param.Int("")
     addr_ranges = VectorParam.AddrRange([AllMemory], "Address range this "
                                         "controller responds to")
@@ -66,5 +67,13 @@ class RubyController(ClockedObject):
         Param.Cycles(1, "Default latency for requests added to the " \
                         "mandatory queue on top-level controllers")
 
-    memory = MasterPort("Port for attaching a memory controller")
+    memory_out_port = RequestPort("Port for attaching a memory controller")
+    memory = DeprecatedParam(memory_out_port, "The request port for Ruby "
+        "memory output to the main memory is now called `memory_out_port`")
+
     system = Param.System(Parent.any, "system object parameter")
+
+    # These can be used by a protocol to enable reuse of the same machine
+    # types to model different levels of the cache hierarchy
+    downstream_destinations = VectorParam.RubyController([],
+                    "Possible destinations for requests sent towards memory")

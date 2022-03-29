@@ -38,23 +38,27 @@
 
 #include "arch/x86/fs_workload.hh"
 
+#include "arch/x86/bios/acpi.hh"
 #include "arch/x86/bios/intelmp.hh"
 #include "arch/x86/bios/smbios.hh"
 #include "arch/x86/faults.hh"
-#include "arch/x86/isa_traits.hh"
 #include "base/loader/object_file.hh"
 #include "cpu/thread_context.hh"
+#include "debug/ACPI.hh"
 #include "params/X86FsWorkload.hh"
 #include "sim/system.hh"
+
+namespace gem5
+{
 
 namespace X86ISA
 {
 
-FsWorkload::FsWorkload(Params *p) : KernelWorkload(*p),
-    smbiosTable(p->smbios_table),
-    mpFloatingPointer(p->intel_mp_pointer),
-    mpConfigTable(p->intel_mp_table),
-    rsdp(p->acpi_description_table_pointer)
+FsWorkload::FsWorkload(const Params &p) : KernelWorkload(p),
+    smbiosTable(p.smbios_table),
+    mpFloatingPointer(p.intel_mp_pointer),
+    mpConfigTable(p.intel_mp_table),
+    rsdp(p.acpi_description_table_pointer)
 {}
 
 void
@@ -106,7 +110,7 @@ FsWorkload::initState()
 {
     KernelWorkload::initState();
 
-    for (auto *tc: system->threadContexts) {
+    for (auto *tc: system->threads) {
         X86ISA::InitInterrupt(0).invoke(tc);
 
         if (tc->contextId() == 0) {
@@ -121,10 +125,10 @@ FsWorkload::initState()
 
     fatal_if(!kernelObj, "No kernel to load.");
 
-    fatal_if(kernelObj->getArch() == Loader::I386,
+    fatal_if(kernelObj->getArch() == loader::I386,
              "Loading a 32 bit x86 kernel is not supported.");
 
-    ThreadContext *tc = system->threadContexts[0];
+    ThreadContext *tc = system->threads[0];
     auto phys_proxy = system->physProxy;
 
     // This is the boot strap processor (BSP). Initialize it to look like
@@ -189,6 +193,12 @@ FsWorkload::initState()
 
     // 32 bit data segment
     SegDescriptor dsDesc = initDesc;
+    dsDesc.type.e = 0;
+    dsDesc.type.w = 1;
+    dsDesc.d = 1;
+    dsDesc.baseHigh = 0;
+    dsDesc.baseLow = 0;
+
     uint64_t dsDescVal = dsDesc;
     phys_proxy.writeBlob(GDTBase + numGDTEntries * 8, (&dsDescVal), 8);
 
@@ -204,10 +214,16 @@ FsWorkload::initState()
     tc->setMiscReg(MISCREG_SS, (RegVal)ds);
 
     tc->setMiscReg(MISCREG_TSL, 0);
+    SegAttr ldtAttr = 0;
+    ldtAttr.unusable = 1;
+    tc->setMiscReg(MISCREG_TSL_ATTR, ldtAttr);
     tc->setMiscReg(MISCREG_TSG_BASE, GDTBase);
     tc->setMiscReg(MISCREG_TSG_LIMIT, 8 * numGDTEntries - 1);
 
     SegDescriptor tssDesc = initDesc;
+    tssDesc.type = 0xB;
+    tssDesc.s = 0;
+
     uint64_t tssDescVal = tssDesc;
     phys_proxy.writeBlob(GDTBase + numGDTEntries * 8, (&tssDescVal), 8);
 
@@ -319,6 +335,10 @@ FsWorkload::initState()
     // Write out the Intel MP Specification configuration table.
     writeOutMPTable(ebdaPos, fixed, table);
     ebdaPos += (fixed + table);
+
+    // Write out ACPI tables
+    writeOutACPITables(ebdaPos, table);
+    ebdaPos += table;
 }
 
 void
@@ -364,10 +384,18 @@ FsWorkload::writeOutMPTable(Addr fp, Addr &fpSize, Addr &tableSize, Addr table)
     assert(fpSize == 0x10);
 }
 
-} // namespace X86ISA
-
-X86ISA::FsWorkload *
-X86FsWorkloadParams::create()
+void
+FsWorkload::writeOutACPITables(Addr fp, Addr &fpSize)
 {
-    return new X86ISA::FsWorkload(this);
+    fpSize = 0;
+    if (rsdp) {
+        ACPI::LinearAllocator alloc(fp, 0x000FFFFF);
+        rsdp->write(system->physProxy, alloc);
+        fpSize = alloc.alloc(0, 0) - fp;
+        DPRINTF(ACPI, "Wrote ACPI tables to memory at %llx with size %llx.\n",
+                fp, fpSize);
+    }
 }
+
+} // namespace X86ISA
+} // namespace gem5

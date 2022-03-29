@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Inria
+ * Copyright (c) 2018-2020 Inria
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,35 +31,33 @@
 
 #include <memory>
 
+#include "base/compiler.hh"
 #include "mem/cache/replacement_policies/replaceable_entry.hh"
+#include "mem/packet.hh"
 #include "params/BaseReplacementPolicy.hh"
 #include "sim/sim_object.hh"
+
+namespace gem5
+{
 
 /**
  * Replacement candidates as chosen by the indexing policy.
  */
 typedef std::vector<ReplaceableEntry*> ReplacementCandidates;
 
+GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
+namespace replacement_policy
+{
+
 /**
  * A common base class of cache replacement policy objects.
  */
-class BaseReplacementPolicy : public SimObject
+class Base : public SimObject
 {
   public:
-    /**
-      * Convenience typedef.
-      */
     typedef BaseReplacementPolicyParams Params;
-
-    /**
-     * Construct and initiliaze this replacement policy.
-     */
-    BaseReplacementPolicy(const Params *p) : SimObject(p) {}
-
-    /**
-     * Destructor.
-     */
-    virtual ~BaseReplacementPolicy() {}
+    Base(const Params &p) : SimObject(p) {}
+    virtual ~Base() = default;
 
     /**
      * Invalidate replacement data to set it as the next probable victim.
@@ -67,23 +65,35 @@ class BaseReplacementPolicy : public SimObject
      * @param replacement_data Replacement data to be invalidated.
      */
     virtual void invalidate(const std::shared_ptr<ReplacementData>&
-                                                replacement_data) const = 0;
+        replacement_data) = 0;
 
     /**
      * Update replacement data.
      *
      * @param replacement_data Replacement data to be touched.
+     * @param pkt Packet that generated this access.
      */
     virtual void touch(const std::shared_ptr<ReplacementData>&
-                                                replacement_data) const = 0;
+        replacement_data, const PacketPtr pkt)
+    {
+        touch(replacement_data);
+    }
+    virtual void touch(const std::shared_ptr<ReplacementData>&
+        replacement_data) const = 0;
 
     /**
      * Reset replacement data. Used when it's holder is inserted/validated.
      *
      * @param replacement_data Replacement data to be reset.
+     * @param pkt Packet that generated this access.
      */
     virtual void reset(const std::shared_ptr<ReplacementData>&
-                                                replacement_data) const = 0;
+        replacement_data, const PacketPtr pkt)
+    {
+        reset(replacement_data);
+    }
+    virtual void reset(const std::shared_ptr<ReplacementData>&
+        replacement_data) const = 0;
 
     /**
      * Find replacement victim among candidates.
@@ -101,5 +111,8 @@ class BaseReplacementPolicy : public SimObject
      */
     virtual std::shared_ptr<ReplacementData> instantiateEntry() = 0;
 };
+
+} // namespace replacement_policy
+} // namespace gem5
 
 #endif // __MEM_CACHE_REPLACEMENT_POLICIES_BASE_HH__

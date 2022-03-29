@@ -28,15 +28,15 @@ from slicc.ast.AST import AST
 
 class ExprAST(AST):
     def __init__(self, slicc):
-        super(ExprAST, self).__init__(slicc)
+        super().__init__(slicc)
 
     def findResources(self, resources):
         # The default is no resources
         pass
 
-    def inline(self, get_type=False):
+    def inline(self, get_type=False, **kwargs):
         code = self.slicc.codeFormatter(fix_newlines=False)
-        return_type = self.generate(code)
+        return_type = self.generate(code, **kwargs)
         if get_type:
             return return_type, code
         else:

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Inria
+ * Copyright (c) 2018-2020 Inria
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,15 +32,22 @@
 #include <memory>
 
 #include "params/LRURP.hh"
+#include "sim/cur_tick.hh"
 
-LRURP::LRURP(const Params *p)
-    : BaseReplacementPolicy(p)
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
+namespace replacement_policy
+{
+
+LRU::LRU(const Params &p)
+  : Base(p)
 {
 }
 
 void
-LRURP::invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
-const
+LRU::invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
 {
     // Reset last touch timestamp
     std::static_pointer_cast<LRUReplData>(
@@ -48,7 +55,7 @@ const
 }
 
 void
-LRURP::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
+LRU::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
 {
     // Update last touch timestamp
     std::static_pointer_cast<LRUReplData>(
@@ -56,7 +63,7 @@ LRURP::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
 }
 
 void
-LRURP::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
+LRU::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
 {
     // Set last touch timestamp
     std::static_pointer_cast<LRUReplData>(
@@ -64,7 +71,7 @@ LRURP::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
 }
 
 ReplaceableEntry*
-LRURP::getVictim(const ReplacementCandidates& candidates) const
+LRU::getVictim(const ReplacementCandidates& candidates) const
 {
     // There must be at least one replacement candidate
     assert(candidates.size() > 0);
@@ -85,13 +92,10 @@ LRURP::getVictim(const ReplacementCandidates& candidates) const
 }
 
 std::shared_ptr<ReplacementData>
-LRURP::instantiateEntry()
+LRU::instantiateEntry()
 {
     return std::shared_ptr<ReplacementData>(new LRUReplData());
 }
 
-LRURP*
-LRURPParams::create()
-{
-    return new LRURP(this);
-}
+} // namespace replacement_policy
+} // namespace gem5

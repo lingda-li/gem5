@@ -29,27 +29,21 @@
 
 #ifndef __ARCH_MIPS_UTILITY_HH__
 #define __ARCH_MIPS_UTILITY_HH__
-#include "arch/mips/isa_traits.hh"
+
+#include "arch/mips/page_size.hh"
+#include "arch/mips/regs/misc.hh"
 #include "arch/mips/types.hh"
 #include "base/logging.hh"
 #include "base/types.hh"
 #include "cpu/static_inst.hh"
 #include "cpu/thread_context.hh"
 
+namespace gem5
+{
+
 class ThreadContext;
 
 namespace MipsISA {
-
-inline PCState
-buildRetPC(const PCState &curPC, const PCState &callPC)
-{
-    PCState ret = callPC;
-    ret.advance();
-    ret.pc(curPC.npc());
-    return ret;
-}
-
-uint64_t getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp);
 
 ////////////////////////////////////////////////////////////////////////
 //
@@ -67,22 +61,6 @@ bool isNan(void *val_ptr, int size);
 bool isQnan(void *val_ptr, int size);
 bool isSnan(void *val_ptr, int size);
 
-static inline bool
-inUserMode(ThreadContext *tc)
-{
-    RegVal Stat = tc->readMiscReg(MISCREG_STATUS);
-    RegVal Dbg = tc->readMiscReg(MISCREG_DEBUG);
-
-    if ((Stat & 0x10000006) == 0 &&  // EXL, ERL or CU0 set, CP0 accessible
-        (Dbg & 0x40000000) == 0 &&   // DM bit set, CP0 accessible
-        (Stat & 0x00000018) != 0) {  // KSU = 0, kernel mode is base mode
-        // Unable to use Status_CU0, etc directly, using bitfields & masks
-        return true;
-    } else {
-        return false;
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////
 //
 //  Translation stuff
@@ -99,22 +77,7 @@ RoundPage(Addr addr)
     return (addr + PageBytes - 1) & ~(PageBytes - 1);
 }
 
-void copyRegs(ThreadContext *src, ThreadContext *dest);
-void copyMiscRegs(ThreadContext *src, ThreadContext *dest);
-
-inline void
-advancePC(PCState &pc, const StaticInstPtr &inst)
-{
-    pc.advance();
-}
-
-inline uint64_t
-getExecutingAsid(ThreadContext *tc)
-{
-    return 0;
-}
-
-};
-
+} // namespace MipsISA
+} // namespace gem5
 
 #endif

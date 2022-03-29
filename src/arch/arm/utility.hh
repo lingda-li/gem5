@@ -42,8 +42,9 @@
 #ifndef __ARCH_ARM_UTILITY_HH__
 #define __ARCH_ARM_UTILITY_HH__
 
-#include "arch/arm/isa_traits.hh"
-#include "arch/arm/miscregs.hh"
+#include "arch/arm/regs/cc.hh"
+#include "arch/arm/regs/int.hh"
+#include "arch/arm/regs/misc.hh"
 #include "arch/arm/types.hh"
 #include "base/logging.hh"
 #include "base/trace.hh"
@@ -51,17 +52,13 @@
 #include "cpu/static_inst.hh"
 #include "cpu/thread_context.hh"
 
+namespace gem5
+{
+
 class ArmSystem;
 
-namespace ArmISA {
-
-inline PCState
-buildRetPC(const PCState &curPC, const PCState &callPC)
+namespace ArmISA
 {
-    PCState retPC = callPC;
-    retPC.uEnd();
-    return retPC;
-}
 
 inline bool
 testPredicate(uint32_t nz, uint32_t c, uint32_t v, ConditionCode code)
@@ -69,35 +66,26 @@ testPredicate(uint32_t nz, uint32_t c, uint32_t v, ConditionCode code)
     bool n = (nz & 0x2);
     bool z = (nz & 0x1);
 
-    switch (code)
-    {
-        case COND_EQ: return  z;
-        case COND_NE: return !z;
-        case COND_CS: return  c;
-        case COND_CC: return !c;
-        case COND_MI: return  n;
-        case COND_PL: return !n;
-        case COND_VS: return  v;
-        case COND_VC: return !v;
-        case COND_HI: return  (c && !z);
-        case COND_LS: return !(c && !z);
-        case COND_GE: return !(n ^ v);
-        case COND_LT: return  (n ^ v);
-        case COND_GT: return !(n ^ v || z);
-        case COND_LE: return  (n ^ v || z);
-        case COND_AL: return true;
-        case COND_UC: return true;
-        default:
-            panic("Unhandled predicate condition: %d\n", code);
+    switch (code) {
+      case COND_EQ: return  z;
+      case COND_NE: return !z;
+      case COND_CS: return  c;
+      case COND_CC: return !c;
+      case COND_MI: return  n;
+      case COND_PL: return !n;
+      case COND_VS: return  v;
+      case COND_VC: return !v;
+      case COND_HI: return  (c && !z);
+      case COND_LS: return !(c && !z);
+      case COND_GE: return !(n ^ v);
+      case COND_LT: return  (n ^ v);
+      case COND_GT: return !(n ^ v || z);
+      case COND_LE: return  (n ^ v || z);
+      case COND_AL: return true;
+      case COND_UC: return true;
+      default:
+        panic("Unhandled predicate condition: %d\n", code);
     }
-}
-
-void copyRegs(ThreadContext *src, ThreadContext *dest);
-
-static inline void
-copyMiscRegs(ThreadContext *src, ThreadContext *dest)
-{
-    panic("Copy Misc. Regs Not Implemented Yet\n");
 }
 
 /** Send an event (SEV) to a specific PE if there isn't
@@ -111,37 +99,20 @@ inUserMode(CPSR cpsr)
 }
 
 static inline bool
-inUserMode(ThreadContext *tc)
-{
-    return inUserMode(tc->readMiscRegNoEffect(MISCREG_CPSR));
-}
-
-static inline bool
 inPrivilegedMode(CPSR cpsr)
 {
     return !inUserMode(cpsr);
 }
 
-static inline bool
-inPrivilegedMode(ThreadContext *tc)
-{
-    return !inUserMode(tc);
-}
+bool isSecure(ThreadContext *tc);
 
 bool inAArch64(ThreadContext *tc);
 
-static inline OperatingMode
-currOpMode(const ThreadContext *tc)
-{
-    CPSR cpsr = tc->readMiscRegNoEffect(MISCREG_CPSR);
-    return (OperatingMode) (uint8_t) cpsr.mode;
-}
-
-static inline ExceptionLevel
-currEL(const ThreadContext *tc)
-{
-    return opModeToEL(currOpMode(tc));
-}
+/**
+ * Returns the current Exception Level (EL) of the
+ * provided ThreadContext
+ */
+ExceptionLevel currEL(const ThreadContext *tc);
 
 inline ExceptionLevel
 currEL(CPSR cpsr)
@@ -149,7 +120,9 @@ currEL(CPSR cpsr)
     return opModeToEL((OperatingMode) (uint8_t)cpsr.mode);
 }
 
+bool HavePACExt(ThreadContext *tc);
 bool HaveVirtHostExt(ThreadContext *tc);
+bool HaveLVA(ThreadContext *tc);
 bool HaveSecureEL2Ext(ThreadContext *tc);
 bool IsSecureEL2Enabled(ThreadContext *tc);
 bool EL2Enabled(ThreadContext *tc);
@@ -169,8 +142,12 @@ bool EL2Enabled(ThreadContext *tc);
  * @retval aarch32 is TRUE if the specified Exception level is using AArch32;
  *                 FALSE otherwise.
  */
-std::pair<bool, bool>
-ELUsingAArch32K(ThreadContext *tc, ExceptionLevel el);
+std::pair<bool, bool> ELUsingAArch32K(ThreadContext *tc, ExceptionLevel el);
+
+std::pair<bool, bool> ELStateUsingAArch32K(ThreadContext *tc,
+        ExceptionLevel el, bool secure);
+
+bool ELStateUsingAArch32(ThreadContext *tc, ExceptionLevel el, bool secure);
 
 bool ELIs32(ThreadContext *tc, ExceptionLevel el);
 
@@ -182,7 +159,10 @@ bool ELIs64(ThreadContext *tc, ExceptionLevel el);
  */
 bool ELIsInHost(ThreadContext *tc, ExceptionLevel el);
 
+ExceptionLevel debugTargetFrom(ThreadContext *tc, bool secure);
+
 bool isBigEndian64(const ThreadContext *tc);
+
 
 /**
  * badMode is checking if the execution mode provided as an argument is
@@ -214,7 +194,7 @@ itState(CPSR psr)
     return (uint8_t)it;
 }
 
-ExceptionLevel s1TranslationRegime(ThreadContext* tc, ExceptionLevel el);
+ExceptionLevel s1TranslationRegime(ThreadContext *tc, ExceptionLevel el);
 
 /**
  * Removes the tag from tagged addresses if that mode is enabled.
@@ -228,26 +208,9 @@ Addr purifyTaggedAddr(Addr addr, ThreadContext *tc, ExceptionLevel el,
 Addr purifyTaggedAddr(Addr addr, ThreadContext *tc, ExceptionLevel el,
                       bool isInstr);
 int computeAddrTop(ThreadContext *tc, bool selbit, bool isInstr,
-               TTBCR tcr, ExceptionLevel el);
+                   TCR tcr, ExceptionLevel el);
 
-static inline bool
-inSecureState(SCR scr, CPSR cpsr)
-{
-    switch ((OperatingMode) (uint8_t) cpsr.mode) {
-      case MODE_MON:
-      case MODE_EL3T:
-      case MODE_EL3H:
-        return true;
-      case MODE_HYP:
-      case MODE_EL2T:
-      case MODE_EL2H:
-        return false;
-      default:
-        return !scr.ns;
-    }
-}
-
-bool inSecureState(ThreadContext *tc);
+bool isSecureBelowEL3(ThreadContext *tc);
 
 bool longDescFormatInUse(ThreadContext *tc);
 
@@ -266,35 +229,35 @@ static inline uint32_t
 mcrMrcIssBuild(bool isRead, uint32_t crm, IntRegIndex rt, uint32_t crn,
                uint32_t opc1, uint32_t opc2)
 {
-    return (isRead <<  0) |
-           (crm    <<  1) |
-           (rt     <<  5) |
-           (crn    << 10) |
-           (opc1   << 14) |
-           (opc2   << 17);
+    return (isRead << 0) |
+           (crm << 1) |
+           (rt << 5) |
+           (crn << 10) |
+           (opc1 << 14) |
+           (opc2 << 17);
 }
 
 static inline void
 mcrMrcIssExtract(uint32_t iss, bool &isRead, uint32_t &crm, IntRegIndex &rt,
                  uint32_t &crn, uint32_t &opc1, uint32_t &opc2)
 {
-    isRead = (iss >>  0) & 0x1;
-    crm    = (iss >>  1) & 0xF;
-    rt     = (IntRegIndex) ((iss >>  5) & 0xF);
-    crn    = (iss >> 10) & 0xF;
-    opc1   = (iss >> 14) & 0x7;
-    opc2   = (iss >> 17) & 0x7;
+    isRead = (iss >> 0) & 0x1;
+    crm = (iss >> 1) & 0xF;
+    rt = (IntRegIndex)((iss >> 5) & 0xF);
+    crn = (iss >> 10) & 0xF;
+    opc1 = (iss >> 14) & 0x7;
+    opc2 = (iss >> 17) & 0x7;
 }
 
 static inline uint32_t
 mcrrMrrcIssBuild(bool isRead, uint32_t crm, IntRegIndex rt, IntRegIndex rt2,
                  uint32_t opc1)
 {
-    return (isRead <<  0) |
-           (crm    <<  1) |
-           (rt     <<  5) |
-           (rt2    << 10) |
-           (opc1   << 16);
+    return (isRead << 0) |
+           (crm << 1) |
+           (rt << 5) |
+           (rt2 << 10) |
+           (opc1 << 16);
 }
 
 static inline uint32_t
@@ -310,106 +273,69 @@ msrMrs64IssBuild(bool isRead, uint32_t op0, uint32_t op1, uint32_t crn,
         (op0 << 20);
 }
 
-Fault
-mcrMrc15Trap(const MiscRegIndex miscReg, ExtMachInst machInst,
-             ThreadContext *tc, uint32_t imm);
-bool
-mcrMrc15TrapToHyp(const MiscRegIndex miscReg, ThreadContext *tc, uint32_t iss,
-                  ExceptionClass *ec = nullptr);
+Fault mcrMrc15Trap(const MiscRegIndex miscReg, ExtMachInst machInst,
+                   ThreadContext *tc, uint32_t imm);
+bool mcrMrc15TrapToHyp(const MiscRegIndex miscReg, ThreadContext *tc,
+                       uint32_t iss, ExceptionClass *ec=nullptr);
 
-bool
-mcrMrc14TrapToHyp(const MiscRegIndex miscReg, HCR hcr, CPSR cpsr, SCR scr,
-                  HDCR hdcr, HSTR hstr, HCPTR hcptr, uint32_t iss);
+bool mcrMrc14TrapToHyp(const MiscRegIndex miscReg, ThreadContext *tc,
+                       uint32_t iss);
 
-Fault
-mcrrMrrc15Trap(const MiscRegIndex miscReg, ExtMachInst machInst,
-               ThreadContext *tc, uint32_t imm);
-bool
-mcrrMrrc15TrapToHyp(const MiscRegIndex miscReg, ThreadContext *tc,
-                    uint32_t iss, ExceptionClass *ec = nullptr);
+Fault mcrrMrrc15Trap(const MiscRegIndex miscReg, ExtMachInst machInst,
+                     ThreadContext *tc, uint32_t imm);
+bool mcrrMrrc15TrapToHyp(const MiscRegIndex miscReg, ThreadContext *tc,
+                         uint32_t iss, ExceptionClass *ec=nullptr);
 
-Fault
-AArch64AArch32SystemAccessTrap(const MiscRegIndex miscReg,
-                               ExtMachInst machInst, ThreadContext *tc,
-                               uint32_t imm, ExceptionClass ec);
-bool
-isAArch64AArch32SystemAccessTrapEL1(const MiscRegIndex miscReg,
-                                    ThreadContext *tc);
-bool
-isAArch64AArch32SystemAccessTrapEL2(const MiscRegIndex miscReg,
-                                    ThreadContext *tc);
-bool
-isGenericTimerHypTrap(const MiscRegIndex miscReg, ThreadContext *tc,
-                      ExceptionClass *ec);
+Fault AArch64AArch32SystemAccessTrap(const MiscRegIndex miscReg,
+                                     ExtMachInst machInst, ThreadContext *tc,
+                                     uint32_t imm, ExceptionClass ec);
+bool isAArch64AArch32SystemAccessTrapEL1(const MiscRegIndex miscReg,
+                                         ThreadContext *tc);
+bool isAArch64AArch32SystemAccessTrapEL2(const MiscRegIndex miscReg,
+                                         ThreadContext *tc);
+bool isGenericTimerHypTrap(const MiscRegIndex miscReg, ThreadContext *tc,
+                           ExceptionClass *ec);
 bool condGenericTimerPhysHypTrap(const MiscRegIndex miscReg,
                                  ThreadContext *tc);
-bool
-isGenericTimerCommonEL0HypTrap(const MiscRegIndex miscReg, ThreadContext *tc,
+bool isGenericTimerCommonEL0HypTrap(const MiscRegIndex miscReg,
+                                    ThreadContext *tc, ExceptionClass *ec);
+bool isGenericTimerPhysHypTrap(const MiscRegIndex miscReg, ThreadContext *tc,
                                ExceptionClass *ec);
-bool
-isGenericTimerPhysHypTrap(const MiscRegIndex miscReg, ThreadContext *tc,
-                          ExceptionClass *ec);
-bool
-condGenericTimerPhysHypTrap(const MiscRegIndex miscReg, ThreadContext *tc);
-bool
-isGenericTimerSystemAccessTrapEL1(const MiscRegIndex miscReg,
-                                  ThreadContext *tc);
-bool
-condGenericTimerSystemAccessTrapEL1(const MiscRegIndex miscReg,
-                                    ThreadContext *tc);
-bool
-isGenericTimerSystemAccessTrapEL2(const MiscRegIndex miscReg,
-                                  ThreadContext *tc);
-bool
-isGenericTimerCommonEL0SystemAccessTrapEL2(const MiscRegIndex miscReg,
-                                           ThreadContext *tc);
-bool
-isGenericTimerPhysEL0SystemAccessTrapEL2(const MiscRegIndex miscReg,
+bool condGenericTimerPhysHypTrap(const MiscRegIndex miscReg,
+                                 ThreadContext *tc);
+bool isGenericTimerSystemAccessTrapEL1(const MiscRegIndex miscReg,
+                                       ThreadContext *tc);
+bool condGenericTimerSystemAccessTrapEL1(const MiscRegIndex miscReg,
                                          ThreadContext *tc);
-bool
-isGenericTimerPhysEL1SystemAccessTrapEL2(const MiscRegIndex miscReg,
-                                         ThreadContext *tc);
-bool
-isGenericTimerVirtSystemAccessTrapEL2(const MiscRegIndex miscReg,
-                                      ThreadContext *tc);
-bool
-condGenericTimerCommonEL0SystemAccessTrapEL2(const MiscRegIndex miscReg,
-                                             ThreadContext *tc);
-bool
-condGenericTimerCommonEL1SystemAccessTrapEL2(const MiscRegIndex miscReg,
-                                             ThreadContext *tc);
-bool
-condGenericTimerPhysEL1SystemAccessTrapEL2(const MiscRegIndex miscReg,
+bool isGenericTimerSystemAccessTrapEL2(const MiscRegIndex miscReg,
+                                       ThreadContext *tc);
+bool isGenericTimerCommonEL0SystemAccessTrapEL2(const MiscRegIndex miscReg,
+                                                ThreadContext *tc);
+bool isGenericTimerPhysEL0SystemAccessTrapEL2(const MiscRegIndex miscReg,
+                                              ThreadContext *tc);
+bool isGenericTimerPhysEL1SystemAccessTrapEL2(const MiscRegIndex miscReg,
+                                              ThreadContext *tc);
+bool isGenericTimerVirtSystemAccessTrapEL2(const MiscRegIndex miscReg,
                                            ThreadContext *tc);
-bool
-isGenericTimerSystemAccessTrapEL3(const MiscRegIndex miscReg,
-                                  ThreadContext *tc);
+bool condGenericTimerCommonEL0SystemAccessTrapEL2(const MiscRegIndex miscReg,
+                                                  ThreadContext *tc);
+bool condGenericTimerCommonEL1SystemAccessTrapEL2(const MiscRegIndex miscReg,
+                                                  ThreadContext *tc);
+bool condGenericTimerPhysEL1SystemAccessTrapEL2(const MiscRegIndex miscReg,
+                                                ThreadContext *tc);
+bool isGenericTimerSystemAccessTrapEL3(const MiscRegIndex miscReg,
+                                       ThreadContext *tc);
 
-bool SPAlignmentCheckEnabled(ThreadContext* tc);
-
-uint64_t getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp);
-
-inline void
-advancePC(PCState &pc, const StaticInstPtr &inst)
-{
-    inst->advancePC(pc);
-}
+bool SPAlignmentCheckEnabled(ThreadContext *tc);
 
 Addr truncPage(Addr addr);
 Addr roundPage(Addr addr);
 
-inline uint64_t
-getExecutingAsid(ThreadContext *tc)
-{
-    return tc->readMiscReg(MISCREG_CONTEXTIDR);
-}
-
 // Decodes the register index to access based on the fields used in a MSR
 // or MRS instruction
-bool
-decodeMrsMsrBankedReg(uint8_t sysM, bool r, bool &isIntReg, int &regIdx,
-                      CPSR cpsr, SCR scr, NSACR nsacr,
-                      bool checkSecurity = true);
+bool decodeMrsMsrBankedReg(uint8_t sysM, bool r, bool &isIntReg, int &regIdx,
+                           CPSR cpsr, SCR scr, NSACR nsacr,
+                           bool checkSecurity=true);
 
 // This wrapper function is used to turn the register index into a source
 // parameter for the instruction. See Operands.isa
@@ -420,8 +346,9 @@ decodeMrsMsrBankedIntRegIndex(uint8_t sysM, bool r)
     bool isIntReg;
     bool validReg;
 
-    validReg = decodeMrsMsrBankedReg(sysM, r, isIntReg, regIdx, 0, 0, 0, false);
-    return (validReg && isIntReg) ? regIdx : INTREG_DUMMY;
+    validReg = decodeMrsMsrBankedReg(
+            sysM, r, isIntReg, regIdx, 0, 0, 0, false);
+    return (validReg && isIntReg) ? regIdx : INTREG_ZERO;
 }
 
 /**
@@ -434,11 +361,18 @@ int decodePhysAddrRange64(uint8_t pa_enc);
  */
 uint8_t encodePhysAddrRange64(int pa_size);
 
-inline ByteOrder byteOrder(const ThreadContext *tc)
+inline ByteOrder
+byteOrder(const ThreadContext *tc)
 {
-    return isBigEndian64(tc) ? BigEndianByteOrder : LittleEndianByteOrder;
+    return isBigEndian64(tc) ? ByteOrder::big : ByteOrder::little;
 };
 
-}
+bool isUnpriviledgeAccess(ThreadContext *tc);
+
+void syncVecRegsToElems(ThreadContext *tc);
+void syncVecElemsToRegs(ThreadContext *tc);
+
+} // namespace ArmISA
+} // namespace gem5
 
 #endif

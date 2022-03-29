@@ -43,6 +43,9 @@
 
 #define SectorSize (512)
 
+namespace gem5
+{
+
 /**
  * Basic interface for accessing a disk image.
  */
@@ -53,7 +56,7 @@ class DiskImage : public SimObject
 
   public:
     typedef DiskImageParams Params;
-    DiskImage(const Params *p) : SimObject(p), initialized(false) {}
+    DiskImage(const Params &p) : SimObject(p), initialized(false) {}
     virtual ~DiskImage() {}
 
     virtual std::streampos size() const = 0;
@@ -77,7 +80,7 @@ class RawDiskImage : public DiskImage
 
   public:
     typedef RawDiskImageParams Params;
-    RawDiskImage(const Params *p);
+    RawDiskImage(const Params &p);
     ~RawDiskImage();
 
     void notifyFork() override;
@@ -108,7 +111,8 @@ class CowDiskImage : public DiskImage
     static const uint32_t VersionMinor;
 
   protected:
-    struct Sector {
+    struct Sector
+    {
         uint8_t data[SectorSize];
     };
     typedef std::unordered_map<uint64_t, Sector *> SectorTable;
@@ -120,7 +124,7 @@ class CowDiskImage : public DiskImage
 
   public:
     typedef CowDiskImageParams Params;
-    CowDiskImage(const Params *p);
+    CowDiskImage(const Params &p);
     ~CowDiskImage();
 
     void notifyFork() override;
@@ -155,5 +159,8 @@ void SafeWrite(std::ofstream &stream, const T &data);
 
 template<class T>
 void SafeWriteSwap(std::ofstream &stream, const T &data);
+
+} // namespace gem5
+
 
 #endif // __DEV_STORAGE_DISK_IMAGE_HH__

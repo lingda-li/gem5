@@ -49,16 +49,19 @@
 #include "mem/tport.hh"
 #include "sim/sim_object.hh"
 
+namespace gem5
+{
+
 namespace X86ISA
 {
 
 template <class Device>
-class IntSlavePort : public SimpleTimingPort
+class IntResponsePort : public SimpleTimingPort
 {
     Device * device;
 
   public:
-    IntSlavePort(const std::string& _name, SimObject* _parent,
+    IntResponsePort(const std::string& _name, SimObject* _parent,
                  Device* dev) :
         SimpleTimingPort(_name, _parent), device(dev)
     {
@@ -86,7 +89,7 @@ PacketPtr
 buildIntPacket(Addr addr, T payload)
 {
     RequestPtr req = std::make_shared<Request>(
-        addr, sizeof(T), Request::UNCACHEABLE, Request::intMasterId);
+        addr, sizeof(T), Request::UNCACHEABLE, Request::intRequestorId);
     PacketPtr pkt = new Packet(req, MemCmd::WriteReq);
     pkt->allocate();
     pkt->setRaw<T>(payload);
@@ -94,7 +97,7 @@ buildIntPacket(Addr addr, T payload)
 }
 
 template <class Device>
-class IntMasterPort : public QueuedMasterPort
+class IntRequestPort : public QueuedRequestPort
 {
   private:
     ReqPacketQueue reqQueue;
@@ -113,9 +116,9 @@ class IntMasterPort : public QueuedMasterPort
     static void defaultOnCompletion(PacketPtr pkt) { delete pkt; }
 
   public:
-    IntMasterPort(const std::string& _name, SimObject* _parent,
+    IntRequestPort(const std::string& _name, SimObject* _parent,
                   Device* dev, Tick _latency) :
-        QueuedMasterPort(_name, _parent, reqQueue, snoopRespQueue),
+        QueuedRequestPort(_name, _parent, reqQueue, snoopRespQueue),
         reqQueue(*_parent, *this), snoopRespQueue(*_parent, *this),
         device(dev), latency(_latency)
     {
@@ -148,5 +151,6 @@ class IntMasterPort : public QueuedMasterPort
 };
 
 } // namespace X86ISA
+} // namespace gem5
 
 #endif //__DEV_X86_INTDEV_HH__

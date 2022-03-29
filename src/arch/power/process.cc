@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2007-2008 The Florida State University
  * Copyright (c) 2009 The University of Edinburgh
+ * Copyright (c) 2021 IBM Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,7 +30,9 @@
 
 #include "arch/power/process.hh"
 
-#include "arch/power/isa_traits.hh"
+#include "arch/power/page_size.hh"
+#include "arch/power/regs/int.hh"
+#include "arch/power/regs/misc.hh"
 #include "arch/power/types.hh"
 #include "base/loader/elf_object.hh"
 #include "base/loader/object_file.hh"
@@ -39,20 +42,23 @@
 #include "mem/page_table.hh"
 #include "params/Process.hh"
 #include "sim/aux_vector.hh"
+#include "sim/byteswap.hh"
 #include "sim/process_impl.hh"
 #include "sim/syscall_return.hh"
 #include "sim/system.hh"
 
-using namespace std;
+namespace gem5
+{
+
 using namespace PowerISA;
 
 PowerProcess::PowerProcess(
-        ProcessParams *params, ::Loader::ObjectFile *objFile)
+       const ProcessParams &params, loader::ObjectFile *objFile)
     : Process(params,
-              new EmulationPageTable(params->name, params->pid, PageBytes),
+              new EmulationPageTable(params.name, params.pid, PageBytes),
               objFile)
 {
-    fatal_if(params->useArchPT, "Arch page tables not implemented.");
+    fatal_if(params.useArchPT, "Arch page tables not implemented.");
     // Set up break point (Top of Heap)
     Addr brk_point = image.maxAddr();
     brk_point = roundUp(brk_point, PageBytes);
@@ -67,9 +73,9 @@ PowerProcess::PowerProcess(
     // Set up region for mmaps. For now, start at bottom of kuseg space.
     Addr mmap_end = 0x70000000L;
 
-    memState = make_shared<MemState>(this, brk_point, stack_base,
-                                     max_stack_size, next_thread_stack_base,
-                                     mmap_end);
+    memState = std::make_shared<MemState>(
+            this, brk_point, stack_base, max_stack_size,
+            next_thread_stack_base, mmap_end);
 }
 
 void
@@ -77,15 +83,68 @@ PowerProcess::initState()
 {
     Process::initState();
 
-    argsInit(MachineBytes, PageBytes);
+    if (objFile->getArch() == loader::Power)
+        argsInit<uint32_t>(PageBytes);
+    else
+        argsInit<uint64_t>(PageBytes);
+
+    // Fix up entry point and symbol table for 64-bit ELF ABI v1
+    if (objFile->getOpSys() != loader::LinuxPower64ABIv1)
+        return;
+
+    // Fix entry point address and the base TOC pointer by looking the
+    // the function descriptor in the .opd section
+    Addr entryPoint, tocBase;
+    ByteOrder byteOrder = objFile->getByteOrder();
+    ThreadContext *tc = system->threads[contextIds[0]];
+
+    // The first doubleword of the descriptor contains the address of the
+    // entry point of the function
+    initVirtMem->readBlob(getStartPC(), &entryPoint, sizeof(Addr));
+
+    // Update the PC state
+    auto pc = tc->pcState().as<PowerISA::PCState>();
+    pc.byteOrder(byteOrder);
+    pc.set(gtoh(entryPoint, byteOrder));
+    tc->pcState(pc);
+
+    // The second doubleword of the descriptor contains the TOC base
+    // address for the function
+    initVirtMem->readBlob(getStartPC() + 8, &tocBase, sizeof(Addr));
+    tc->setIntReg(TOCPointerReg, gtoh(tocBase, byteOrder));
+
+    // Fix symbol table entries as they would otherwise point to the
+    // function descriptor rather than the actual entry point address
+    auto *symbolTable = new loader::SymbolTable;
+
+    for (auto sym : loader::debugSymbolTable) {
+        Addr entry;
+        loader::Symbol symbol = sym;
+
+        // Try to read entry point from function descriptor
+        if (initVirtMem->tryReadBlob(sym.address, &entry, sizeof(Addr)))
+            symbol.address = gtoh(entry, byteOrder);
+
+        symbolTable->insert(symbol);
+    }
+
+    // Replace the current debug symbol table
+    loader::debugSymbolTable.clear();
+    loader::debugSymbolTable.insert(*symbolTable);
+    delete symbolTable;
 }
 
+template <typename IntType>
 void
-PowerProcess::argsInit(int intSize, int pageSize)
+PowerProcess::argsInit(int pageSize)
 {
-    std::vector<AuxVector<uint32_t>> auxv;
+    int intSize = sizeof(IntType);
+    ByteOrder byteOrder = objFile->getByteOrder();
+    bool is64bit = (objFile->getArch() == loader::Power64);
+    bool isLittleEndian = (byteOrder == ByteOrder::little);
+    std::vector<gem5::auxv::AuxVector<IntType>> auxv;
 
-    string filename;
+    std::string filename;
     if (argv.size() < 1)
         filename = "";
     else
@@ -100,45 +159,53 @@ PowerProcess::argsInit(int intSize, int pageSize)
 
     //Setup the auxilliary vectors. These will already have endian conversion.
     //Auxilliary vectors are loaded only for elf formatted executables.
-    auto *elfObject = dynamic_cast<::Loader::ElfObject *>(objFile);
+    auto *elfObject = dynamic_cast<loader::ElfObject *>(objFile);
     if (elfObject) {
-        uint32_t features = 0;
+        IntType features = HWCAP_FEATURE_32;
+
+        // Check if running in 64-bit mode
+        if (is64bit)
+            features |= HWCAP_FEATURE_64;
+
+        // Check if running in little endian mode
+        if (isLittleEndian)
+            features |= HWCAP_FEATURE_PPC_LE | HWCAP_FEATURE_TRUE_LE;
 
         //Bits which describe the system hardware capabilities
         //XXX Figure out what these should be
-        auxv.emplace_back(M5_AT_HWCAP, features);
+        auxv.emplace_back(gem5::auxv::Hwcap, features);
         //The system page size
-        auxv.emplace_back(M5_AT_PAGESZ, PowerISA::PageBytes);
+        auxv.emplace_back(gem5::auxv::Pagesz, pageSize);
         //Frequency at which times() increments
-        auxv.emplace_back(M5_AT_CLKTCK, 0x64);
+        auxv.emplace_back(gem5::auxv::Clktck, 0x64);
         // For statically linked executables, this is the virtual address of
         // the program header tables if they appear in the executable image
-        auxv.emplace_back(M5_AT_PHDR, elfObject->programHeaderTable());
+        auxv.emplace_back(gem5::auxv::Phdr, elfObject->programHeaderTable());
         // This is the size of a program header entry from the elf file.
-        auxv.emplace_back(M5_AT_PHENT, elfObject->programHeaderSize());
+        auxv.emplace_back(gem5::auxv::Phent, elfObject->programHeaderSize());
         // This is the number of program headers from the original elf file.
-        auxv.emplace_back(M5_AT_PHNUM, elfObject->programHeaderCount());
+        auxv.emplace_back(gem5::auxv::Phnum, elfObject->programHeaderCount());
         // This is the base address of the ELF interpreter; it should be
         // zero for static executables or contain the base address for
         // dynamic executables.
-        auxv.emplace_back(M5_AT_BASE, getBias());
+        auxv.emplace_back(gem5::auxv::Base, getBias());
         //XXX Figure out what this should be.
-        auxv.emplace_back(M5_AT_FLAGS, 0);
+        auxv.emplace_back(gem5::auxv::Flags, 0);
         //The entry point to the program
-        auxv.emplace_back(M5_AT_ENTRY, objFile->entryPoint());
+        auxv.emplace_back(gem5::auxv::Entry, objFile->entryPoint());
         //Different user and group IDs
-        auxv.emplace_back(M5_AT_UID, uid());
-        auxv.emplace_back(M5_AT_EUID, euid());
-        auxv.emplace_back(M5_AT_GID, gid());
-        auxv.emplace_back(M5_AT_EGID, egid());
+        auxv.emplace_back(gem5::auxv::Uid, uid());
+        auxv.emplace_back(gem5::auxv::Euid, euid());
+        auxv.emplace_back(gem5::auxv::Gid, gid());
+        auxv.emplace_back(gem5::auxv::Egid, egid());
         //Whether to enable "secure mode" in the executable
-        auxv.emplace_back(M5_AT_SECURE, 0);
+        auxv.emplace_back(gem5::auxv::Secure, 0);
         //The address of 16 "random" bytes
-        auxv.emplace_back(M5_AT_RANDOM, 0);
+        auxv.emplace_back(gem5::auxv::Random, 0);
         //The filename of the program
-        auxv.emplace_back(M5_AT_EXECFN, 0);
+        auxv.emplace_back(gem5::auxv::Execfn, 0);
         //The string "v51" with unknown meaning
-        auxv.emplace_back(M5_AT_PLATFORM, 0);
+        auxv.emplace_back(gem5::auxv::Platform, 0);
     }
 
     //Figure out how big the initial stack nedes to be
@@ -146,7 +213,7 @@ PowerProcess::argsInit(int intSize, int pageSize)
     // A sentry NULL void pointer at the top of the stack.
     int sentry_size = intSize;
 
-    string platform = "v51";
+    std::string platform = "v51";
     int platform_size = platform.size() + 1;
 
     // The aux vectors are put on the stack in two groups. The first group are
@@ -205,15 +272,15 @@ PowerProcess::argsInit(int intSize, int pageSize)
                         roundUp(memState->getStackSize(), pageSize), "stack");
 
     // map out initial stack contents
-    uint32_t sentry_base = memState->getStackBase() - sentry_size;
-    uint32_t aux_data_base = sentry_base - aux_data_size;
-    uint32_t env_data_base = aux_data_base - env_data_size;
-    uint32_t arg_data_base = env_data_base - arg_data_size;
-    uint32_t platform_base = arg_data_base - platform_size;
-    uint32_t auxv_array_base = platform_base - aux_array_size - aux_padding;
-    uint32_t envp_array_base = auxv_array_base - envp_array_size;
-    uint32_t argv_array_base = envp_array_base - argv_array_size;
-    uint32_t argc_base = argv_array_base - argc_size;
+    IntType sentry_base = memState->getStackBase() - sentry_size;
+    IntType aux_data_base = sentry_base - aux_data_size;
+    IntType env_data_base = aux_data_base - env_data_size;
+    IntType arg_data_base = env_data_base - arg_data_size;
+    IntType platform_base = arg_data_base - platform_size;
+    IntType auxv_array_base = platform_base - aux_array_size - aux_padding;
+    IntType envp_array_base = auxv_array_base - envp_array_size;
+    IntType argv_array_base = envp_array_base - argv_array_size;
+    IntType argc_base = argv_array_base - argc_size;
 
     DPRINTF(Stack, "The addresses of items on the initial stack:\n");
     DPRINTF(Stack, "0x%x - aux data\n", aux_data_base);
@@ -229,22 +296,22 @@ PowerProcess::argsInit(int intSize, int pageSize)
     // write contents to stack
 
     // figure out argc
-    uint32_t argc = argv.size();
-    uint32_t guestArgc = htobe(argc);
+    IntType argc = argv.size();
+    IntType guestArgc = htog(argc, byteOrder);
 
     //Write out the sentry void *
-    uint32_t sentry_NULL = 0;
+    IntType sentry_NULL = 0;
     initVirtMem->writeBlob(sentry_base, &sentry_NULL, sentry_size);
 
     //Fix up the aux vectors which point to other data
     for (int i = auxv.size() - 1; i >= 0; i--) {
-        if (auxv[i].type == M5_AT_PLATFORM) {
+        if (auxv[i].type == gem5::auxv::Platform) {
             auxv[i].val = platform_base;
             initVirtMem->writeString(platform_base, platform.c_str());
-        } else if (auxv[i].type == M5_AT_EXECFN) {
+        } else if (auxv[i].type == gem5::auxv::Execfn) {
             auxv[i].val = aux_data_base + numRandomBytes;
             initVirtMem->writeString(aux_data_base, filename.c_str());
-        } else if (auxv[i].type == M5_AT_RANDOM) {
+        } else if (auxv[i].type == gem5::auxv::Random) {
             auxv[i].val = aux_data_base;
         }
     }
@@ -252,32 +319,50 @@ PowerProcess::argsInit(int intSize, int pageSize)
     //Copy the aux stuff
     Addr auxv_array_end = auxv_array_base;
     for (const auto &aux: auxv) {
-        initVirtMem->write(auxv_array_end, aux, GuestByteOrder);
+        initVirtMem->write(auxv_array_end, aux, byteOrder);
         auxv_array_end += sizeof(aux);
     }
     //Write out the terminating zeroed auxilliary vector
-    const AuxVector<uint64_t> zero(0, 0);
+    const gem5::auxv::AuxVector<uint64_t> zero(0, 0);
     initVirtMem->write(auxv_array_end, zero);
     auxv_array_end += sizeof(zero);
 
     copyStringArray(envp, envp_array_base, env_data_base,
-                    BigEndianByteOrder, *initVirtMem);
+                    byteOrder, *initVirtMem);
     copyStringArray(argv, argv_array_base, arg_data_base,
-                    BigEndianByteOrder, *initVirtMem);
+                    byteOrder, *initVirtMem);
 
     initVirtMem->writeBlob(argc_base, &guestArgc, intSize);
 
-    ThreadContext *tc = system->getThreadContext(contextIds[0]);
+    ThreadContext *tc = system->threads[contextIds[0]];
 
     //Set the stack pointer register
     tc->setIntReg(StackPointerReg, stack_min);
 
-    tc->pcState(getStartPC());
+    //Reset the special-purpose registers
+    for (int i = 0; i < NumIntSpecialRegs; i++)
+        tc->setIntReg(NumIntArchRegs + i, 0);
+
+    //Set the machine status for a typical userspace
+    Msr msr = 0;
+    msr.sf = is64bit;
+    msr.hv = 1;
+    msr.ee = 1;
+    msr.pr = 1;
+    msr.me = 1;
+    msr.ir = 1;
+    msr.dr = 1;
+    msr.ri = 1;
+    msr.le = isLittleEndian;
+    tc->setIntReg(INTREG_MSR, msr);
+
+    auto pc = tc->pcState().as<PowerISA::PCState>();
+    pc.set(getStartPC());
+    pc.byteOrder(byteOrder);
+    tc->pcState(pc);
 
     //Align the "stack_min" to a page boundary.
     memState->setStackMin(roundDown(stack_min, pageSize));
 }
 
-const std::vector<int> PowerProcess::SyscallABI::ArgumentRegs = {
-    3, 4, 5, 6, 7, 8
-};
+} // namespace gem5

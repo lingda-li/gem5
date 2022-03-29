@@ -2,8 +2,6 @@
  * Copyright (c) 2014-2015 Advanced Micro Devices, Inc.
  * All rights reserved.
  *
- * For use for simulation and test purposes only
- *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
@@ -36,37 +34,38 @@
 #include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/wavefront.hh"
 
-FetchStage::FetchStage(const ComputeUnitParams* p) : numSIMDs(p->num_SIMDs),
-    computeUnit(nullptr)
+namespace gem5
 {
-    for (int j = 0; j < numSIMDs; ++j) {
-        FetchUnit newFetchUnit(p);
-        fetchUnit.push_back(newFetchUnit);
+
+FetchStage::FetchStage(const ComputeUnitParams &p, ComputeUnit &cu)
+    : numVectorALUs(p.num_SIMDs), computeUnit(cu),
+      _name(cu.name() + ".FetchStage"), stats(&cu)
+{
+    for (int j = 0; j < numVectorALUs; ++j) {
+        FetchUnit newFetchUnit(p, cu);
+        _fetchUnit.push_back(newFetchUnit);
     }
 }
 
 FetchStage::~FetchStage()
 {
-    fetchUnit.clear();
+    _fetchUnit.clear();
 }
 
 void
-FetchStage::init(ComputeUnit *cu)
+FetchStage::init()
 {
-    computeUnit = cu;
-    _name = computeUnit->name() + ".FetchStage";
-
-    for (int j = 0; j < numSIMDs; ++j) {
-        fetchUnit[j].bindWaveList(&computeUnit->wfList[j]);
-        fetchUnit[j].init(computeUnit);
+    for (int j = 0; j < numVectorALUs; ++j) {
+        _fetchUnit[j].bindWaveList(&computeUnit.wfList[j]);
+        _fetchUnit[j].init();
     }
 }
 
 void
 FetchStage::exec()
 {
-    for (int j = 0; j < numSIMDs; ++j) {
-        fetchUnit[j].exec();
+    for (int j = 0; j < numVectorALUs; ++j) {
+        _fetchUnit[j].exec();
     }
 }
 
@@ -81,24 +80,23 @@ FetchStage::processFetchReturn(PacketPtr pkt)
     const unsigned num_instructions = pkt->req->getSize() /
         sizeof(TheGpuISA::RawMachInst);
 
-    instFetchInstReturned.sample(num_instructions);
+    stats.instFetchInstReturned.sample(num_instructions);
     uint32_t simdId = wavefront->simdId;
-    fetchUnit[simdId].processFetchReturn(pkt);
+    _fetchUnit[simdId].processFetchReturn(pkt);
 }
 
 void
 FetchStage::fetch(PacketPtr pkt, Wavefront *wavefront)
 {
-    fetchUnit[wavefront->simdId].fetch(pkt, wavefront);
+    _fetchUnit[wavefront->simdId].fetch(pkt, wavefront);
 }
 
-void
-FetchStage::regStats()
+FetchStage::FetchStageStats::FetchStageStats(statistics::Group *parent)
+    : statistics::Group(parent, "FetchStage"),
+      ADD_STAT(instFetchInstReturned, "For each instruction fetch request "
+               "received record how many instructions you got from it")
 {
-    instFetchInstReturned
-        .init(1, 32, 1)
-        .name(name() + ".inst_fetch_instr_returned")
-        .desc("For each instruction fetch request recieved record how many "
-              "instructions you got from it")
-        ;
+        instFetchInstReturned.init(1, 32, 1);
 }
+
+} // namespace gem5

@@ -51,6 +51,9 @@
 #include "mem/port.hh"
 #include "params/HMCController.hh"
 
+namespace gem5
+{
+
 /**
  * HMC Controller, in general, is responsible for translating the host
  * protocol (AXI for example) to serial links protocol. Plus, it should have
@@ -74,20 +77,20 @@ class HMCController : public NoncoherentXBar
 {
 public:
 
-    HMCController(const HMCControllerParams *p);
+    HMCController(const HMCControllerParams &p);
 
 private:
 
     // Receive range change only on one of the ports (because they all have
     //  the same range)
-    virtual void recvRangeChange(PortID master_port_id);
+    virtual void recvRangeChange(PortID mem_side_port_id);
 
-    // Receive a request and distribute it among slave ports
+    // Receive a request and distribute it among response ports
     //  Simply forwards the packet to the next serial link based on a
     //  Round-robin counter
-    virtual bool recvTimingReq(PacketPtr pkt, PortID slave_port_id);
+    virtual bool recvTimingReq(PacketPtr pkt, PortID cpu_side_port_id);
 
-    int n_master_ports;
+    int numMemSidePorts;
 
     // The round-robin counter
     int rr_counter;
@@ -97,5 +100,7 @@ private:
      */
     int rotate_counter();
 };
+
+} // namespace gem5
 
 #endif //__MEM_HMC_CONTROLLER_HH__

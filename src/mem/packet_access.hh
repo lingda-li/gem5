@@ -44,6 +44,9 @@
 #include "mem/packet.hh"
 #include "sim/byteswap.hh"
 
+namespace gem5
+{
+
 template <typename T>
 inline T
 Packet::getRaw() const
@@ -82,10 +85,10 @@ inline T
 Packet::get(ByteOrder endian) const
 {
     switch (endian) {
-      case BigEndianByteOrder:
+      case ByteOrder::big:
         return getBE<T>();
 
-      case LittleEndianByteOrder:
+      case ByteOrder::little:
         return getLE<T>();
 
       default:
@@ -112,15 +115,17 @@ inline void
 Packet::set(T v, ByteOrder endian)
 {
     switch (endian) {
-      case BigEndianByteOrder:
+      case ByteOrder::big:
         return setBE<T>(v);
 
-      case LittleEndianByteOrder:
+      case ByteOrder::little:
         return setLE<T>(v);
 
       default:
         panic("Illegal byte order in Packet::set()\n");
     };
 }
+
+} // namespace gem5
 
 #endif //__MEM_PACKET_ACCESS_HH__

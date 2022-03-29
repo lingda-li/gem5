@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2016-2017 ARM Limited
+ * Copyright (c) 2014, 2016-2017, 2021 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -38,12 +38,20 @@
 #ifndef __DEV_VIRTIO_BASE_HH__
 #define __DEV_VIRTIO_BASE_HH__
 
-#include "arch/isa_traits.hh"
+#include <cstdint>
+#include <functional>
+#include <vector>
+
 #include "base/bitunion.hh"
-#include "base/callback.hh"
+#include "base/compiler.hh"
+#include "base/types.hh"
 #include "dev/virtio/virtio_ring.h"
 #include "mem/port_proxy.hh"
+#include "sim/serialize.hh"
 #include "sim/sim_object.hh"
+
+namespace gem5
+{
 
 struct VirtIODeviceBaseParams;
 struct VirtIODummyDeviceParams;
@@ -63,16 +71,19 @@ class VirtQueue;
  * of byte swapping.
  */
 
-
-template <> inline vring_used_elem
-swap_byte(vring_used_elem v) {
+template <typename T>
+inline std::enable_if_t<std::is_same_v<T, vring_used_elem>, T>
+swap_byte(T v)
+{
     v.id = swap_byte(v.id);
     v.len = swap_byte(v.len);
     return v;
 }
 
-template <> inline vring_desc
-swap_byte(vring_desc v) {
+template <typename T>
+inline std::enable_if_t<std::is_same_v<T, vring_desc>, T>
+swap_byte(T v)
+{
     v.addr = swap_byte(v.addr);
     v.len = swap_byte(v.len);
     v.flags = swap_byte(v.flags);
@@ -288,8 +299,9 @@ class VirtDescriptor
  * @note Queues must be registered with
  * VirtIODeviceBase::registerQueue() to be active.
  */
-class VirtQueue : public Serializable {
-public:
+class VirtQueue : public Serializable
+{
+  public:
     virtual ~VirtQueue() {};
 
     /** @{
@@ -301,6 +313,14 @@ public:
     /** @{
      * @name Low-level Device Interface
      */
+
+    /**
+     * Reset cached state in this queue and in the associated
+     * ring buffers. A client of this method should be the
+     * VirtIODeviceBase::reset.
+     */
+    void reset();
+
     /**
      * Set the base address of this queue.
      *
@@ -451,14 +471,23 @@ public:
         typedef uint16_t Flags;
         typedef uint16_t Index;
 
-        struct Header {
+        struct GEM5_PACKED Header
+        {
             Flags flags;
             Index index;
-        } M5_ATTR_PACKED;
+        };
 
         VirtRing<T>(PortProxy &proxy, ByteOrder bo, uint16_t size) :
             header{0, 0}, ring(size), _proxy(proxy), _base(0), byteOrder(bo)
         {}
+
+        /** Reset any state in the ring buffer. */
+        void
+        reset()
+        {
+            header = {0, 0};
+            _base = 0;
+        };
 
         /**
          * Set the base address of the VirtIO ring buffer.
@@ -577,7 +606,7 @@ class VirtIODeviceBase : public SimObject
     EndBitUnion(DeviceStatus)
 
     typedef VirtIODeviceBaseParams Params;
-    VirtIODeviceBase(Params *params, DeviceId id, size_t config_size,
+    VirtIODeviceBase(const Params &params, DeviceId id, size_t config_size,
                      FeatureBits features);
     virtual ~VirtIODeviceBase();
 
@@ -605,9 +634,11 @@ class VirtIODeviceBase : public SimObject
      * typically through an interrupt. Device models call this method
      * to tell the transport interface to notify the guest.
      */
-    void kick() {
+    void
+    kick()
+    {
         assert(transKick);
-        transKick->process();
+        transKick();
     };
 
     /**
@@ -725,11 +756,13 @@ class VirtIODeviceBase : public SimObject
       * Register a callback to kick the guest through the transport
       * interface.
       *
-      * @param c Callback into transport interface.
+      * @param callback Callback into transport interface.
       */
-    void registerKickCallback(Callback *c) {
+    void
+    registerKickCallback(const std::function<void()> &callback)
+    {
         assert(!transKick);
-        transKick = c;
+        transKick = callback;
     }
 
 
@@ -867,17 +900,19 @@ class VirtIODeviceBase : public SimObject
     std::vector<VirtQueue *> _queues;
 
     /** Callbacks to kick the guest through the transport layer  */
-    Callback *transKick;
+    std::function<void()> transKick;
 };
 
 class VirtIODummyDevice : public VirtIODeviceBase
 {
   public:
-    VirtIODummyDevice(VirtIODummyDeviceParams *params);
+    VirtIODummyDevice(const VirtIODummyDeviceParams &params);
 
   protected:
     /** VirtIO device ID */
     static const DeviceId ID_INVALID = 0x00;
 };
+
+} // namespace gem5
 
 #endif // __DEV_VIRTIO_BASE_HH__

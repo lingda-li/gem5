@@ -42,8 +42,14 @@
 #define __ARCH_ARM_INSTS_PREDINST_HH__
 
 #include "arch/arm/insts/static_inst.hh"
+#include "arch/arm/pcstate.hh"
+#include "base/compiler.hh"
 #include "base/logging.hh"
 #include "base/trace.hh"
+#include "cpu/thread_context.hh"
+
+namespace gem5
+{
 
 namespace ArmISA
 {
@@ -124,7 +130,7 @@ simd_modified_imm(bool op, uint8_t cmode, uint8_t data, bool &immValid,
             bigData = 0;
             for (int i = 7; i >= 0; i--) {
                 if (bits(data, i)) {
-                    bigData |= (ULL(0xFF) << (i * 8));
+                    bigData |= (0xFFULL << (i * 8));
                 }
             }
         } else {
@@ -150,7 +156,7 @@ simd_modified_imm(bool op, uint8_t cmode, uint8_t data, bool &immValid,
                 break;
             }
         }
-        M5_FALLTHROUGH;
+        [[fallthrough]];
       default:
         immValid = false;
         break;
@@ -250,7 +256,7 @@ class PredImmOp : public PredOp
     }
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const override;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 /**
@@ -271,7 +277,7 @@ class PredIntOp : public PredOp
     }
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const override;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 class DataImmOp : public PredOp
@@ -290,7 +296,7 @@ class DataImmOp : public PredOp
     {}
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const override;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 class DataRegOp : public PredOp
@@ -309,7 +315,7 @@ class DataRegOp : public PredOp
     {}
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const override;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 class DataRegRegOp : public PredOp
@@ -327,7 +333,7 @@ class DataRegRegOp : public PredOp
     {}
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const override;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 /**
@@ -371,7 +377,7 @@ class PredMacroOp : public PredOp
     }
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const override;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 /**
@@ -387,14 +393,28 @@ class PredMicroop : public PredOp
     }
 
     void
-    advancePC(PCState &pcState) const
+    advancePC(PCStateBase &pcState) const override
     {
+        auto &apc = pcState.as<PCState>();
         if (flags[IsLastMicroop])
-            pcState.uEnd();
+            apc.uEnd();
         else
-            pcState.uAdvance();
+            apc.uAdvance();
+    }
+
+    void
+    advancePC(ThreadContext *tc) const override
+    {
+        PCState pc = tc->pcState().as<PCState>();
+        if (flags[IsLastMicroop])
+            pc.uEnd();
+        else
+            pc.uAdvance();
+        tc->pcState(pc);
     }
 };
-}
+
+} // namespace ArmISA
+} // namespace gem5
 
 #endif //__ARCH_ARM_INSTS_PREDINST_HH__

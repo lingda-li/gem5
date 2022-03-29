@@ -39,6 +39,9 @@
 #include "params/EtherDump.hh"
 #include "sim/sim_object.hh"
 
+namespace gem5
+{
+
 /*
  * Simple object for creating a simple pcap style packet trace
  */
@@ -52,9 +55,11 @@ class EtherDump : public SimObject
 
   public:
     typedef EtherDumpParams Params;
-    EtherDump(const Params *p);
+    EtherDump(const Params &p);
 
     inline void dump(EthPacketPtr &pkt) { dumpPacket(pkt); }
 };
+
+} // namespace gem5
 
 #endif // __DEV_NET_ETHERDUMP_HH__

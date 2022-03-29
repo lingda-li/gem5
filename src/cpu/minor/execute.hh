@@ -45,6 +45,10 @@
 #ifndef __CPU_MINOR_EXECUTE_HH__
 #define __CPU_MINOR_EXECUTE_HH__
 
+#include <vector>
+
+#include "base/named.hh"
+#include "base/types.hh"
 #include "cpu/minor/buffers.hh"
 #include "cpu/minor/cpu.hh"
 #include "cpu/minor/func_unit.hh"
@@ -52,7 +56,11 @@
 #include "cpu/minor/pipe_data.hh"
 #include "cpu/minor/scoreboard.hh"
 
-namespace Minor
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(Minor, minor);
+namespace minor
 {
 
 /** Execute stage.  Everything apart from fetching and decoding instructions.
@@ -60,6 +68,7 @@ namespace Minor
 class Execute : public Named
 {
   protected:
+
     /** Input port carrying instructions from Decode */
     Latch<ForwardInstData>::Output inp;
 
@@ -68,6 +77,9 @@ class Execute : public Named
 
     /** Pointer back to the containing CPU */
     MinorCPU &cpu;
+
+    /** Index of the zero integer register. */
+    const RegIndex zeroReg;
 
     /** Number of instructions that can be issued per cycle */
     unsigned int issueLimit;
@@ -141,7 +153,8 @@ class Execute : public Named
         DrainAllInsts /* Discarding all remaining insts */
     };
 
-    struct ExecuteThreadInfo {
+    struct ExecuteThreadInfo
+    {
         /** Constructor */
         ExecuteThreadInfo(unsigned int insts_committed) :
             inputIndex(0),
@@ -219,8 +232,7 @@ class Execute : public Named
     /** Actually create a branch to communicate to Fetch1/Fetch2 and,
      *  if that is a stream-changing branch update the streamSeqNum */
     void updateBranchData(ThreadID tid, BranchData::Reason reason,
-        MinorDynInstPtr inst, const TheISA::PCState &target,
-        BranchData &branch);
+        MinorDynInstPtr inst, const PCStateBase &target, BranchData &branch);
 
     /** Handle extracting mem ref responses from the memory queues and
      *  completing the associated instructions.
@@ -314,7 +326,7 @@ class Execute : public Named
   public:
     Execute(const std::string &name_,
         MinorCPU &cpu_,
-        MinorCPUParams &params,
+        const MinorCPUParams &params,
         Latch<ForwardInstData>::Output inp_,
         Latch<BranchData>::Input out_);
 
@@ -350,6 +362,7 @@ class Execute : public Named
     void drainResume();
 };
 
-}
+} // namespace minor
+} // namespace gem5
 
 #endif /* __CPU_MINOR_EXECUTE_HH__ */

@@ -1,3 +1,15 @@
+# Copyright (c) 2020 ARM Limited
+# All rights reserved
+#
+# The license below extends only to copyright in the software and shall
+# not be construed as granting a license to any other intellectual
+# property including but not limited to intellectual property relating
+# to a hardware implementation of the functionality of the software
+# licensed hereunder.  You may use the software subject to the license
+# terms below provided that you ensure that this notice is replicated
+# unmodified and in its entirety in all distributions of the software,
+# modified or unmodified, in source code or in binary form.
+#
 # Copyright 2019 Google, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -23,11 +35,12 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import print_function
+from itertools import cycle
+import shlex
 
 Import('*')
 
-from m5.util.grammar import Grammar
+from grammar import Grammar
 
 from gem5_scons import Transform, warning, error
 
@@ -91,6 +104,8 @@ def staticify(env, name):
 env.Append(CCFLAGS='-pthread')
 
 cpppaths = (
+    pvlib_home.Dir('examples/SystemCExport/Common/include'),
+    pvlib_home.Dir('include'),
     pvlib_home.Dir('include/fmruntime'),
     pvlib_home.Dir('include/fmruntime/eslapi'),
     pvlib_home.Dir('Iris/include'),
@@ -108,16 +123,20 @@ lib_paths = (
 env.Append(LIBPATH=lib_paths)
 env.Append(RPATH=lib_paths)
 
-libs = (
+fm_libs = (
     'components',
     'pvbus',
     'armctmodel',
     'fmruntime',
     'IrisSupport',
+)
+env.Append(LIBS=list(staticify(env, lib) for lib in fm_libs))
+system_libs = (
+    'atomic',
     'dl',
     'rt',
 )
-env.Append(LIBS=list(staticify(env, lib) for lib in libs))
+env.Append(LIBS=system_libs)
 
 
 class ProjectFileParser(Grammar):
@@ -130,8 +149,7 @@ class ProjectFileParser(Grammar):
 
     class StringParam(Param):
         def __init__(self, name, value):
-            super(ProjectFileParser.StringParam, self).__init__(
-                    is_object=False)
+            super().__init__(is_object=False)
             self.name = name
             self.value = value
 
@@ -141,8 +159,7 @@ class ProjectFileParser(Grammar):
 
     class ObjectParam(Param):
         def __init__(self, type_name, name, params):
-            super(ProjectFileParser.ObjectParam, self).__init__(
-                    is_object=True)
+            super().__init__(is_object=True)
             self.type_name = type_name
             self.name = name
             self.params = params
@@ -229,6 +246,10 @@ class ProjectFileParser(Grammar):
         t[0] = t[1]
 
 
+license_count = int(env['ARMLMD_LICENSE_COUNT'])
+arm_licenses = list((Value(object()) for i in range(license_count)))
+license_cycle = cycle(arm_licenses)
+
 class ArmFastModelComponent(object):
     def __init__(self, project_file, *extra_deps):
         project_file = File(project_file)
@@ -289,16 +310,26 @@ class ArmFastModelComponent(object):
         self.libs = static_lib_nodes + shared_libs
         self.libpaths = [simgen_dir]
         self.rpaths = [simgen_dir]
+        self.log = gen_dir.File('build_%s.log' % tlc)
+        self.simgen_cmd = env.subst('${SIMGEN} -p %s --configuration %s -b ' +
+            '--verbose off --num-build-cpus 100 --build-dir %s >%s') % \
+            (shlex.quote(project_file.srcnode().abspath),
+             shlex.quote(config_name),
+             shlex.quote(simgen_dir.abspath),
+             shlex.quote(self.log.abspath))
 
-        simgen_cmd = env.subst('${SIMGEN} -p %s --configuration %s -b ' +
-            '--verbose off --num-build-cpus 100 --build-dir %s') % \
-            (project_file.srcnode().abspath, config_name, simgen_dir.abspath)
-        if not GetOption('verbose'):
-            simgen_cmd += ' > /dev/null'
-        simgen_action = MakeAction(simgen_cmd, Transform('SIMGEN'))
         sources = [project_file]
         sources.extend(extra_deps)
-        env.Command(lib_nodes + self.headers, sources, simgen_action)
+        env.Command(lib_nodes + self.headers + [self.log], sources,
+                    Action(self.simgen_builder, Transform('SIMGEN')))
+        # Distribute simgen actions among ARM license slots. All actions which
+        # have a given license as a "side effect" will be serialized relative
+        # to each other, meaning the number of licenses being used concurrently
+        # will never be larger than the number of license nodes.
+        #
+        # This allocation is fixed and may not be as optimal as a dynamic one,
+        # but the difference is probably not significant.
+        env.SideEffect(next(license_cycle), lib_nodes[0])
 
     def prepare_env(self, env):
         env.Append(LIBPATH=self.libpaths)
@@ -306,56 +337,24 @@ class ArmFastModelComponent(object):
         env.Append(CPPPATH=self.headerpaths)
         env.Prepend(LIBS=self.libs)
 
+    def simgen_builder(self, target, source, env):
+        cmd = self.simgen_cmd
+        if not GetOption('verbose'):
+            cmd = "@" + cmd
+        res = env.Execute(cmd)
+        # Print output when execution return non-zero or in verbose mode.
+        if res or GetOption('verbose'):
+            env.Execute('@cat %s' % self.log.abspath)
+        return res
 
-class ArmFastModelBin(Executable):
-    def __init__(self, target, *components_and_sources):
-        def is_component(x):
-            return isinstance(x, ArmFastModelComponent)
-
-        def not_component(x):
-            return not is_component(x)
-
-        components = list(filter(is_component, components_and_sources))
-        sources = list(filter(not_component, components_and_sources))
-
-        self.components = components
-        super(ArmFastModelBin, self).__init__(target, *sources)
-
-    @classmethod
-    def declare_all(cls, env):
-        env = env.Clone()
-        env.Prepend(LIBS=env['STATIC_LIB'][0])
-        super(ArmFastModelBin, cls).declare_all(env)
-
-    def declare(self, env):
-        env = env.Clone()
-
-        sources = list(self.sources)
-        for f in self.filters:
-            sources += Source.all.apply_filter(f)
-
-        objs = self.srcs_to_objs(env, sources)
-        objs = objs + env['MAIN_OBJS']
-
-        for component in self.components:
-            component.prepare_env(env)
-
-        binary = super(ArmFastModelBin, self).declare(env, objs)[0]
-
-        # We need a copy of the simulation engine lib alongside the executable
-        # so that the license check works properly.
-        local_engine = binary.File(simulation_engine_name)
-        Depends(binary, local_engine)
-        main.Command(local_engine, simulation_engine_lib,
-                MakeAction("cp ${SOURCE} ${TARGET}", Transform('COPY')))
 
 Export('ArmFastModelComponent')
-Export('ArmFastModelBin')
 
 PySource('m5', 'arm_fast_model.py')
 Source('fastmodel.cc')
 
-SimObject('FastModel.py')
+SimObject('FastModel.py', sim_objects=[
+    'AmbaToTlmBridge64', 'AmbaFromTlmBridge64'])
 Source('amba_to_tlm_bridge.cc')
 Source('amba_from_tlm_bridge.cc')
 
@@ -374,10 +373,8 @@ for header in gicv3_comms_headers:
     Command(gic_protocol_dest.File(header), gic_protocol_src.File(header),
             Copy('${TARGET}', '${SOURCE}'))
 
-lisa_protocol_types_header_path = 'include/lisa_protocol_types.h'
-lisa_protocol_types_header_target = \
-    gic_protocol_dest.File(lisa_protocol_types_header_path)
-lisa_protocol_types_header_src = \
-    examples_common_dir.File(lisa_protocol_types_header_path)
-Command(lisa_protocol_types_header_target, lisa_protocol_types_header_src,
-        Copy('${TARGET}', '${SOURCE}'))
+common_headers = ('lisa_protocol_types.h', 'tlm_has_get_protocol_types.h')
+for header in common_headers:
+    header_target = gic_protocol_dest.Dir('include').File(header)
+    header_src = examples_common_dir.Dir('include').File(header)
+    Command(header_target, header_src, Copy('${TARGET}', '${SOURCE}'))

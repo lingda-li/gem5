@@ -34,6 +34,9 @@
 #include "dev/mc146818.hh"
 #include "params/Cmos.hh"
 
+namespace gem5
+{
+
 namespace X86ISA
 {
 
@@ -72,9 +75,9 @@ class Cmos : public BasicPioDevice
   public:
     typedef CmosParams Params;
 
-    Cmos(const Params *p) : BasicPioDevice(p, 2), latency(p->pio_latency),
-        rtc(this, name() + ".rtc", p->time, true, ULL(5000000000),
-                p->port_int_pin_connection_count)
+    Cmos(const Params &p) : BasicPioDevice(p, 2), latency(p.pio_latency),
+        rtc(this, name() + ".rtc", p.time, true, 5000000000ULL,
+                p.port_int_pin_connection_count)
     {
         memset(regs, 0, numRegs * sizeof(uint8_t));
         address = 0;
@@ -100,5 +103,6 @@ class Cmos : public BasicPioDevice
 };
 
 } // namespace X86ISA
+} // namespace gem5
 
 #endif //__DEV_X86_CMOS_HH__

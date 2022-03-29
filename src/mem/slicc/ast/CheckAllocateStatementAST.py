@@ -29,13 +29,13 @@ from slicc.ast.StatementAST import StatementAST
 
 class CheckAllocateStatementAST(StatementAST):
     def __init__(self, slicc, variable):
-        super(StatementAST, self).__init__(slicc)
+        super().__init__(slicc)
         self.variable = variable
 
     def __repr__(self):
         return "[CheckAllocateStatementAst: %r]" % self.variable
 
-    def generate(self, code, return_type):
+    def generate(self, code, return_type, **kwargs):
         # FIXME - check the type of the variable
 
         # Make sure the variable is valid

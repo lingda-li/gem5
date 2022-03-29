@@ -48,6 +48,12 @@
 #include "cpu/pred/bpred_unit.hh"
 #include "params/LocalBP.hh"
 
+namespace gem5
+{
+
+namespace branch_prediction
+{
+
 /**
  * Implements a local predictor that uses the PC to index into a table of
  * counters.  Note that any time a pointer to the bp_history is given, it
@@ -61,7 +67,7 @@ class LocalBP : public BPredUnit
     /**
      * Default branch predictor constructor.
      */
-    LocalBP(const LocalBPParams *params);
+    LocalBP(const LocalBPParams &params);
 
     virtual void uncondBranch(ThreadID tid, Addr pc, void * &bp_history);
 
@@ -116,10 +122,13 @@ class LocalBP : public BPredUnit
     const unsigned localPredictorSets;
 
     /** Array of counters that make up the local predictor. */
-    std::vector<SatCounter> localCtrs;
+    std::vector<SatCounter8> localCtrs;
 
     /** Mask to get index bits. */
     const unsigned indexMask;
 };
+
+} // namespace branch_prediction
+} // namespace gem5
 
 #endif // __CPU_PRED_2BIT_LOCAL_PRED_HH__

@@ -30,14 +30,14 @@ from slicc.ast.StatementAST import StatementAST
 
 class StallAndWaitStatementAST(StatementAST):
     def __init__(self, slicc, in_port, address):
-        super(StatementAST, self).__init__(slicc)
+        super().__init__(slicc)
         self.in_port = in_port
         self.address = address
 
     def __repr__(self):
         return "[StallAndWaitStatementAst: %r]" % self.in_port
 
-    def generate(self, code, return_type):
+    def generate(self, code, return_type, **kwargs):
         self.in_port.assertType("InPort")
         self.address.assertType("Addr")
 

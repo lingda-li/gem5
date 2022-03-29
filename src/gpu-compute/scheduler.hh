@@ -2,8 +2,6 @@
  * Copyright (c) 2014-2017 Advanced Micro Devices, Inc.
  * All rights reserved.
  *
- * For use for simulation and test purposes only
- *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
@@ -38,12 +36,15 @@
 
 #include "gpu-compute/scheduling_policy.hh"
 
-class ComputeUnitParams;
+namespace gem5
+{
+
+struct ComputeUnitParams;
 
 class Scheduler
 {
   public:
-    Scheduler(const ComputeUnitParams *params);
+    Scheduler(const ComputeUnitParams &params);
     Wavefront *chooseWave();
     void bindList(std::vector<Wavefront*> *sched_list);
 
@@ -55,5 +56,7 @@ class Scheduler
     SchedulingPolicy *schedPolicy;
     std::vector<Wavefront*> *scheduleList;
 };
+
+} // namespace gem5
 
 #endif // __GPU_COMPUTE_SCHEDULER_HH__

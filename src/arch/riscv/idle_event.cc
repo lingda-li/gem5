@@ -28,8 +28,10 @@
 
 #include "arch/riscv/idle_event.hh"
 
-#include "arch/riscv/kernel_stats.hh"
 #include "cpu/thread_context.hh"
+
+namespace gem5
+{
 
 using namespace RiscvISA;
 
@@ -38,3 +40,5 @@ IdleStartEvent::process(ThreadContext *tc)
 {
     fatal("Idle Start Event Not Defined for RISCV ISA ");
 }
+
+} // namespace gem5

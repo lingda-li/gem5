@@ -32,6 +32,7 @@ from os import getcwd
 class Process(SimObject):
     type = 'Process'
     cxx_header = "sim/process.hh"
+    cxx_class = 'gem5::Process'
 
     @cxxMethod
     def map(self, vaddr, paddr, size, cacheable=False):
@@ -44,7 +45,7 @@ class Process(SimObject):
     useArchPT = Param.Bool('false', 'maintain an in-memory version of the page\
                             table in an architecture-specific format')
     kvmInSE = Param.Bool('false', 'initialize the process for KvmCPU in SE')
-    maxStackSize = Param.MemorySize('64MB', 'maximum size of the stack')
+    maxStackSize = Param.MemorySize('64MiB', 'maximum size of the stack')
 
     uid = Param.Int(100, 'user id')
     euid = Param.Int(100, 'effective user id')
@@ -69,5 +70,6 @@ class Process(SimObject):
 class EmulatedDriver(SimObject):
     type = 'EmulatedDriver'
     cxx_header = "sim/emul_driver.hh"
+    cxx_class = 'gem5::EmulatedDriver'
     abstract = True
     filename = Param.String("device file name (under /dev)")

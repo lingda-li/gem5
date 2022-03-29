@@ -40,7 +40,10 @@
 
 #include "dev/arm/amba_device.hh"
 
-class Sp805Params;
+namespace gem5
+{
+
+struct Sp805Params;
 
 /**
  * @file
@@ -52,7 +55,7 @@ class Sp805Params;
 class Sp805 : public AmbaIntDevice
 {
   public:
-    Sp805(Sp805Params const* params);
+    Sp805(const Sp805Params &params);
 
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
@@ -62,7 +65,8 @@ class Sp805 : public AmbaIntDevice
     Tick write(PacketPtr pkt) override;
 
   private:
-    enum Offset : Addr {
+    enum Offset : Addr
+    {
         WDOGLOAD      = 0x000,
         WDOGVALUE     = 0x004,
         WDOGCONTROL   = 0x008,
@@ -92,9 +96,6 @@ class Sp805 : public AmbaIntDevice
 
     /** Indicates if reset behaviour is enabled when counter reaches 0 */
     bool resetEnabled;
-
-    /** Indicates if an interrupt has been raised by the counter reaching 0 */
-    bool intRaised;
 
     /** Indicates if write access to registers is enabled */
     bool writeAccessEnabled;
@@ -129,5 +130,7 @@ class Sp805 : public AmbaIntDevice
     /** If written into WdogLock, registers are unlocked for writes */
     static constexpr uint32_t WDOGLOCK_MAGIC = 0x1acce551;
 };
+
+} // namespace gem5
 
 #endif // __DEV_ARM_WATCHDOG_SP805_HH__

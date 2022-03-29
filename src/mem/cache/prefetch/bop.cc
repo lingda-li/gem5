@@ -31,16 +31,21 @@
 #include "debug/HWPrefetch.hh"
 #include "params/BOPPrefetcher.hh"
 
-namespace Prefetcher {
+namespace gem5
+{
 
-BOP::BOP(const BOPPrefetcherParams *p)
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
+
+BOP::BOP(const BOPPrefetcherParams &p)
     : Queued(p),
-      scoreMax(p->score_max), roundMax(p->round_max),
-      badScore(p->bad_score), rrEntries(p->rr_size),
-      tagMask((1 << p->tag_bits) - 1),
-      delayQueueEnabled(p->delay_queue_enable),
-      delayQueueSize(p->delay_queue_size),
-      delayTicks(cyclesToTicks(p->delay_queue_cycles)),
+      scoreMax(p.score_max), roundMax(p.round_max),
+      badScore(p.bad_score), rrEntries(p.rr_size),
+      tagMask((1 << p.tag_bits) - 1),
+      delayQueueEnabled(p.delay_queue_enable),
+      delayQueueSize(p.delay_queue_size),
+      delayTicks(cyclesToTicks(p.delay_queue_cycles)),
       delayQueueEvent([this]{ delayQueueEventWrapper(); }, name()),
       issuePrefetchRequests(false), bestOffset(1), phaseBestOffset(0),
       bestScore(0), round(0)
@@ -51,7 +56,7 @@ BOP::BOP(const BOPPrefetcherParams *p)
     if (!isPowerOf2(blkSize)) {
         fatal("%s: cache line size is not power of 2\n", name());
     }
-    if (!(p->negative_offsets_enable && (p->offset_list_size % 2 == 0))) {
+    if (!(p.negative_offsets_enable && (p.offset_list_size % 2 == 0))) {
         fatal("%s: negative offsets enabled with odd offset list size\n",
               name());
     }
@@ -65,7 +70,7 @@ BOP::BOP(const BOPPrefetcherParams *p)
     unsigned int i = 0;
     int64_t offset_i = 1;
 
-    while (i < p->offset_list_size)
+    while (i < p.offset_list_size)
     {
         int64_t offset = offset_i;
 
@@ -80,7 +85,7 @@ BOP::BOP(const BOPPrefetcherParams *p)
             i++;
             // If we want to use negative offsets, add also the negative value
             // of the offset just calculated
-            if (p->negative_offsets_enable)  {
+            if (p.negative_offsets_enable)  {
                 offsetsList.push_back(OffsetListEntry(-offset_i, 0));
                 i++;
             }
@@ -215,7 +220,7 @@ BOP::bestOffsetLearning(Addr x)
             phaseBestOffset = 0;
             resetScores();
             issuePrefetchRequests = true;
-        } else if (phaseBestOffset <= badScore) {
+        } else if (bestScore <= badScore) {
             issuePrefetchRequests = false;
         }
     }
@@ -260,10 +265,5 @@ BOP::notifyFill(const PacketPtr& pkt)
     }
 }
 
-} // namespace Prefetcher
-
-Prefetcher::BOP*
-BOPPrefetcherParams::create()
-{
-   return new Prefetcher::BOP(this);
-}
+} // namespace prefetch
+} // namespace gem5

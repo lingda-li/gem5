@@ -31,13 +31,14 @@
 
 #include "base/str.hh"
 
-using namespace std;
+namespace gem5
+{
 
 ObjectMatch::ObjectMatch()
 {
 }
 
-ObjectMatch::ObjectMatch(const string &expr)
+ObjectMatch::ObjectMatch(const std::string &expr)
 {
     setExpression(expr);
 }
@@ -49,20 +50,20 @@ ObjectMatch::add(const ObjectMatch &other)
 }
 
 void
-ObjectMatch::setExpression(const string &expr)
+ObjectMatch::setExpression(const std::string &expr)
 {
     tokens.resize(1);
     tokenize(tokens[0], expr, '.');
 }
 
 void
-ObjectMatch::setExpression(const vector<string> &expr)
+ObjectMatch::setExpression(const std::vector<std::string> &expr)
 {
     if (expr.empty()) {
         tokens.resize(0);
     } else {
         tokens.resize(expr.size());
-        for (vector<string>::size_type i = 0; i < expr.size(); ++i)
+        for (std::vector<std::string>::size_type i = 0; i < expr.size(); ++i)
             tokenize(tokens[i], expr[i], '.');
     }
 }
@@ -72,15 +73,15 @@ ObjectMatch::setExpression(const vector<string> &expr)
  * expression code
  */
 bool
-ObjectMatch::domatch(const string &name) const
+ObjectMatch::domatch(const std::string &name) const
 {
-    vector<string> name_tokens;
+    std::vector<std::string> name_tokens;
     tokenize(name_tokens, name, '.');
     int ntsize = name_tokens.size();
 
     int num_expr = tokens.size();
     for (int i = 0; i < num_expr; ++i) {
-        const vector<string> &token = tokens[i];
+        const std::vector<std::string> &token = tokens[i];
         int jstop = token.size();
 
         bool match = true;
@@ -88,7 +89,7 @@ ObjectMatch::domatch(const string &name) const
             if (j >= ntsize)
                 break;
 
-            const string &var = token[j];
+            const std::string &var = token[j];
             if (var != "*" && var != name_tokens[j]) {
                 match = false;
                 break;
@@ -115,3 +116,4 @@ ObjectMatch::getExpressions()
     return to_return;
 }
 
+} // namespace gem5

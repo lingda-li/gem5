@@ -28,13 +28,16 @@
 
 #include "arch/x86/nativetrace.hh"
 
-#include "arch/x86/isa_traits.hh"
+#include "arch/x86/pcstate.hh"
 #include "arch/x86/regs/float.hh"
 #include "arch/x86/regs/int.hh"
 #include "cpu/thread_context.hh"
 #include "debug/ExecRegDelta.hh"
 #include "params/X86NativeTrace.hh"
 #include "sim/byteswap.hh"
+
+namespace gem5
+{
 
 namespace Trace {
 
@@ -85,7 +88,7 @@ X86NativeTrace::ThreadState::update(ThreadContext *tc)
     r13 = tc->readIntReg(X86ISA::INTREG_R13);
     r14 = tc->readIntReg(X86ISA::INTREG_R14);
     r15 = tc->readIntReg(X86ISA::INTREG_R15);
-    rip = tc->pcState().npc();
+    rip = tc->pcState().as<X86ISA::PCState>().npc();
     //This should be expanded if x87 registers are considered
     for (int i = 0; i < 8; i++)
         mmx[i] = tc->readFloatReg(X86ISA::FLOATREG_MMX(i));
@@ -94,8 +97,7 @@ X86NativeTrace::ThreadState::update(ThreadContext *tc)
 }
 
 
-X86NativeTrace::X86NativeTrace(const Params *p)
-    : NativeTrace(p)
+X86NativeTrace::X86NativeTrace(const Params &p) : NativeTrace(p)
 {
     checkRcx = true;
     checkR11 = true;
@@ -187,13 +189,4 @@ X86NativeTrace::check(NativeTraceRecord *record)
 }
 
 } // namespace Trace
-
-////////////////////////////////////////////////////////////////////////
-//
-//  ExeTracer Simulation Object
-//
-Trace::X86NativeTrace *
-X86NativeTraceParams::create()
-{
-    return new Trace::X86NativeTrace(this);
-}
+} // namespace gem5

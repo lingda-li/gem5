@@ -40,17 +40,21 @@
 
 #include "mem/packet.hh"
 
+namespace gem5
+{
+
 namespace AMBA
 {
 
-typedef MasterID OrderID;
+typedef RequestorID OrderID;
 
 static OrderID
 orderId(PacketPtr pkt)
 {
-    return pkt->req->masterId();
+    return pkt->req->requestorId();
 }
 
 } // namespace AMBA
+} // namespace gem5
 
 #endif // __DEV_ARM_AMBA_HH__

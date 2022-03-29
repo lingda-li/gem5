@@ -49,7 +49,7 @@ Scheduler::Scheduler() :
     stopEvent(this, false, StopPriority), _throwUp(nullptr),
     starvationEvent(this, false, StarvationPriority),
     _elaborationDone(false), _started(false), _stopNow(false),
-    _status(StatusOther), maxTick(::MaxTick),
+    _status(StatusOther), maxTick(gem5::MaxTick),
     maxTickEvent(this, false, MaxTickPriority),
     timeAdvancesEvent(this, false, TimeAdvancesPriority), _numCycles(0),
     _changeStamp(0), _current(nullptr), initDone(false), runToTime(true),
@@ -71,8 +71,7 @@ Scheduler::clear()
         deltas.front()->deschedule();
 
     // Timed notifications.
-    for (auto &tsp: timeSlots) {
-        TimeSlot *&ts = tsp.second;
+    for (auto &ts: timeSlots) {
         while (!ts->events.empty())
             ts->events.front()->deschedule();
         deschedule(ts);
@@ -164,7 +163,7 @@ Scheduler::yield()
     _current = getNextReady();
     if (!_current) {
         // There are no more processes, so return control to evaluate.
-        Fiber::primaryFiber()->run();
+        gem5::Fiber::primaryFiber()->run();
     } else {
         _current->popListNode();
         _current->scheduled(false);
@@ -260,6 +259,7 @@ Scheduler::asyncRequestUpdate(Channel *c)
 {
     std::lock_guard<std::mutex> lock(asyncListMutex);
     asyncUpdateList.pushLast(c);
+    hasAsyncUpdate = true;
 }
 
 void
@@ -326,11 +326,12 @@ void
 Scheduler::runUpdate()
 {
     status(StatusUpdate);
-    {
+    if (hasAsyncUpdate) {
         std::lock_guard<std::mutex> lock(asyncListMutex);
         Channel *channel;
         while ((channel = asyncUpdateList.getNext()) != nullptr)
             updateList.pushLast(channel);
+        hasAsyncUpdate = false;
     }
 
     try {
@@ -361,6 +362,8 @@ Scheduler::runDelta()
 void
 Scheduler::pause()
 {
+    using namespace gem5;
+
     status(StatusPaused);
     kernel->status(::sc_core::SC_PAUSED);
     runOnce = false;
@@ -371,13 +374,15 @@ Scheduler::pause()
         if (scMainFiber.finished())
             fatal("Pausing systemc after sc_main completed.");
         else
-            exitSimLoopNow("systemc pause");
+            gem5::exitSimLoopNow("systemc pause");
     }
 }
 
 void
 Scheduler::stop()
 {
+    using namespace gem5;
+
     status(StatusStopped);
     kernel->stop();
 
@@ -391,12 +396,12 @@ Scheduler::stop()
         if (scMainFiber.finished())
             fatal("Stopping systemc after sc_main completed.");
         else
-            exitSimLoopNow("systemc stop");
+            gem5::exitSimLoopNow("systemc stop");
     }
 }
 
 void
-Scheduler::start(Tick max_tick, bool run_to_time)
+Scheduler::start(gem5::Tick max_tick, bool run_to_time)
 {
     _started = true;
     status(StatusOther);
@@ -415,7 +420,7 @@ Scheduler::start(Tick max_tick, bool run_to_time)
     scheduleTimeAdvancesEvent();
 
     // Return to gem5 to let it run events, etc.
-    Fiber::primaryFiber()->run();
+    gem5::Fiber::primaryFiber()->run();
 
     if (pauseEvent.scheduled())
         deschedule(&pauseEvent);
@@ -438,7 +443,7 @@ Scheduler::oneCycle()
 {
     runOnce = true;
     scheduleReadyEvent();
-    start(::MaxTick, false);
+    start(gem5::MaxTick, false);
 }
 
 void

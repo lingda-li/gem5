@@ -45,12 +45,19 @@
 
 #include "arch/arm/faults.hh"
 #include "arch/arm/utility.hh"
+#include "arch/arm/isa.hh"
+#include "arch/arm/pcstate.hh"
+#include "arch/arm/self_debug.hh"
 #include "arch/arm/system.hh"
 #include "base/trace.hh"
 #include "cpu/exec_context.hh"
 #include "cpu/static_inst.hh"
+#include "cpu/thread_context.hh"
 #include "sim/byteswap.hh"
 #include "sim/full_system.hh"
+
+namespace gem5
+{
 
 namespace ArmISA
 {
@@ -83,9 +90,9 @@ class ArmStaticInst : public StaticInst
         int64_t midRes = sub ? (op1 - op2) : (op1 + op2);
         if (bits(midRes, width) != bits(midRes, width - 1)) {
             if (midRes > 0)
-                res = (LL(1) << (width - 1)) - 1;
+                res = (1LL << (width - 1)) - 1;
             else
-                res = -(LL(1) << (width - 1));
+                res = -(1LL << (width - 1));
             return true;
         } else {
             res = midRes;
@@ -97,11 +104,11 @@ class ArmStaticInst : public StaticInst
     satInt(int32_t &res, int64_t op, int width)
     {
         width--;
-        if (op >= (LL(1) << width)) {
-            res = (LL(1) << width) - 1;
+        if (op >= (1LL << width)) {
+            res = (1LL << width) - 1;
             return true;
-        } else if (op < -(LL(1) << width)) {
-            res = -(LL(1) << width);
+        } else if (op < -(1LL << width)) {
+            res = -(1LL << width);
             return true;
         } else {
             res = op;
@@ -114,8 +121,8 @@ class ArmStaticInst : public StaticInst
     uSaturateOp(uint32_t &res, int64_t op1, int64_t op2, bool sub=false)
     {
         int64_t midRes = sub ? (op1 - op2) : (op1 + op2);
-        if (midRes >= (LL(1) << width)) {
-            res = (LL(1) << width) - 1;
+        if (midRes >= (1LL << width)) {
+            res = (1LL << width) - 1;
             return true;
         } else if (midRes < 0) {
             res = 0;
@@ -129,8 +136,8 @@ class ArmStaticInst : public StaticInst
     static inline bool
     uSatInt(int32_t &res, int64_t op, int width)
     {
-        if (op >= (LL(1) << width)) {
-            res = (LL(1) << width) - 1;
+        if (op >= (1LL << width)) {
+            res = (1LL << width) - 1;
             return true;
         } else if (op < 0) {
             res = 0;
@@ -141,10 +148,12 @@ class ArmStaticInst : public StaticInst
         }
     }
 
+    ExtMachInst machInst;
+
     // Constructor
     ArmStaticInst(const char *mnem, ExtMachInst _machInst,
                   OpClass __opClass)
-        : StaticInst(mnem, _machInst, __opClass)
+        : StaticInst(mnem, __opClass), machInst(_machInst)
     {
         aarch64 = machInst.aarch64;
         if (bits(machInst, 28, 24) == 0x10)
@@ -169,10 +178,10 @@ class ArmStaticInst : public StaticInst
                        bool withCond64 = false,
                        ConditionCode cond64 = COND_UC) const;
     void printTarget(std::ostream &os, Addr target,
-                     const Loader::SymbolTable *symtab) const;
+                     const loader::SymbolTable *symtab) const;
     void printCondition(std::ostream &os, unsigned code,
                         bool noImplicit=false) const;
-    void printMemSymbol(std::ostream &os, const Loader::SymbolTable *symtab,
+    void printMemSymbol(std::ostream &os, const loader::SymbolTable *symtab,
                         const std::string &prefix, const Addr addr,
                         const std::string &suffix) const;
     void printShiftOperand(std::ostream &os, IntRegIndex rm,
@@ -190,25 +199,53 @@ class ArmStaticInst : public StaticInst
                        uint64_t imm) const;
 
     void
-    advancePC(PCState &pcState) const override
+    advancePC(PCStateBase &pcState) const override
     {
-        pcState.advance();
+        pcState.as<PCState>().advance();
+    }
+
+    void
+    advancePC(ThreadContext *tc) const override
+    {
+        PCState pc = tc->pcState().as<PCState>();
+        pc.advance();
+        tc->pcState(pc);
+    }
+
+    uint64_t getEMI() const override { return machInst; }
+
+    std::unique_ptr<PCStateBase>
+    buildRetPC(const PCStateBase &cur_pc,
+            const PCStateBase &call_pc) const override
+    {
+        PCStateBase *ret_pc = call_pc.clone();
+        ret_pc->as<PCState>().uEnd();
+        return std::unique_ptr<PCStateBase>{ret_pc};
     }
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const override;
+            Addr pc, const loader::SymbolTable *symtab) const override;
+
+    static void
+    activateBreakpoint(ThreadContext *tc)
+    {
+        SelfDebug *sd = ArmISA::ISA::getSelfDebug(tc);
+        sd->activateDebug();
+    }
 
     static inline uint32_t
     cpsrWriteByInstr(CPSR cpsr, uint32_t val, SCR scr, NSACR nsacr,
             uint8_t byteMask, bool affectState, bool nmfi, ThreadContext *tc)
     {
         bool privileged   = (cpsr.mode != MODE_USER);
-        bool haveVirt     = ArmSystem::haveVirtualization(tc);
-        bool haveSecurity = ArmSystem::haveSecurity(tc);
-        bool isSecure     = inSecureState(scr, cpsr) || !haveSecurity;
+        bool haveVirt     = ArmSystem::haveEL(tc, EL2);
+        bool isSecure     = ArmISA::isSecure(tc);
 
         uint32_t bitMask = 0;
 
+        if (affectState && byteMask==0xF){
+            activateBreakpoint(tc);
+        }
         if (bits(byteMask, 3)) {
             unsigned lowIdx = affectState ? 24 : 27;
             bitMask = bitMask | mask(31, lowIdx);
@@ -244,7 +281,7 @@ class ArmStaticInst : public StaticInst
                         validModeChange = false;
                     // There is no Hyp mode ('11010') in Secure state, so that
                     // is UNPREDICTABLE
-                    if (scr.ns == '0' && newMode == MODE_HYP)
+                    if (scr.ns == 0 && newMode == MODE_HYP)
                         validModeChange = false;
                     // Cannot move into Hyp mode directly from a Non-secure
                     // PL1 mode
@@ -297,13 +334,13 @@ class ArmStaticInst : public StaticInst
     static inline Addr
     readPC(ExecContext *xc)
     {
-        return xc->pcState().instPC();
+        return xc->pcState().as<PCState>().instPC();
     }
 
     static inline void
     setNextPC(ExecContext *xc, Addr val)
     {
-        PCState pc = xc->pcState();
+        PCState pc = xc->pcState().as<PCState>();
         pc.instNPC(val);
         xc->pcState(pc);
     }
@@ -324,7 +361,8 @@ class ArmStaticInst : public StaticInst
     cSwap(T val, bool big)
     {
         const unsigned count = sizeof(T) / sizeof(E);
-        union {
+        union
+        {
             T tVal;
             E eVals[count];
         } conv;
@@ -345,7 +383,7 @@ class ArmStaticInst : public StaticInst
     static inline void
     setIWNextPC(ExecContext *xc, Addr val)
     {
-        PCState pc = xc->pcState();
+        PCState pc = xc->pcState().as<PCState>();
         pc.instIWNPC(val);
         xc->pcState(pc);
     }
@@ -355,7 +393,7 @@ class ArmStaticInst : public StaticInst
     static inline void
     setAIWNextPC(ExecContext *xc, Addr val)
     {
-        PCState pc = xc->pcState();
+        PCState pc = xc->pcState().as<PCState>();
         pc.instAIWNPC(val);
         xc->pcState(pc);
     }
@@ -476,11 +514,6 @@ class ArmStaticInst : public StaticInst
     Fault sveAccessTrap(ExceptionLevel el) const;
 
     /**
-     * Check an SVE access against CPTR_EL2 and CPTR_EL3.
-     */
-    Fault checkSveTrap(ThreadContext *tc, CPSR cpsr) const;
-
-    /**
      * Check an SVE access against CPACR_EL1, CPTR_EL2, and CPTR_EL3.
      */
     Fault checkSveEnabled(ThreadContext *tc, CPSR cpsr, CPACR cpacr) const;
@@ -555,6 +588,8 @@ class ArmStaticInst : public StaticInst
         return getCurSveVecLenInBits(tc) / (8 * sizeof(T));
     }
 };
-}
+
+} // namespace ArmISA
+} // namespace gem5
 
 #endif //__ARCH_ARM_INSTS_STATICINST_HH__

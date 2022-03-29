@@ -31,13 +31,18 @@
 #include "debug/HWPrefetch.hh"
 #include "params/SBOOEPrefetcher.hh"
 
-namespace Prefetcher {
+namespace gem5
+{
 
-SBOOE::SBOOE(const SBOOEPrefetcherParams *p)
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
+
+SBOOE::SBOOE(const SBOOEPrefetcherParams &p)
     : Queued(p),
-      sequentialPrefetchers(p->sequential_prefetchers),
-      scoreThreshold((p->sandbox_entries*p->score_threshold_pct)/100),
-      latencyBuffer(p->latency_buffer_size),
+      sequentialPrefetchers(p.sequential_prefetchers),
+      scoreThreshold((p.sandbox_entries*p.score_threshold_pct)/100),
+      latencyBuffer(p.latency_buffer_size),
       averageAccessLatency(0), latencyBufferSum(0),
       bestSandbox(NULL),
       accesses(0)
@@ -45,7 +50,7 @@ SBOOE::SBOOE(const SBOOEPrefetcherParams *p)
     // Initialize a sandbox for every sequential prefetcher between
     // -1 and the number of sequential prefetchers defined
     for (int i = 0; i < sequentialPrefetchers; i++) {
-        sandboxes.push_back(Sandbox(p->sandbox_entries, i-1));
+        sandboxes.push_back(Sandbox(p.sandbox_entries, i-1));
     }
 }
 
@@ -132,10 +137,5 @@ SBOOE::calculatePrefetch(const PrefetchInfo &pfi,
     }
 }
 
-} // namespace Prefetcher
-
-Prefetcher::SBOOE*
-SBOOEPrefetcherParams::create()
-{
-    return new Prefetcher::SBOOE(this);
-}
+} // namespace prefetch
+} // namespace gem5

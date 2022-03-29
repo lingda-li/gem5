@@ -32,29 +32,34 @@
 #include "mem/cache/prefetch/associative_set_impl.hh"
 #include "params/IrregularStreamBufferPrefetcher.hh"
 
-namespace Prefetcher {
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
 
 IrregularStreamBuffer::IrregularStreamBuffer(
-    const IrregularStreamBufferPrefetcherParams *p)
+    const IrregularStreamBufferPrefetcherParams &p)
   : Queued(p),
-    chunkSize(p->chunk_size),
-    prefetchCandidatesPerEntry(p->prefetch_candidates_per_entry),
-    degree(p->degree),
-    trainingUnit(p->training_unit_assoc, p->training_unit_entries,
-                 p->training_unit_indexing_policy,
-                 p->training_unit_replacement_policy),
-    psAddressMappingCache(p->address_map_cache_assoc,
-                          p->address_map_cache_entries,
-                          p->ps_address_map_cache_indexing_policy,
-                          p->ps_address_map_cache_replacement_policy,
+    chunkSize(p.chunk_size),
+    prefetchCandidatesPerEntry(p.prefetch_candidates_per_entry),
+    degree(p.degree),
+    trainingUnit(p.training_unit_assoc, p.training_unit_entries,
+                 p.training_unit_indexing_policy,
+                 p.training_unit_replacement_policy),
+    psAddressMappingCache(p.address_map_cache_assoc,
+                          p.address_map_cache_entries,
+                          p.ps_address_map_cache_indexing_policy,
+                          p.ps_address_map_cache_replacement_policy,
                           AddressMappingEntry(prefetchCandidatesPerEntry,
-                                              p->num_counter_bits)),
-    spAddressMappingCache(p->address_map_cache_assoc,
-                          p->address_map_cache_entries,
-                          p->sp_address_map_cache_indexing_policy,
-                          p->sp_address_map_cache_replacement_policy,
+                                              p.num_counter_bits)),
+    spAddressMappingCache(p.address_map_cache_assoc,
+                          p.address_map_cache_entries,
+                          p.sp_address_map_cache_indexing_policy,
+                          p.sp_address_map_cache_replacement_policy,
                           AddressMappingEntry(prefetchCandidatesPerEntry,
-                                              p->num_counter_bits)),
+                                              p.num_counter_bits)),
     structuralAddressCounter(0)
 {
     assert(isPowerOf2(prefetchCandidatesPerEntry));
@@ -208,10 +213,5 @@ IrregularStreamBuffer::addStructuralToPhysicalEntry(
     mapping.counter++;
 }
 
-} // namespace Prefetcher
-
-Prefetcher::IrregularStreamBuffer*
-IrregularStreamBufferPrefetcherParams::create()
-{
-    return new Prefetcher::IrregularStreamBuffer(this);
-}
+} // namespace prefetch
+} // namespace gem5

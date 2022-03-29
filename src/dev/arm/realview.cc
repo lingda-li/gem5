@@ -44,17 +44,14 @@
 
 #include "dev/arm/realview.hh"
 
-#include <deque>
-#include <string>
-#include <vector>
-
-#include "cpu/intr_control.hh"
+#include "base/logging.hh"
 #include "dev/arm/base_gic.hh"
-#include "sim/system.hh"
 
+namespace gem5
+{
 
-RealView::RealView(const Params *p)
-    : Platform(p), system(p->system), gic(nullptr)
+RealView::RealView(const Params &p)
+    : Platform(p), gic(nullptr)
 {}
 
 void
@@ -83,8 +80,4 @@ RealView::clearPciInt(int line)
     gic->clearInt(line);
 }
 
-RealView *
-RealViewParams::create()
-{
-    return new RealView(this);
-}
+} // namespace gem5

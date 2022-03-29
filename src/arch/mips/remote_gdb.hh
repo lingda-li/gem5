@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 LabWare
+ * Copyright 2015-2020 LabWare
  * Copyright 2014 Google, Inc.
  * Copyright (c) 2007 The Regents of The University of Michigan
  * All rights reserved.
@@ -31,9 +31,11 @@
 #ifndef __ARCH_MIPS_REMOTE_GDB_HH__
 #define __ARCH_MIPS_REMOTE_GDB_HH__
 
-#include "arch/mips/registers.hh"
 #include "base/bitfield.hh"
 #include "base/remote_gdb.hh"
+
+namespace gem5
+{
 
 class System;
 class ThreadContext;
@@ -50,7 +52,8 @@ class RemoteGDB : public BaseRemoteGDB
     {
       using BaseGdbRegCache::BaseGdbRegCache;
       private:
-        struct {
+        struct
+        {
             uint32_t gpr[32];
             uint32_t sr;
             uint32_t lo;
@@ -77,10 +80,17 @@ class RemoteGDB : public BaseRemoteGDB
     MipsGdbRegCache regCache;
 
   public:
-    RemoteGDB(System *_system, ThreadContext *tc, int _port);
+    RemoteGDB(System *_system, int _port);
     BaseGdbRegCache *gdbRegs();
+    std::vector<std::string>
+    availableFeatures() const
+    {
+        return {"qXfer:features:read+"};
+    };
+    bool getXferFeaturesRead(const std::string &annex, std::string &output);
 };
 
 } // namespace MipsISA
+} // namespace gem5
 
 #endif /* __ARCH_MIPS_REMOTE_GDB_H__ */

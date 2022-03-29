@@ -38,9 +38,6 @@ Research Starter Kit on System Modeling. More information can be found
 at: http://www.arm.com/ResearchEnablement/SystemModeling
 """
 
-from __future__ import print_function
-from __future__ import absolute_import
-
 import os
 import m5
 from m5.util import addToPath
@@ -63,14 +60,12 @@ import devices
 # l1_icache_class, l1_dcache_class, walk_cache_class, l2_Cache_class). Any of
 # the cache class may be 'None' if the particular cache is not present.
 cpu_types = {
-    "atomic" : ( AtomicSimpleCPU, None, None, None, None),
+    "atomic" : ( AtomicSimpleCPU, None, None, None),
     "minor" : (MinorCPU,
                devices.L1I, devices.L1D,
-               devices.WalkCache,
                devices.L2),
     "hpi" : ( HPI.HPI,
               HPI.HPI_ICache, HPI.HPI_DCache,
-              HPI.HPI_WalkCache,
               HPI.HPI_L2),
     "ac" : (AtomicSimpleCPU,
             devices.L1I, devices.L1D, devices.WalkCache, devices.L2),
@@ -105,7 +100,7 @@ class SimpleSeSystem(System):
 
         # Wire up the system port that gem5 uses to load the kernel
         # and to perform debug accesses.
-        self.system_port = self.membus.slave
+        self.system_port = self.membus.cpu_side_ports
 
 
         # Add CPUs to the system. A cluster of CPUs typically have
@@ -163,6 +158,7 @@ def get_processes(cmd):
         argv = shlex.split(c)
 
         process = Process(pid=100 + idx, cwd=cwd, cmd=argv, executable=argv[0])
+        process.gid = os.getgid()
 
         print("info: %d. command and arguments: %s" % (idx + 1, process.cmd))
         multiprocesses.append(process)
@@ -190,6 +186,8 @@ def create(args):
         print("Error: Cannot map %d command(s) onto %d CPU(s)" %
               (len(processes), args.num_cores))
         sys.exit(1)
+
+    system.workload = SEWorkload.init_compatible(processes[0].executable)
 
     # Assign one workload to each CPU
     for cpu, workload in zip(system.cpu_cluster.cpus, processes):

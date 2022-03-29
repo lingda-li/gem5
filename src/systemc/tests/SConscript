@@ -23,14 +23,13 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import print_function
-
 Import('*')
 
 if env['USE_SYSTEMC'] and GetOption('with_systemc_tests'):
 
     from gem5_scons import Transform
 
+    import os
     import os.path
     import json
 
@@ -64,7 +63,8 @@ if env['USE_SYSTEMC'] and GetOption('with_systemc_tests'):
     test_dir = Dir('.')
     class SystemCTestBin(Executable):
         def __init__(self, test):
-            super(SystemCTestBin, self).__init__(test.target, *test.sources)
+            all_sources = test.sources + [with_tag('main')]
+            super().__init__(test.target, *all_sources)
             self.reldir = test.reldir
             self.test_deps = test.deps
 
@@ -75,30 +75,20 @@ if env['USE_SYSTEMC'] and GetOption('with_systemc_tests'):
             # Turn off extra warnings and Werror for the tests.
             to_remove = ['-Wall', '-Wundef', '-Wextra', '-Werror']
             env['CCFLAGS'] = \
-                filter(lambda f: f not in to_remove, env['CCFLAGS'])
+                list(filter(lambda f: f not in to_remove, env['CCFLAGS']))
 
             env.Append(CPPPATH=test_dir.Dir('include'))
 
-            shared_lib_path = env['SHARED_LIB'][0].abspath
-            sl_dir, sl_base = os.path.split(shared_lib_path)
-            env.Append(LIBPATH=[sl_dir], LIBS=[sl_base])
+            env.Append(LIBPATH=['${BUILDDIR}'], LIBS=['gem5_${ENV_LABEL}'])
+            env.AddLocalRPATH('${BUILDDIR}')
 
-            super(SystemCTestBin, cls).declare_all(env)
+            env['OBJSUFFIX'] = '.sc' + env['OBJSUFFIX'][1:]
+            env['SHOBJSUFFIX'] = '.sc' + env['OBJSUFFIX'][1:]
+
+            super().declare_all(env)
 
         def declare(self, env):
-            env = env.Clone()
-            sources = list(self.sources)
-            for f in self.filters:
-                sources += Source.all.apply_filter(f)
-            objs = self.srcs_to_objs(env, sources)
-            objs = objs + env['MAIN_OBJS']
-            relpath = os.path.relpath(
-                    env['SHARED_LIB'][0].dir.abspath,
-                    self.path(env).dir.abspath)
-            env.Append(LINKFLAGS=Split('-z origin'))
-            env.Append(RPATH=[
-                    env.Literal(os.path.join('\\$$ORIGIN', relpath))])
-            test_bin = super(SystemCTestBin, self).declare(env, objs)
+            test_bin, _u = super().declare(env)
             test_dir = self.dir.Dir(self.reldir)
             for dep in self.test_deps:
                 env.Depends(test_bin, test_dir.File(dep))
@@ -112,26 +102,28 @@ if env['USE_SYSTEMC'] and GetOption('with_systemc_tests'):
 
 
     def scan_dir_for_tests(subdir):
-        def visitor(arg, dirname, names):
+        subdir_src = Dir('.').srcdir.Dir(subdir)
+        for root, dirs, files in os.walk(str(subdir_src)):
             # If there's a 'DONTRUN' file in this directory, skip it and any
             # child directories.
-            if 'DONTRUN' in names:
-                del names[:]
+            if 'DONTRUN' in files:
+                del dirs[:]
                 return
 
-            endswith = lambda sfx: filter(lambda n: n.endswith(sfx), names)
+            endswith = lambda sfx: list(filter(
+                        lambda n: n.endswith(sfx), files))
 
             cpps = endswith('.cpp')
             if not cpps:
-                return
+                continue
 
             def get_entries(fname):
-                with open(os.path.join(dirname, fname)) as content:
+                with open(os.path.join(root, fname)) as content:
                     lines = content.readlines
                     # Get rid of leading and trailing whitespace.
                     lines = map(lambda x: x.strip(), content.readlines())
                     # Get rid of blank lines.
-                    lines = filter(lambda x: x, lines)
+                    lines = list(filter(lambda x: x, lines))
                     return lines
 
             # If there's only one source file, then that files name is the test
@@ -139,7 +131,7 @@ if env['USE_SYSTEMC'] and GetOption('with_systemc_tests'):
             if len(cpps) == 1:
                 cpp = cpps[0]
 
-                test = new_test(dirname, os.path.splitext(cpp)[0])
+                test = new_test(root, os.path.splitext(cpp)[0])
                 test.add_source(cpp)
 
             # Otherwise, expect there to be a file that ends in .f. That files
@@ -149,24 +141,21 @@ if env['USE_SYSTEMC'] and GetOption('with_systemc_tests'):
                 fs = endswith('.f')
                 if len(fs) != 1:
                     print("In %s, expected 1 *.f file, but found %d.",
-                          dirname, len(fs))
+                          root, len(fs))
                     for f in fs:
-                        print(os.path.join(dirname, f))
+                        print(os.path.join(root, f))
                     return
                 f = fs[0]
 
-                test = new_test(dirname, os.path.splitext(f)[0])
+                test = new_test(root, os.path.splitext(f)[0])
                 # Add all the sources to this test.
                 test.add_sources(get_entries(f))
 
-            if 'COMPILE' in names:
+            if 'COMPILE' in files:
                 test.compile_only = True
 
-            if 'DEPS' in names:
+            if 'DEPS' in files:
                 test.deps = get_entries('DEPS')
-
-        subdir_src = Dir('.').srcdir.Dir(subdir)
-        os.path.walk(str(subdir_src), visitor, None)
 
     scan_dir_for_tests('systemc')
     scan_dir_for_tests('tlm')

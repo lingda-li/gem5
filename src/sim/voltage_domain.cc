@@ -39,14 +39,17 @@
 
 #include <algorithm>
 
-#include "base/statistics.hh"
+#include "base/logging.hh"
 #include "base/trace.hh"
 #include "debug/VoltageDomain.hh"
 #include "params/VoltageDomain.hh"
-#include "sim/sim_object.hh"
+#include "sim/serialize.hh"
 
-VoltageDomain::VoltageDomain(const Params *p)
-    : SimObject(p), voltageOpPoints(p->voltage), _perfLevel(0), stats(*this)
+namespace gem5
+{
+
+VoltageDomain::VoltageDomain(const Params &p)
+    : SimObject(p), voltageOpPoints(p.voltage), _perfLevel(0), stats(*this)
 {
     fatal_if(voltageOpPoints.empty(), "DVFS: Empty set of voltages for "\
              "voltage domain %s\n", name());
@@ -61,9 +64,9 @@ VoltageDomain::VoltageDomain(const Params *p)
 void
 VoltageDomain::perfLevel(PerfLevel perf_level)
 {
-    chatty_assert(perf_level < voltageOpPoints.size(),
-                  "DVFS: Requested voltage ID %d is outside the known "\
-                  "range for domain %s.\n", perf_level, name());
+    gem5_assert(perf_level < voltageOpPoints.size(),
+                "DVFS: Requested voltage ID %d is outside the known "\
+                "range for domain %s.\n", perf_level, name());
 
     if (perf_level == _perfLevel) {
         // Silently ignore identical overwrites
@@ -85,11 +88,12 @@ VoltageDomain::sanitiseVoltages()
     // Find the highest requested performance level and update the voltage
     // domain with it
     PerfLevel perf_max = (PerfLevel)-1;
-    for (auto dit = srcClockChildren.begin(); dit != srcClockChildren.end(); ++dit) {
+    for (auto dit = srcClockChildren.begin(); dit != srcClockChildren.end();
+            ++dit) {
         SrcClockDomain* d = *dit;
-        chatty_assert(d->voltageDomain() == this, "DVFS: Clock domain %s "\
-                      "(id: %d) should not be registered with voltage domain "\
-                      "%s\n", d->name(), d->domainID(), name());
+        gem5_assert(d->voltageDomain() == this, "DVFS: Clock domain %s "\
+                    "(id: %d) should not be registered with voltage domain "\
+                    "%s\n", d->name(), d->domainID(), name());
 
         PerfLevel perf = d->perfLevel();
 
@@ -124,12 +128,6 @@ VoltageDomain::startup() {
     }
 }
 
-VoltageDomain *
-VoltageDomainParams::create()
-{
-    return new VoltageDomain(this);
-}
-
 void
 VoltageDomain::serialize(CheckpointOut &cp) const
 {
@@ -144,8 +142,10 @@ VoltageDomain::unserialize(CheckpointIn &cp)
 }
 
 VoltageDomain::VoltageDomainStats::VoltageDomainStats(VoltageDomain &vd)
-    : Stats::Group(&vd),
-    ADD_STAT(voltage, "Voltage in Volts")
+    : statistics::Group(&vd),
+    ADD_STAT(voltage, statistics::units::Volt::get(), "Voltage in Volts")
 {
     voltage.method(&vd, &VoltageDomain::voltage);
 }
+
+} // namespace gem5

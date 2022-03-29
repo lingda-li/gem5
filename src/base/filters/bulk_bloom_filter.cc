@@ -35,9 +35,14 @@
 #include "base/logging.hh"
 #include "params/BloomFilterBulk.hh"
 
-namespace BloomFilter {
+namespace gem5
+{
 
-Bulk::Bulk(const BloomFilterBulkParams* p)
+GEM5_DEPRECATED_NAMESPACE(BloomFilter, bloom_filter);
+namespace bloom_filter
+{
+
+Bulk::Bulk(const BloomFilterBulkParams &p)
     : MultiBitSel(p), sectorBits(floorLog2(parFilterSize))
 {
     fatal_if((numHashes * sectorBits) >
@@ -95,11 +100,5 @@ Bulk::permute(Addr addr) const
     return result;
 }
 
-} // namespace BloomFilter
-
-BloomFilter::Bulk*
-BloomFilterBulkParams::create()
-{
-    return new BloomFilter::Bulk(this);
-}
-
+} // namespace bloom_filter
+} // namespace gem5

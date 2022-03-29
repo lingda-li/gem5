@@ -28,21 +28,25 @@
 
 #include "arch/sparc/insts/trap.hh"
 
+namespace gem5
+{
+
 namespace SparcISA
 {
 
 std::string
-Trap::generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+Trap::generateDisassembly(Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream response;
 
     printMnemonic(response, mnemonic);
     ccprintf(response, " ");
-    printReg(response, _srcRegIdx[0]);
+    printReg(response, srcRegIdx(0));
     ccprintf(response, ", 0x%x", trapNum);
     ccprintf(response, ", or ");
-    printReg(response, _srcRegIdx[1]);
+    printReg(response, srcRegIdx(1));
     return response.str();
 }
 
-}
+} // namespace SparcISA
+} // namespace gem5

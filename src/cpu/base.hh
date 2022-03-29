@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013, 2017 ARM Limited
+ * Copyright (c) 2011-2013, 2017, 2020 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -47,13 +47,15 @@
 // Before we do anything else, check if this build is the NULL ISA,
 // and if so stop here
 #include "config/the_isa.hh"
-#if THE_ISA == NULL_ISA
-#include "arch/null/cpu_dummy.hh"
+
+#if IS_NULL_ISA
+#error Including BaseCPU in a system without CPU support
 #else
 #include "arch/generic/interrupts.hh"
-#include "arch/isa_traits.hh"
-#include "arch/microcode_rom.hh"
 #include "base/statistics.hh"
+#include "debug/Mwait.hh"
+#include "mem/htm.hh"
+#include "mem/port_proxy.hh"
 #include "sim/clocked_object.hh"
 #include "sim/eventq.hh"
 #include "sim/full_system.hh"
@@ -61,7 +63,9 @@
 #include "sim/probe/pmu.hh"
 #include "sim/probe/probe.hh"
 #include "sim/system.hh"
-#include "debug/Mwait.hh"
+
+namespace gem5
+{
 
 class BaseCPU;
 struct BaseCPUParams;
@@ -124,10 +128,10 @@ class BaseCPU : public ClockedObject
     const uint32_t _socketId;
 
     /** instruction side request id that must be placed in all requests */
-    MasterID _instMasterId;
+    RequestorID _instRequestorId;
 
     /** data side request id that must be placed in all requests */
-    MasterID _dataMasterId;
+    RequestorID _dataRequestorId;
 
     /** An intrenal representation of a task identifier within gem5. This is
      * used so the CPU can add which taskId (which is an internal representation
@@ -146,6 +150,24 @@ class BaseCPU : public ClockedObject
     /** Cache the cache line size that we get from the system */
     const unsigned int _cacheLineSize;
 
+    /** Global CPU statistics that are merged into the Root object. */
+    struct GlobalStats : public statistics::Group
+    {
+        GlobalStats(statistics::Group *parent);
+
+        statistics::Value simInsts;
+        statistics::Value simOps;
+
+        statistics::Formula hostInstRate;
+        statistics::Formula hostOpRate;
+    };
+
+    /**
+     * Pointer to the global stat structure. This needs to be
+     * constructed from regStats since we merge it into the root
+     * group. */
+    static std::unique_ptr<GlobalStats> globalStats;
+
   public:
 
     /**
@@ -155,17 +177,6 @@ class BaseCPU : public ClockedObject
      * @return a reference to the data port
      */
     virtual Port &getDataPort() = 0;
-
-    /**
-     * Returns a sendFunctional delegate for use with port proxies.
-     */
-    virtual PortProxy::SendFunctionalFunc
-    getSendFunctional()
-    {
-        auto port = dynamic_cast<MasterPort *>(&getDataPort());
-        assert(port);
-        return [port](PacketPtr pkt)->void { port->sendFunctional(pkt); };
-    }
 
     /**
      * Purely virtual method that returns a reference to the instruction
@@ -182,9 +193,9 @@ class BaseCPU : public ClockedObject
     uint32_t socketId() const { return _socketId; }
 
     /** Reads this CPU's unique data requestor ID */
-    MasterID dataMasterId() const { return _dataMasterId; }
+    RequestorID dataRequestorId() const { return _dataRequestorId; }
     /** Reads this CPU's unique instruction requestor ID */
-    MasterID instMasterId() const { return _instMasterId; }
+    RequestorID instRequestorId() const { return _instRequestorId; }
 
     /**
      * Get a port on this CPU. All CPUs have a data and
@@ -207,12 +218,10 @@ class BaseCPU : public ClockedObject
     uint32_t getPid() const { return _pid; }
     void setPid(uint32_t pid) { _pid = pid; }
 
-    inline void workItemBegin() { numWorkItemsStarted++; }
-    inline void workItemEnd() { numWorkItemsCompleted++; }
+    inline void workItemBegin() { baseStats.numWorkItemsStarted++; }
+    inline void workItemEnd() { baseStats.numWorkItemsCompleted++; }
     // @todo remove me after debugging with legion done
     Tick instCount() { return instCnt; }
-
-    TheISA::MicrocodeRom microcodeRom;
 
   protected:
     std::vector<BaseInterrupts*> interrupts;
@@ -230,13 +239,7 @@ class BaseCPU : public ClockedObject
 
     virtual void wakeup(ThreadID tid) = 0;
 
-    void
-    postInterrupt(ThreadID tid, int int_num, int index)
-    {
-        interrupts[tid]->post(int_num, index);
-        if (FullSystem)
-            wakeup(tid);
-    }
+    void postInterrupt(ThreadID tid, int int_num, int index);
 
     void
     clearInterrupt(ThreadID tid, int int_num, int index)
@@ -251,13 +254,10 @@ class BaseCPU : public ClockedObject
     }
 
     bool
-    checkInterrupts(ThreadContext *tc) const
+    checkInterrupts(ThreadID tid) const
     {
-        return FullSystem && interrupts[tc->threadId()]->checkInterrupts(tc);
+        return FullSystem && interrupts[tid]->checkInterrupts();
     }
-
-    void processProfileEvent();
-    EventFunctionWrapper * profileEvent;
 
   protected:
     std::vector<ThreadContext *> threadContexts;
@@ -270,9 +270,6 @@ class BaseCPU : public ClockedObject
     /** Invalid or unknown Pid. Possible when operating system is not present
      *  or has not assigned a pid yet */
     static const uint32_t invldPid = std::numeric_limits<uint32_t>::max();
-
-    // Mask to align PCs to MachInst sized boundaries
-    static const Addr PCMask = ~((Addr)sizeof(TheISA::MachInst) - 1);
 
     /// Provide access to the tracer pointer
     Trace::InstTracer * getTracer() { return tracer; }
@@ -287,26 +284,29 @@ class BaseCPU : public ClockedObject
     /// Notify the CPU that the indicated context is now halted.
     virtual void haltContext(ThreadID thread_num);
 
-   /// Given a Thread Context pointer return the thread num
-   int findContext(ThreadContext *tc);
+    /// Given a Thread Context pointer return the thread num
+    int findContext(ThreadContext *tc);
 
-   /// Given a thread num get tho thread context for it
-   virtual ThreadContext *getContext(int tn) { return threadContexts[tn]; }
+    /// Given a thread num get tho thread context for it
+    virtual ThreadContext *getContext(int tn) { return threadContexts[tn]; }
 
-   /// Get the number of thread contexts available
-   unsigned numContexts() {
-       return static_cast<unsigned>(threadContexts.size());
-   }
+    /// Get the number of thread contexts available
+    unsigned
+    numContexts()
+    {
+        return static_cast<unsigned>(threadContexts.size());
+    }
 
     /// Convert ContextID to threadID
-    ThreadID contextToThread(ContextID cid)
-    { return static_cast<ThreadID>(cid - threadContexts[0]->contextId()); }
+    ThreadID
+    contextToThread(ContextID cid)
+    {
+        return static_cast<ThreadID>(cid - threadContexts[0]->contextId());
+    }
 
   public:
-    typedef BaseCPUParams Params;
-    const Params *params() const
-    { return reinterpret_cast<const Params *>(_params); }
-    BaseCPU(Params *params, bool is_checker = false);
+    PARAMS(BaseCPU);
+    BaseCPU(const Params &params, bool is_checker = false);
     virtual ~BaseCPU();
 
     void init() override;
@@ -477,7 +477,7 @@ class BaseCPU : public ClockedObject
      * @param name Name of the probe point.
      * @return A unique_ptr to the new probe point.
      */
-    ProbePoints::PMUUPtr pmuProbePoint(const char *name);
+    probing::PMUUPtr pmuProbePoint(const char *name);
 
     /**
      * Instruction commit probe point.
@@ -487,22 +487,22 @@ class BaseCPU : public ClockedObject
      * instruction. However, CPU models committing bundles of
      * instructions may call notify once for the entire bundle.
      */
-    ProbePoints::PMUUPtr ppRetiredInsts;
-    ProbePoints::PMUUPtr ppRetiredInstsPC;
+    probing::PMUUPtr ppRetiredInsts;
+    probing::PMUUPtr ppRetiredInstsPC;
 
     /** Retired load instructions */
-    ProbePoints::PMUUPtr ppRetiredLoads;
+    probing::PMUUPtr ppRetiredLoads;
     /** Retired store instructions */
-    ProbePoints::PMUUPtr ppRetiredStores;
+    probing::PMUUPtr ppRetiredStores;
 
     /** Retired branches (any type) */
-    ProbePoints::PMUUPtr ppRetiredBranches;
+    probing::PMUUPtr ppRetiredBranches;
 
     /** CPU cycle counter even if any thread Context is suspended*/
-    ProbePoints::PMUUPtr ppAllCycles;
+    probing::PMUUPtr ppAllCycles;
 
     /** CPU cycle counter, only counts if any thread contexts is active **/
-    ProbePoints::PMUUPtr ppActiveCycles;
+    probing::PMUUPtr ppActiveCycles;
 
     /**
      * ProbePoint that signals transitions of threadContexts sets.
@@ -515,7 +515,8 @@ class BaseCPU : public ClockedObject
     ProbePointArg<bool> *ppSleeping;
     /** @} */
 
-    enum CPUState {
+    enum CPUState
+    {
         CPU_STATE_ON,
         CPU_STATE_SLEEP,
         CPU_STATE_WAKEUP
@@ -525,7 +526,8 @@ class BaseCPU : public ClockedObject
     CPUState previousState;
 
     /** base method keeping track of cycle progression **/
-    inline void updateCycleCounters(CPUState state)
+    inline void
+    updateCycleCounters(CPUState state)
     {
         uint32_t delta = curCycle() - previousCycle;
 
@@ -533,8 +535,7 @@ class BaseCPU : public ClockedObject
             ppActiveCycles->notify(delta);
         }
 
-        switch (state)
-        {
+        switch (state) {
           case CPU_STATE_WAKEUP:
             ppSleeping->notify(false);
             break;
@@ -565,14 +566,16 @@ class BaseCPU : public ClockedObject
     static std::vector<BaseCPU *> cpuList;   //!< Static global cpu list
 
   public:
-    void traceFunctions(Addr pc)
+    void
+    traceFunctions(Addr pc)
     {
         if (functionTracingEnabled)
             traceFunctionsInternal(pc);
     }
 
     static int numSimulatedCPUs() { return cpuList.size(); }
-    static Counter numSimulatedInsts()
+    static Counter
+    numSimulatedInsts()
     {
         Counter total = 0;
 
@@ -583,7 +586,8 @@ class BaseCPU : public ClockedObject
         return total;
     }
 
-    static Counter numSimulatedOps()
+    static Counter
+    numSimulatedOps()
     {
         Counter total = 0;
 
@@ -595,10 +599,14 @@ class BaseCPU : public ClockedObject
     }
 
   public:
-    // Number of CPU cycles simulated
-    Stats::Scalar numCycles;
-    Stats::Scalar numWorkItemsStarted;
-    Stats::Scalar numWorkItemsCompleted;
+    struct BaseCPUStats : public statistics::Group
+    {
+        BaseCPUStats(statistics::Group *parent);
+        // Number of CPU cycles simulated
+        statistics::Scalar numCycles;
+        statistics::Scalar numWorkItemsStarted;
+        statistics::Scalar numWorkItemsCompleted;
+    } baseStats;
 
   private:
     std::vector<AddressMonitor> addressMonitor;
@@ -606,16 +614,30 @@ class BaseCPU : public ClockedObject
   public:
     void armMonitor(ThreadID tid, Addr address);
     bool mwait(ThreadID tid, PacketPtr pkt);
-    void mwaitAtomic(ThreadID tid, ThreadContext *tc, BaseTLB *dtb);
-    AddressMonitor *getCpuAddrMonitor(ThreadID tid)
+    void mwaitAtomic(ThreadID tid, ThreadContext *tc, BaseMMU *mmu);
+    AddressMonitor *
+    getCpuAddrMonitor(ThreadID tid)
     {
         assert(tid < numThreads);
         return &addressMonitor[tid];
     }
 
-    bool waitForRemoteGDB() const;
-
     Cycles syscallRetryLatency;
+
+    /** This function is used to instruct the memory subsystem that a
+     * transaction should be aborted and the speculative state should be
+     * thrown away.  This is called in the transaction's very last breath in
+     * the core.  Afterwards, the core throws away its speculative state and
+     * resumes execution at the point the transaction started, i.e. reverses
+     * time.  When instruction execution resumes, the core expects the
+     * memory subsystem to be in a stable, i.e. pre-speculative, state as
+     * well. */
+    virtual void
+    htmSendAbortSignal(ThreadID tid, uint64_t htm_uid,
+                       HtmFailureFaultCause cause)
+    {
+        panic("htmSendAbortSignal not implemented");
+    }
 
   // Enables CPU to enter power gating on a configurable cycle count
   protected:
@@ -630,6 +652,8 @@ class BaseCPU : public ClockedObject
     bool phaseSquash;
 };
 
-#endif // THE_ISA == NULL_ISA
+} // namespace gem5
+
+#endif // !IS_NULL_ISA
 
 #endif // __CPU_BASE_HH__

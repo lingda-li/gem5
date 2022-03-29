@@ -49,6 +49,12 @@
 #include "mem/ruby/system/RubyPort.hh"
 #include "params/RubyPortProxy.hh"
 
+namespace gem5
+{
+
+namespace ruby
+{
+
 class RubyPortProxy : public RubyPort
 {
 
@@ -59,7 +65,7 @@ class RubyPortProxy : public RubyPort
      *
      * @param p Parameters inherited from the RubyPort
      */
-    RubyPortProxy(const RubyPortProxyParams* p);
+    RubyPortProxy(const RubyPortProxyParams &p);
 
     /**
      * Destruct a RubyPortProxy.
@@ -108,5 +114,8 @@ class RubyPortProxy : public RubyPort
     void descheduleDeadlockEvent() { }
 
 };
+
+} // namespace ruby
+} // namespace gem5
 
 #endif // __MEM_RUBY_SYSTEM_RUBYPORTPROXY_HH__

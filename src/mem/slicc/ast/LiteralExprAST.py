@@ -30,14 +30,14 @@ from slicc.symbols import Type
 
 class LiteralExprAST(ExprAST):
     def __init__(self, slicc, literal, type):
-        super(LiteralExprAST, self).__init__(slicc)
+        super().__init__(slicc)
         self.literal = literal
         self.type = type
 
     def __repr__(self):
         return "[Literal: %s]" % self.literal
 
-    def generate(self, code):
+    def generate(self, code, **kwargs):
         fix = code.nofix()
         if self.type == "std::string":
             code('("${{self.literal}}")')

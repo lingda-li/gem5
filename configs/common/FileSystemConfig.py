@@ -36,12 +36,11 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import print_function
-
 import m5
 from m5.objects import *
 from m5.util.convert import *
 
+from functools import reduce
 import operator, os, platform, getpass
 from os import mkdir, makedirs, getpid, listdir, stat, access
 from pwd import getpwuid
@@ -218,6 +217,8 @@ def register_cache(level, idu_type, size, line_size, assoc, cpus):
         file_append((indexdir, 'number_of_sets'), num_sets)
         file_append((indexdir, 'physical_line_partition'), '1')
         file_append((indexdir, 'shared_cpu_map'), hex_mask(cpus))
+        file_append((indexdir, 'shared_cpu_list'),
+                    ','.join(str(cpu) for cpu in cpus))
 
 def _redirect_paths(options):
     # Redirect filesystem syscalls from src to the first matching dests

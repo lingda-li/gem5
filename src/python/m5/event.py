@@ -38,8 +38,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import print_function
-
 import m5
 import _m5.event
 
@@ -53,7 +51,7 @@ class EventWrapper(Event):
     """Helper class to wrap callable objects in an Event base class"""
 
     def __init__(self, func, **kwargs):
-        super(EventWrapper, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         if not callable(func):
             raise RuntimeError("Can't wrap '%s', object is not callable" % \
@@ -70,7 +68,7 @@ class EventWrapper(Event):
 
 class ProgressEvent(Event):
     def __init__(self, eventq, period):
-        super(ProgressEvent, self).__init__()
+        super().__init__()
         self.period = int(period)
         self.eventq = eventq
         self.eventq.schedule(self, m5.curTick() + self.period)

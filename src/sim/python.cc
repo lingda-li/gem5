@@ -29,13 +29,16 @@
 #include "sim/init.hh"
 #include "sim/port.hh"
 
+namespace gem5
+{
+
 namespace
 {
 
 void
-sim_pybind(pybind11::module &m_internal)
+sim_pybind(pybind11::module_ &m_internal)
 {
-    pybind11::module m = m_internal.def_submodule("sim");
+    pybind11::module_ m = m_internal.def_submodule("sim");
     pybind11::class_<
         Port, std::unique_ptr<Port, pybind11::nodelete>>(m, "Port")
         .def("bind", &Port::bind)
@@ -44,3 +47,4 @@ sim_pybind(pybind11::module &m_internal)
 EmbeddedPyBind embed_("sim", &sim_pybind);
 
 } // anonymous namespace
+} // namespace gem5

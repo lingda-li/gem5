@@ -35,10 +35,6 @@ IMPORTANT: If you modify this file, it's likely that the Learning gem5 book
 
 """
 
-from __future__ import print_function
-from __future__ import absolute_import
-
-
 # import the m5 (gem5) library created when gem5 is built
 import m5
 # import all of the SimObjects
@@ -63,8 +59,8 @@ system.cpu = TimingSimpleCPU()
 system.membus = SystemXBar()
 
 # Hook the CPU ports up to the membus
-system.cpu.icache_port = system.membus.slave
-system.cpu.dcache_port = system.membus.slave
+system.cpu.icache_port = system.membus.cpu_side_ports
+system.cpu.dcache_port = system.membus.cpu_side_ports
 
 # create the interrupt controller for the CPU and connect to the membus
 system.cpu.createInterruptController()
@@ -72,17 +68,18 @@ system.cpu.createInterruptController()
 # For x86 only, make sure the interrupts are connected to the memory
 # Note: these are directly connected to the memory bus and are not cached
 if m5.defines.buildEnv['TARGET_ISA'] == "x86":
-    system.cpu.interrupts[0].pio = system.membus.master
-    system.cpu.interrupts[0].int_master = system.membus.slave
-    system.cpu.interrupts[0].int_slave = system.membus.master
+    system.cpu.interrupts[0].pio = system.membus.mem_side_ports
+    system.cpu.interrupts[0].int_requestor = system.membus.cpu_side_ports
+    system.cpu.interrupts[0].int_responder = system.membus.mem_side_ports
 
 # Create a DDR3 memory controller and connect it to the membus
-system.mem_ctrl = DDR3_1600_8x8()
-system.mem_ctrl.range = system.mem_ranges[0]
-system.mem_ctrl.port = system.membus.master
+system.mem_ctrl = MemCtrl()
+system.mem_ctrl.dram = DDR3_1600_8x8()
+system.mem_ctrl.dram.range = system.mem_ranges[0]
+system.mem_ctrl.port = system.membus.mem_side_ports
 
 # Connect the system up to the membus
-system.system_port = system.membus.slave
+system.system_port = system.membus.cpu_side_ports
 
 # get ISA for the binary to run.
 isa = str(m5.defines.buildEnv['TARGET_ISA']).lower()
@@ -92,6 +89,8 @@ isa = str(m5.defines.buildEnv['TARGET_ISA']).lower()
 thispath = os.path.dirname(os.path.realpath(__file__))
 binary = os.path.join(thispath, '../../../',
                       'tests/test-progs/hello/bin/', isa, 'linux/hello')
+
+system.workload = SEWorkload.init_compatible(binary)
 
 # Create a process for a simple "Hello World" application
 process = Process()

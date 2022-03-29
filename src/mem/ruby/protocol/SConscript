@@ -26,11 +26,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os
+import os.path
 import re
 import sys
-
-from os.path import isdir, isfile, join as joinpath
 
 from SCons.Scanner import Classic
 
@@ -52,12 +50,12 @@ slicc_depends = []
 for root,dirs,files in os.walk(slicc_dir.srcnode().abspath):
     for f in files:
         if f.endswith('.py'):
-            slicc_depends.append(File(joinpath(root, f)))
+            slicc_depends.append(File(os.path.join(root, f)))
 
 #
 # Use SLICC
 #
-env["SLICC_PATH"] = protocol_dirs
+env["SLICC_PATH"] = env["PROTOCOL_DIRS"]
 slicc_scanner = Classic("SliccScanner", ['.sm', '.slicc'], "SLICC_PATH",
                         r'''include[ \t]["'](.*)["'];''')
 env.Append(SCANNERS=slicc_scanner)
@@ -68,7 +66,7 @@ def slicc_emitter(target, source, env):
 
     slicc = SLICC(filepath, protocol_base.abspath, verbose=False)
     slicc.process()
-    slicc.writeCodeFiles(output_dir.abspath, slicc_includes)
+    slicc.writeCodeFiles(output_dir.abspath, env['SLICC_INCLUDES'])
     if env['SLICC_HTML']:
         slicc.writeHTMLFiles(html_dir.abspath)
 
@@ -81,7 +79,7 @@ def slicc_action(target, source, env):
 
     slicc = SLICC(filepath, protocol_base.abspath, verbose=True)
     slicc.process()
-    slicc.writeCodeFiles(output_dir.abspath, slicc_includes)
+    slicc.writeCodeFiles(output_dir.abspath, env['SLICC_INCLUDES'])
     if env['SLICC_HTML']:
         slicc.writeHTMLFiles(html_dir.abspath)
 
@@ -90,13 +88,13 @@ slicc_builder = Builder(action=MakeAction(slicc_action, Transform("SLICC")),
 
 protocol = env['PROTOCOL']
 protocol_dir = None
-for path in protocol_dirs:
-    if os.path.exists(os.path.join(path, "%s.slicc" % protocol)):
+for path in env['PROTOCOL_DIRS']:
+    if os.path.exists(path.File("%s.slicc" % protocol).abspath):
         protocol_dir = Dir(path)
         break
 
 if not protocol_dir:
-    raise ValueError("Could not find {}.slicc in protocol_dirs".format(
+    raise ValueError("Could not find {}.slicc in PROTOCOL_DIRS".format(
         protocol))
 
 sources = [ protocol_dir.File("%s.slicc" % protocol) ]
@@ -105,10 +103,17 @@ env.Append(BUILDERS={'SLICC' : slicc_builder})
 nodes = env.SLICC([], sources)
 env.Depends(nodes, slicc_depends)
 
+append = {}
+if env['CLANG']:
+    append['CCFLAGS'] = '-Wno-parentheses'
 for f in nodes:
     s = str(f)
     if s.endswith('.cc'):
-        Source(f)
+        Source(f, append=append)
     elif s.endswith('.py'):
-        SimObject(f)
+        filename = os.path.basename(s)
+        # We currently only expect ${ident}_Controller.py to be generated, and
+        # for it to contain a single SimObject with the same name.
+        assert(filename.endswith('_Controller.py'))
+        SimObject(f, sim_objects=[os.path.splitext(filename)[0]])
 

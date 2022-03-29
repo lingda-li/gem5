@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Inria
+ * Copyright (c) 2018-2020 Inria
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,6 +39,13 @@
 #include "base/intmath.hh"
 #include "base/logging.hh"
 #include "params/TreePLRURP.hh"
+
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
+namespace replacement_policy
+{
 
 /**
  * Get the index of the parent of the given indexed subtree.
@@ -89,23 +96,21 @@ isRightSubtree(const uint64_t index)
     return index%2 == 0;
 }
 
-TreePLRURP::TreePLRUReplData::TreePLRUReplData(
+TreePLRU::TreePLRUReplData::TreePLRUReplData(
     const uint64_t index, std::shared_ptr<PLRUTree> tree)
-    : index(index), tree(tree)
+  : index(index), tree(tree)
 {
 }
 
-TreePLRURP::TreePLRURP(const Params *p)
-    : BaseReplacementPolicy(p), numLeaves(p->num_leaves), count(0),
-      treeInstance(nullptr)
+TreePLRU::TreePLRU(const Params &p)
+  : Base(p), numLeaves(p.num_leaves), count(0), treeInstance(nullptr)
 {
     fatal_if(!isPowerOf2(numLeaves),
              "Number of leaves must be non-zero and a power of 2");
 }
 
 void
-TreePLRURP::invalidate(
-    const std::shared_ptr<ReplacementData>& replacement_data) const
+TreePLRU::invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
 {
     // Cast replacement data
     std::shared_ptr<TreePLRUReplData> treePLRU_replacement_data =
@@ -130,7 +135,7 @@ TreePLRURP::invalidate(
 }
 
 void
-TreePLRURP::touch(const std::shared_ptr<ReplacementData>& replacement_data)
+TreePLRU::touch(const std::shared_ptr<ReplacementData>& replacement_data)
 const
 {
     // Cast replacement data
@@ -156,7 +161,7 @@ const
 }
 
 void
-TreePLRURP::reset(const std::shared_ptr<ReplacementData>& replacement_data)
+TreePLRU::reset(const std::shared_ptr<ReplacementData>& replacement_data)
 const
 {
     // A reset has the same functionality of a touch
@@ -164,7 +169,7 @@ const
 }
 
 ReplaceableEntry*
-TreePLRURP::getVictim(const ReplacementCandidates& candidates) const
+TreePLRU::getVictim(const ReplacementCandidates& candidates) const
 {
     // There must be at least one replacement candidate
     assert(candidates.size() > 0);
@@ -192,7 +197,7 @@ TreePLRURP::getVictim(const ReplacementCandidates& candidates) const
 }
 
 std::shared_ptr<ReplacementData>
-TreePLRURP::instantiateEntry()
+TreePLRU::instantiateEntry()
 {
     // Generate a tree instance every numLeaves created
     if (count % numLeaves == 0) {
@@ -210,8 +215,5 @@ TreePLRURP::instantiateEntry()
     return std::shared_ptr<ReplacementData>(treePLRUReplData);
 }
 
-TreePLRURP*
-TreePLRURPParams::create()
-{
-    return new TreePLRURP(this);
-}
+} // namespace replacement_policy
+} // namespace gem5

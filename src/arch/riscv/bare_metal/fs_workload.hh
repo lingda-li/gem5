@@ -29,38 +29,65 @@
 #ifndef __ARCH_RISCV_BARE_METAL_SYSTEM_HH__
 #define __ARCH_RISCV_BARE_METAL_SYSTEM_HH__
 
-#include "arch/riscv/fs_workload.hh"
+#include "arch/riscv/remote_gdb.hh"
 #include "params/RiscvBareMetal.hh"
+#include "sim/workload.hh"
+
+namespace gem5
+{
 
 namespace RiscvISA
 {
 
-class BareMetal : public RiscvISA::FsWorkload
+class BareMetal : public Workload
 {
   protected:
-    Loader::ObjectFile *bootloader;
-    Loader::SymbolTable *bootloaderSymtab;
+    // checker for bare metal application
+    bool _isBareMetal;
+    // entry point for simulation
+    Addr _resetVect;
+    loader::ObjectFile *bootloader;
+    loader::SymbolTable bootloaderSymtab;
 
   public:
-    typedef RiscvBareMetalParams Params;
-    BareMetal(Params *p);
+    PARAMS(RiscvBareMetal);
+    BareMetal(const Params &p);
     ~BareMetal();
 
     void initState() override;
 
-    Loader::Arch getArch() const override { return bootloader->getArch(); }
-    const Loader::SymbolTable *
+    void
+    setSystem(System *sys) override
+    {
+        Workload::setSystem(sys);
+        gdb = BaseRemoteGDB::build<RemoteGDB>(system);
+    }
+
+    loader::Arch getArch() const override { return bootloader->getArch(); }
+    ByteOrder byteOrder() const override { return ByteOrder::little; }
+
+    const loader::SymbolTable &
     symtab(ThreadContext *tc) override
     {
         return bootloaderSymtab;
     }
+
     bool
-    insertSymbol(Addr address, const std::string &symbol) override
+    insertSymbol(const loader::Symbol &symbol) override
     {
-        return bootloaderSymtab->insert(address, symbol);
+        return bootloaderSymtab.insert(symbol);
     }
+
+    // return reset vector
+    Addr resetVect() const { return _resetVect; }
+
+    // return bare metal checker
+    bool isBareMetal() const { return _isBareMetal; }
+
+    Addr getEntry() const override { return _resetVect; }
 };
 
 } // namespace RiscvISA
+} // namespace gem5
 
 #endif // __ARCH_RISCV_BARE_METAL_FS_WORKLOAD_HH__

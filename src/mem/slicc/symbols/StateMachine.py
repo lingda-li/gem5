@@ -1,4 +1,4 @@
-# Copyright (c) 2019 ARM Limited
+# Copyright (c) 2019-2021 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -54,6 +54,7 @@ python_class_map = {
                     "CacheMemory": "RubyCache",
                     "WireBuffer": "RubyWireBuffer",
                     "Sequencer": "RubySequencer",
+                    "HTMSequencer": "RubyHTMSequencer",
                     "GPUCoalescer" : "RubyGPUCoalescer",
                     "VIPERCoalescer" : "VIPERCoalescer",
                     "DirectoryMemory": "RubyDirectoryMemory",
@@ -67,7 +68,7 @@ python_class_map = {
 
 class StateMachine(Symbol):
     def __init__(self, symtab, ident, location, pairs, config_parameters):
-        super(StateMachine, self).__init__(symtab, ident, location, pairs)
+        super().__init__(symtab, ident, location, pairs)
         self.table = None
 
         # Data members in the State Machine that have been declared before
@@ -243,6 +244,7 @@ from m5.objects.Controller import RubyController
 class $py_ident(RubyController):
     type = '$py_ident'
     cxx_header = 'mem/ruby/protocol/${c_ident}.hh'
+    cxx_class = 'gem5::ruby::$py_ident'
 ''')
         code.indent()
         for param in self.config_parameters:
@@ -271,11 +273,7 @@ class $py_ident(RubyController):
         c_ident = "%s_Controller" % self.ident
 
         code('''
-/** \\file $c_ident.hh
- *
- * Auto generated C++ code started by $__file__:$__line__
- * Created by slicc definition of Module "${{self.short}}"
- */
+// Created by slicc definition of Module "${{self.short}}"
 
 #ifndef __${ident}_CONTROLLER_HH__
 #define __${ident}_CONTROLLER_HH__
@@ -300,13 +298,19 @@ class $py_ident(RubyController):
 
         # for adding information to the protocol debug trace
         code('''
+namespace gem5
+{
+
+namespace ruby
+{
+
 extern std::stringstream ${ident}_transitionComment;
 
 class $c_ident : public AbstractController
 {
   public:
     typedef ${c_ident}Params Params;
-    $c_ident(const Params *p);
+    $c_ident(const Params &p);
     static int getNumControllers();
     void init();
 
@@ -327,6 +331,7 @@ class $c_ident : public AbstractController
     GPUCoalescer* getGPUCoalescer() const;
 
     bool functionalReadBuffers(PacketPtr&);
+    bool functionalReadBuffers(PacketPtr&, WriteMask&);
     int functionalWriteBuffers(PacketPtr&);
 
     void countTransition(${ident}_State state, ${ident}_Event event);
@@ -379,12 +384,18 @@ TransitionResult doTransitionWorker(${ident}_Event event,
         code('''
                                     Addr addr);
 
+${ident}_Event m_curTransitionEvent;
+${ident}_State m_curTransitionNextState;
+
+${ident}_Event curTransitionEvent() { return m_curTransitionEvent; }
+${ident}_State curTransitionNextState() { return m_curTransitionNextState; }
+
 int m_counters[${ident}_State_NUM][${ident}_Event_NUM];
 int m_event_counters[${ident}_Event_NUM];
 bool m_possible[${ident}_State_NUM][${ident}_Event_NUM];
 
-static std::vector<Stats::Vector *> eventVec;
-static std::vector<std::vector<Stats::Vector *> > transVec;
+static std::vector<statistics::Vector *> eventVec;
+static std::vector<std::vector<statistics::Vector *> > transVec;
 static int m_num_controllers;
 
 // Internal functions
@@ -447,8 +458,15 @@ void unset_tbe(${{self.TBEType.c_ident}}*& m_tbe_ptr);
             code('${{var.type.c_ident}}$th* m_${{var.ident}}_ptr;')
 
         code.dedent()
-        code('};')
-        code('#endif // __${ident}_CONTROLLER_H__')
+        code('''
+};
+
+} // namespace ruby
+} // namespace gem5
+
+#endif // __${ident}_CONTROLLER_H__
+''')
+
         code.write(path, '%s.hh' % c_ident)
 
     def printControllerCC(self, path, includes):
@@ -484,11 +502,7 @@ void unset_tbe(${{self.TBEType.c_ident}}*& m_tbe_ptr);
 '''
 
         code('''
-/** \\file $c_ident.cc
- *
- * Auto generated C++ code started by $__file__:$__line__
- * Created by slicc definition of Module "${{self.short}}"
- */
+// Created by slicc definition of Module "${{self.short}}"
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -517,11 +531,6 @@ void unset_tbe(${{self.TBEType.c_ident}}*& m_tbe_ptr);
         for include_path in includes:
             code('#include "${{include_path}}"')
 
-        code('''
-
-using namespace std;
-''')
-
         # include object classes
         seen_types = set()
         for var in self.objects:
@@ -532,18 +541,18 @@ using namespace std;
         num_in_ports = len(self.in_ports)
 
         code('''
-$c_ident *
-${c_ident}Params::create()
+namespace gem5
 {
-    return new $c_ident(this);
-}
+
+namespace ruby
+{
 
 int $c_ident::m_num_controllers = 0;
-std::vector<Stats::Vector *>  $c_ident::eventVec;
-std::vector<std::vector<Stats::Vector *> >  $c_ident::transVec;
+std::vector<statistics::Vector *>  $c_ident::eventVec;
+std::vector<std::vector<statistics::Vector *> >  $c_ident::transVec;
 
 // for adding information to the protocol debug trace
-stringstream ${ident}_transitionComment;
+std::stringstream ${ident}_transitionComment;
 
 #ifndef NDEBUG
 #define APPEND_TRANSITION_COMMENT(str) (${ident}_transitionComment << str)
@@ -552,12 +561,13 @@ stringstream ${ident}_transitionComment;
 #endif
 
 /** \\brief constructor */
-$c_ident::$c_ident(const Params *p)
+$c_ident::$c_ident(const Params &p)
     : AbstractController(p)
 {
     m_machineID.type = MachineType_${ident};
     m_machineID.num = m_version;
     m_num_controllers++;
+    p.ruby_system->registerAbstractController(this);
 
     m_in_ports = $num_in_ports;
 ''')
@@ -570,9 +580,9 @@ $c_ident::$c_ident(const Params *p)
         #
         for param in self.config_parameters:
             if param.pointer:
-                code('m_${{param.ident}}_ptr = p->${{param.ident}};')
+                code('m_${{param.ident}}_ptr = p.${{param.ident}};')
             else:
-                code('m_${{param.ident}} = p->${{param.ident}};')
+                code('m_${{param.ident}} = p.${{param.ident}};')
 
             if re.compile("sequencer").search(param.ident) or \
                    param.type_ast.type.c_ident == "GPUCoalescer" or \
@@ -603,7 +613,7 @@ void
 $c_ident::initNetQueues()
 {
     MachineType machine_type = string_to_MachineType("${{self.ident}}");
-    int base M5_VAR_USED = MachineType_base_number(machine_type);
+    [[maybe_unused]] int base = MachineType_base_number(machine_type);
 
 ''')
         code.indent()
@@ -813,15 +823,22 @@ $c_ident::regStats()
 {
     AbstractController::regStats();
 
+    // For each type of controllers, one controller of that type is picked
+    // to aggregate stats of all controllers of that type. 
     if (m_version == 0) {
+
+        Profiler *profiler = params().ruby_system->getProfiler();
+        statistics::Group *profilerStatsPtr = &profiler->rubyProfilerStats;
+
         for (${ident}_Event event = ${ident}_Event_FIRST;
              event < ${ident}_Event_NUM; ++event) {
-            Stats::Vector *t = new Stats::Vector();
+            std::string stat_name =
+                "${c_ident}." + ${ident}_Event_to_string(event);
+            statistics::Vector *t =
+                new statistics::Vector(profilerStatsPtr, stat_name.c_str());
             t->init(m_num_controllers);
-            t->name(params()->ruby_system->name() + ".${c_ident}." +
-                ${ident}_Event_to_string(event));
-            t->flags(Stats::pdf | Stats::total | Stats::oneline |
-                     Stats::nozero);
+            t->flags(statistics::pdf | statistics::total |
+                statistics::oneline | statistics::nozero);
 
             eventVec.push_back(t);
         }
@@ -829,20 +846,70 @@ $c_ident::regStats()
         for (${ident}_State state = ${ident}_State_FIRST;
              state < ${ident}_State_NUM; ++state) {
 
-            transVec.push_back(std::vector<Stats::Vector *>());
+            transVec.push_back(std::vector<statistics::Vector *>());
 
             for (${ident}_Event event = ${ident}_Event_FIRST;
                  event < ${ident}_Event_NUM; ++event) {
-
-                Stats::Vector *t = new Stats::Vector();
+                std::string stat_name = "${c_ident}." +
+                    ${ident}_State_to_string(state) +
+                    "." + ${ident}_Event_to_string(event);
+                statistics::Vector *t = new statistics::Vector(
+                    profilerStatsPtr, stat_name.c_str());
                 t->init(m_num_controllers);
-                t->name(params()->ruby_system->name() + ".${c_ident}." +
-                        ${ident}_State_to_string(state) +
-                        "." + ${ident}_Event_to_string(event));
-
-                t->flags(Stats::pdf | Stats::total | Stats::oneline |
-                         Stats::nozero);
+                t->flags(statistics::pdf | statistics::total |
+                    statistics::oneline | statistics::nozero);
                 transVec[state].push_back(t);
+            }
+        }
+    }
+
+    for (${ident}_Event event = ${ident}_Event_FIRST;
+                 event < ${ident}_Event_NUM; ++event) {
+        std::string stat_name =
+            "outTransLatHist." + ${ident}_Event_to_string(event);
+        statistics::Histogram* t =
+            new statistics::Histogram(&stats, stat_name.c_str());
+        stats.outTransLatHist.push_back(t);
+        t->init(5);
+        t->flags(statistics::pdf | statistics::total |
+                 statistics::oneline | statistics::nozero);
+
+        statistics::Scalar* r = new statistics::Scalar(&stats,
+                                             (stat_name + ".retries").c_str());
+        stats.outTransLatHistRetries.push_back(r);
+        r->flags(statistics::nozero);
+    }
+
+    for (${ident}_Event event = ${ident}_Event_FIRST;
+                 event < ${ident}_Event_NUM; ++event) {
+        std::string stat_name = "inTransLatHist." +
+                                ${ident}_Event_to_string(event);
+        statistics::Scalar* r = new statistics::Scalar(&stats,
+                                             (stat_name + ".total").c_str());
+        stats.inTransLatTotal.push_back(r);
+        r->flags(statistics::nozero);
+
+        r = new statistics::Scalar(&stats,
+                              (stat_name + ".retries").c_str());
+        stats.inTransLatRetries.push_back(r);
+        r->flags(statistics::nozero);
+
+        stats.inTransLatHist.emplace_back();
+        for (${ident}_State initial_state = ${ident}_State_FIRST;
+             initial_state < ${ident}_State_NUM; ++initial_state) {
+            stats.inTransLatHist.back().emplace_back();
+            for (${ident}_State final_state = ${ident}_State_FIRST;
+                 final_state < ${ident}_State_NUM; ++final_state) {
+                std::string stat_name = "inTransLatHist." +
+                    ${ident}_Event_to_string(event) + "." +
+                    ${ident}_State_to_string(initial_state) + "." +
+                    ${ident}_State_to_string(final_state);
+                statistics::Histogram* t =
+                    new statistics::Histogram(&stats, stat_name.c_str());
+                stats.inTransLatHist.back().back().push_back(t);
+                t->init(5);
+                t->flags(statistics::pdf | statistics::total |
+                         statistics::oneline | statistics::nozero);
             }
         }
     }
@@ -854,7 +921,7 @@ $c_ident::collateStats()
     for (${ident}_Event event = ${ident}_Event_FIRST;
          event < ${ident}_Event_NUM; ++event) {
         for (unsigned int i = 0; i < m_num_controllers; ++i) {
-            RubySystem *rs = params()->ruby_system;
+            RubySystem *rs = params().ruby_system;
             std::map<uint32_t, AbstractController *>::iterator it =
                      rs->m_abstract_controls[MachineType_${ident}].find(i);
             assert(it != rs->m_abstract_controls[MachineType_${ident}].end());
@@ -870,7 +937,7 @@ $c_ident::collateStats()
              event < ${ident}_Event_NUM; ++event) {
 
             for (unsigned int i = 0; i < m_num_controllers; ++i) {
-                RubySystem *rs = params()->ruby_system;
+                RubySystem *rs = params().ruby_system;
                 std::map<uint32_t, AbstractController *>::iterator it =
                          rs->m_abstract_controls[MachineType_${ident}].find(i);
                 assert(it != rs->m_abstract_controls[MachineType_${ident}].end());
@@ -939,7 +1006,7 @@ $c_ident::getMemRespQueue() const
 }
 
 void
-$c_ident::print(ostream& out) const
+$c_ident::print(std::ostream& out) const
 {
     out << "[$c_ident " << m_version << "]";
 }
@@ -1129,6 +1196,30 @@ $c_ident::functionalReadBuffers(PacketPtr& pkt)
         code('''
     return false;
 }
+
+bool
+$c_ident::functionalReadBuffers(PacketPtr& pkt, WriteMask &mask)
+{
+    bool read = false;
+''')
+        for var in self.objects:
+            vtype = var.type
+            if vtype.isBuffer:
+                vid = "m_%s_ptr" % var.ident
+                code('if ($vid->functionalRead(pkt, mask)) read = true;')
+
+        for var in self.config_parameters:
+            vtype = var.type_ast.type
+            if vtype.isBuffer:
+                vid = "m_%s_ptr" % var.ident
+                code('if ($vid->functionalRead(pkt, mask)) read = true;')
+
+        code('''
+    return read;
+}
+
+} // namespace ruby
+} // namespace gem5
 ''')
 
         code.write(path, "%s.cc" % c_ident)
@@ -1144,7 +1235,6 @@ $c_ident::functionalReadBuffers(PacketPtr& pkt)
             outputRequest_types = False
 
         code('''
-// Auto generated C++ code started by $__file__:$__line__
 // ${ident}: ${{self.short}}
 
 #include <sys/types.h>
@@ -1181,8 +1271,11 @@ $c_ident::functionalReadBuffers(PacketPtr& pkt)
         port_to_buf_map, in_msg_bufs, msg_bufs = self.getBufferMaps(ident)
 
         code('''
+namespace gem5
+{
 
-using namespace std;
+namespace ruby
+{
 
 void
 ${ident}_Controller::wakeup()
@@ -1199,7 +1292,7 @@ ${ident}_Controller::wakeup()
         assert(counter <= m_transitions_per_cycle);
         if (counter == m_transitions_per_cycle) {
             // Count how often we are fully utilized
-            m_fully_busy_cycles++;
+            stats.fullyBusyCycles++;
 
             // Wakeup in another cycle and try again
             scheduleEvent(Cycles(1));
@@ -1258,6 +1351,9 @@ ${ident}_Controller::wakeup()
         break;
     }
 }
+
+} // namespace ruby
+} // namespace gem5
 ''')
 
         code.write(path, "%s_Wakeup.cc" % self.ident)
@@ -1269,7 +1365,6 @@ ${ident}_Controller::wakeup()
         ident = self.ident
 
         code('''
-// Auto generated C++ code started by $__file__:$__line__
 // ${ident}: ${{self.short}}
 
 #include <cassert>
@@ -1288,6 +1383,12 @@ ${ident}_Controller::wakeup()
 
 #define GET_TRANSITION_COMMENT() (${ident}_transitionComment.str())
 #define CLEAR_TRANSITION_COMMENT() (${ident}_transitionComment.str(""))
+
+namespace gem5
+{
+
+namespace ruby
+{
 
 TransitionResult
 ${ident}_Controller::doTransition(${ident}_Event event,
@@ -1405,6 +1506,8 @@ ${ident}_Controller::doTransitionWorker(${ident}_Event event,
         code('''
                                         Addr addr)
 {
+    m_curTransitionEvent = event;
+    m_curTransitionNextState = next_state;
     switch(HASH_FUN(state, event)) {
 ''')
 
@@ -1425,10 +1528,12 @@ ${ident}_Controller::doTransitionWorker(${ident}_Event event,
                     # is determined before any actions of the transition
                     # execute, and therefore the next state calculation cannot
                     # depend on any of the transitionactions.
-                    case('next_state = getNextState(addr);')
+                    case('next_state = getNextState(addr); '
+                         'm_curTransitionNextState = next_state;')
                 else:
                     ns_ident = trans.nextState.ident
-                    case('next_state = ${ident}_State_${ns_ident};')
+                    case('next_state = ${ident}_State_${ns_ident}; '
+                         'm_curTransitionNextState = next_state;')
 
             actions = trans.actions
             request_types = trans.request_types
@@ -1512,6 +1617,9 @@ if (!checkResourceAvailable(%s_RequestType_%s, addr)) {
 
     return TransitionResult_Valid;
 }
+
+} // namespace ruby
+} // namespace gem5
 ''')
         code.write(path, "%s_Transitions.cc" % self.ident)
 

@@ -38,8 +38,12 @@
 #ifndef __DEV_SERIAL_HH__
 #define __DEV_SERIAL_HH__
 
-#include "base/callback.hh"
+#include <functional>
+
 #include "sim/sim_object.hh"
+
+namespace gem5
+{
 
 struct SerialDeviceParams;
 struct SerialNullDeviceParams;
@@ -90,7 +94,7 @@ struct SerialNullDeviceParams;
 class SerialDevice : public SimObject
 {
   public:
-    SerialDevice(const SerialDeviceParams *p);
+    SerialDevice(const SerialDeviceParams &p);
     ~SerialDevice();
 
   public: // Serial device API (UART->Device)
@@ -103,9 +107,9 @@ class SerialDevice : public SimObject
      * method. The interface layer may use this method to register a
      * callback that informs it of pending data.
      *
-     * @param c Callback instance from interface layer.
+     * @param c Callback from interface layer.
      */
-    void regInterfaceCallback(Callback *c);
+    void regInterfaceCallback(const std::function<void()> &callback);
 
     /**
      * Check if there is pending data from the serial device.
@@ -136,7 +140,7 @@ class SerialDevice : public SimObject
 
   private:
     /** Currently regisxtered host interface layer callback */
-    Callback *interfaceCallback;
+    std::function<void()> interfaceCallback;
 };
 
 /**
@@ -145,12 +149,14 @@ class SerialDevice : public SimObject
 class SerialNullDevice : public SerialDevice
 {
   public:
-    SerialNullDevice(const SerialNullDeviceParams *p);
+    SerialNullDevice(const SerialNullDeviceParams &p);
 
   public:
     bool dataAvailable() const override { return false; }
     void writeData(uint8_t c) override {};
     uint8_t readData() override;
 };
+
+} // namespace gem5
 
 #endif // __DEV_SERIAL_HH__

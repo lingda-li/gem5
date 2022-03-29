@@ -44,10 +44,13 @@
 
 #include <string>
 
+#include "arch/x86/mmu.hh"
 #include "arch/x86/pagetable_walker.hh"
 #include "arch/x86/process.hh"
 #include "arch/x86/regs/int.hh"
 #include "arch/x86/regs/misc.hh"
+#include "base/loader/object_file.hh"
+#include "base/logging.hh"
 #include "base/remote_gdb.hh"
 #include "base/socket.hh"
 #include "base/trace.hh"
@@ -56,23 +59,26 @@
 #include "debug/GDBAcc.hh"
 #include "mem/page_table.hh"
 #include "sim/full_system.hh"
+#include "sim/workload.hh"
 
-using namespace std;
+namespace gem5
+{
+
 using namespace X86ISA;
 
-RemoteGDB::RemoteGDB(System *_system, ThreadContext *c, int _port) :
-    BaseRemoteGDB(_system, c, _port), regCache32(this), regCache64(this)
+RemoteGDB::RemoteGDB(System *_system, int _port) :
+    BaseRemoteGDB(_system, _port), regCache32(this), regCache64(this)
 {}
 
 bool
 RemoteGDB::acc(Addr va, size_t len)
 {
     if (FullSystem) {
-        Walker *walker = dynamic_cast<TLB *>(
-            context()->getDTBPtr())->getWalker();
+        Walker *walker = dynamic_cast<MMU *>(
+            context()->getMMUPtr())->getDataWalker();
         unsigned logBytes;
         Fault fault = walker->startFunctional(context(), va, logBytes,
-                                              BaseTLB::Read);
+                                              BaseMMU::Read);
         if (fault != NoFault)
             return false;
 
@@ -81,7 +87,7 @@ RemoteGDB::acc(Addr va, size_t len)
             return true;
 
         fault = walker->startFunctional(context(), endVa, logBytes,
-                                        BaseTLB::Read);
+                                        BaseMMU::Read);
         return fault == NoFault;
     } else {
         return context()->getProcessPtr()->pTable->lookup(va) != nullptr;
@@ -91,6 +97,21 @@ RemoteGDB::acc(Addr va, size_t len)
 BaseGdbRegCache*
 RemoteGDB::gdbRegs()
 {
+    // First, try to figure out which type of register cache to return based
+    // on the architecture reported by the workload.
+    if (system()->workload) {
+        auto arch = system()->workload->getArch();
+        if (arch == loader::X86_64) {
+            return &regCache64;
+        } else if (arch == loader::I386) {
+            return &regCache32;
+        } else if (arch != loader::UnknownArch) {
+            panic("Unrecognized workload arch %s.",
+                    loader::archToString(arch));
+        }
+    }
+
+    // If that didn't work, decide based on the current mode of the context.
     HandyM5Reg m5reg = context()->readMiscRegNoEffect(MISCREG_M5_REG);
     if (m5reg.submode == SixtyFourBitMode)
         return &regCache64;
@@ -120,7 +141,7 @@ RemoteGDB::AMD64GdbRegCache::getRegs(ThreadContext *context)
     r.r13 = context->readIntReg(INTREG_R13);
     r.r14 = context->readIntReg(INTREG_R14);
     r.r15 = context->readIntReg(INTREG_R15);
-    r.rip = context->pcState().pc();
+    r.rip = context->pcState().instAddr();
     r.eflags = context->readMiscRegNoEffect(MISCREG_RFLAGS);
     r.cs = context->readMiscRegNoEffect(MISCREG_CS);
     r.ss = context->readMiscRegNoEffect(MISCREG_SS);
@@ -142,7 +163,7 @@ RemoteGDB::X86GdbRegCache::getRegs(ThreadContext *context)
     r.ebp = context->readIntReg(INTREG_RBP);
     r.esi = context->readIntReg(INTREG_RSI);
     r.edi = context->readIntReg(INTREG_RDI);
-    r.eip = context->pcState().pc();
+    r.eip = context->pcState().instAddr();
     r.eflags = context->readMiscRegNoEffect(MISCREG_RFLAGS);
     r.cs = context->readMiscRegNoEffect(MISCREG_CS);
     r.ss = context->readMiscRegNoEffect(MISCREG_SS);
@@ -215,3 +236,5 @@ RemoteGDB::X86GdbRegCache::setRegs(ThreadContext *context) const
     if (r.gs != context->readMiscRegNoEffect(MISCREG_GS))
         warn("Remote gdb: Ignoring update to GS.\n");
 }
+
+} // namespace gem5

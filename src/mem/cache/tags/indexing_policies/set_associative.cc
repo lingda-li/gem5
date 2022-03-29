@@ -48,7 +48,10 @@
 
 #include "mem/cache/replacement_policies/replaceable_entry.hh"
 
-SetAssociative::SetAssociative(const Params *p)
+namespace gem5
+{
+
+SetAssociative::SetAssociative(const Params &p)
     : BaseIndexingPolicy(p)
 {
 }
@@ -72,8 +75,4 @@ SetAssociative::getPossibleEntries(const Addr addr) const
     return sets[extractSet(addr)];
 }
 
-SetAssociative*
-SetAssociativeParams::create()
-{
-    return new SetAssociative(this);
-}
+} // namespace gem5

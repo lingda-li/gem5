@@ -39,10 +39,13 @@
 
 #include "base/random.hh"
 
-StreamGen*
-StreamGen::create(const BaseTrafficGenParams *p)
+namespace gem5
 {
-    switch (p->stream_gen) {
+
+StreamGen*
+StreamGen::create(const BaseTrafficGenParams &p)
+{
+    switch (p.stream_gen) {
       case StreamGenType::fixed:
         return new FixedStreamGen(p);
       case StreamGenType::random:
@@ -59,3 +62,5 @@ RandomStreamGen::randomPick(const std::vector<uint32_t> &svec)
     // Pick a random entry in the vector of IDs
     return svec[random_mt.random<size_t>(0, svec.size()-1)];
 }
+
+} // namespace gem5

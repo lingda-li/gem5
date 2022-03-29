@@ -35,10 +35,8 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include <string>
 
 #include "base/atomicio.hh"
-#include "base/debug.hh"
 #include "base/logging.hh"
 #include "base/output.hh"
 #include "base/str.hh"
@@ -47,12 +45,16 @@
 #include "debug/FmtTicksOff.hh"
 #include "sim/backtrace.hh"
 
-const std::string &name()
+const std::string &
+name()
 {
     static const std::string default_name("global");
 
     return default_name;
 }
+
+namespace gem5
+{
 
 namespace Trace
 {
@@ -91,13 +93,13 @@ setDebugLogger(Logger *logger)
 void
 enable()
 {
-    Debug::SimpleFlag::enableAll();
+    debug::Flag::globalEnable();
 }
 
 void
 disable()
 {
-    Debug::SimpleFlag::disableAll();
+    debug::Flag::globalDisable();
 }
 
 ObjectMatch ignore;
@@ -150,10 +152,10 @@ OstreamLogger::logMessage(Tick when, const std::string &name,
     if (!name.empty() && ignore.match(name))
         return;
 
-    if (!DTRACE(FmtTicksOff) && (when != MaxTick))
+    if (!debug::FmtTicksOff && (when != MaxTick))
         ccprintf(stream, "%7d: ", when);
 
-    if (DTRACE(FmtFlag) && !flag.empty())
+    if (debug::FmtFlag && !flag.empty())
         stream << flag << ": ";
 
     if (!name.empty())
@@ -162,10 +164,11 @@ OstreamLogger::logMessage(Tick when, const std::string &name,
     stream << message;
     stream.flush();
 
-    if (DTRACE(FmtStackTrace)) {
+    if (debug::FmtStackTrace) {
         print_backtrace();
         STATIC_ERR("\n");
     }
 }
 
 } // namespace Trace
+} // namespace gem5

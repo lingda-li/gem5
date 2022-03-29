@@ -29,14 +29,14 @@ from slicc.ast.StatementAST import StatementAST
 
 class AssignStatementAST(StatementAST):
     def __init__(self, slicc, lvalue, rvalue):
-        super(AssignStatementAST, self).__init__(slicc)
+        super().__init__(slicc)
         self.lvalue = lvalue
         self.rvalue = rvalue
 
     def __repr__(self):
         return "[AssignStatementAST: %r := %r]" % (self.lvalue, self.rvalue)
 
-    def generate(self, code, return_type):
+    def generate(self, code, return_type, **kwargs):
         lcode = self.slicc.codeFormatter()
         rcode = self.slicc.codeFormatter()
 

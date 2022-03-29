@@ -40,8 +40,9 @@ from m5.SimObject import SimObject
 class ExternalMaster(SimObject):
     type = 'ExternalMaster'
     cxx_header = "mem/external_master.hh"
+    cxx_class = 'gem5::ExternalMaster'
 
-    port = MasterPort("Master port")
+    port = RequestPort("Master port")
 
     port_type = Param.String('stub', 'Registered external port handler'
         ' to pass this port to in instantiation')
