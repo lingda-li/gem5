@@ -68,9 +68,9 @@ cpu_types = {
               HPI.HPI_ICache, HPI.HPI_DCache,
               HPI.HPI_L2),
     "ac" : (AtomicSimpleCPU,
-            devices.L1I, devices.L1D, devices.WalkCache, devices.L2),
+            devices.L1I, devices.L1D, devices.L2),
     "timing" : (ObjectList.cpu_list.get("O3_ARM_v7a_3"),
-            devices.L1I, devices.L1D, devices.WalkCache, devices.L2)
+            devices.L1I, devices.L1D, devices.L2)
 }
 
 
