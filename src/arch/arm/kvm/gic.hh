@@ -44,6 +44,9 @@
 #include "dev/arm/gic_v2.hh"
 #include "dev/platform.hh"
 
+namespace gem5
+{
+
 /**
  * KVM in-kernel GIC abstraction
  *
@@ -168,7 +171,7 @@ struct MuxingKvmGicParams;
 class MuxingKvmGic : public GicV2
 {
   public: // SimObject / Serializable / Drainable
-    MuxingKvmGic(const MuxingKvmGicParams *p);
+    MuxingKvmGic(const MuxingKvmGicParams &p);
     ~MuxingKvmGic();
 
     void startup() override;
@@ -219,5 +222,7 @@ class MuxingKvmGic : public GicV2
     void clearDistRange(BaseGicRegisters* to,
                         Addr daddr, size_t size);
 };
+
+} // namespace gem5
 
 #endif // __ARCH_ARM_KVM_GIC_HH__

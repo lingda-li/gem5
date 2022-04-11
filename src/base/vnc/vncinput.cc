@@ -49,20 +49,21 @@
 #include "base/trace.hh"
 #include "debug/VNC.hh"
 
-using namespace std;
+namespace gem5
+{
 
-VncInput::VncInput(const Params *p)
+VncInput::VncInput(const Params &p)
     : SimObject(p), keyboard(NULL), mouse(NULL),
       fb(&FrameBuffer::dummy),
       _videoWidth(fb->width()), _videoHeight(fb->height()),
-      captureEnabled(p->frame_capture),
+      captureEnabled(p.frame_capture),
       captureCurrentFrame(0), captureLastHash(0),
-      imgFormat(p->img_format)
+      imgFormat(p.img_format)
 {
     if (captureEnabled) {
         // remove existing frame output directory if it exists, then create a
         //   clean empty directory
-        const string FRAME_OUTPUT_SUBDIR = "frames_" + name();
+        const std::string FRAME_OUTPUT_SUBDIR = "frames_" + name();
         simout.remove(FRAME_OUTPUT_SUBDIR, true);
         captureOutputDirectory = simout.createSubdirectory(
                                 FRAME_OUTPUT_SUBDIR);
@@ -124,7 +125,7 @@ VncInput::captureFrameBuffer()
     snprintf(frameFilenameBuffer, 64, "fb.%06d.%lld.%s.gz",
             captureCurrentFrame, static_cast<long long int>(curTick()),
             captureImage->getImgExtension());
-    const string frameFilename(frameFilenameBuffer);
+    const std::string frameFilename(frameFilenameBuffer);
 
     // create the compressed framebuffer file
     OutputStream *fb_out(captureOutputDirectory->create(frameFilename, true));
@@ -134,9 +135,4 @@ VncInput::captureFrameBuffer()
     ++captureCurrentFrame;
 }
 
-// create the VNC Replayer object
-VncInput *
-VncInputParams::create()
-{
-    return new VncInput(this);
-}
+} // namespace gem5

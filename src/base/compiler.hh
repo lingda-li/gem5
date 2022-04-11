@@ -43,71 +43,134 @@
 
 #include <memory>
 
+#include "config/have_deprecated_namespace.hh"
+
 // http://gcc.gnu.org/onlinedocs/gcc/Function-Attributes.html
 
-#if defined(__GNUC__) // clang or gcc
-#  define M5_ATTR_NORETURN  __attribute__((noreturn))
-#  define M5_DUMMY_RETURN
-#  define M5_VAR_USED __attribute__((unused))
-#  define M5_ATTR_PACKED __attribute__ ((__packed__))
-#  define M5_NO_INLINE __attribute__ ((__noinline__))
-#  define M5_DEPRECATED __attribute__((deprecated))
-#  define M5_DEPRECATED_MSG(MSG) __attribute__((deprecated(MSG)))
-#  define M5_UNREACHABLE __builtin_unreachable()
-#  define M5_PUBLIC __attribute__ ((visibility ("default")))
-#  define M5_LOCAL __attribute__ ((visibility ("hidden")))
-#endif
 
-#if defined(__clang__)
-#  define M5_CLASS_VAR_USED M5_VAR_USED
+/*
+ * Compiler specific features.
+ */
+
+#if defined(__GNUC__) // clang or gcc.
+// Mark a structure as packed, so that no padding is added to its layout. This
+// padding might be added to, for instance, ensure certain fields have certain
+// alignment.
+#  define GEM5_PACKED [[gnu::packed]]
+
+// Prevent a function from being inlined.
+#  define GEM5_NO_INLINE [[gnu::noinline]]
+
+// Set the visibility of a symbol.
+#  define GEM5_PUBLIC [[gnu:visibility("default")]]
+#  define GEM5_LOCAL [[gnu::visibility("hidden")]]
+#  define GEM5_WEAK [[gnu::weak]]
+
+// Force an alignment for a variable.
+#  define GEM5_ALIGNED(alignment) [[gnu::aligned(alignment)]]
+
+// Marker for what should be an unreachable point in the code.
+#  define GEM5_UNREACHABLE __builtin_unreachable()
+
+// To mark a branch condition as likely taken, wrap it's condition with
+// GEM5_LIKELY. To mark it as likely not taken, wrap it's condition with
+// GEM5_UNLIKELY. These can be replaced with the standard attributes [[likely]]
+// and [[unlikely]] in c++20, although the syntax is different enough that
+// we can't do that with direct substitution.
+#  define GEM5_LIKELY(cond) __builtin_expect(!!(cond), 1)
+#  define GEM5_UNLIKELY(cond) __builtin_expect(!!(cond), 0)
+
+// Mark an expression-like macro as deprecated by wrapping it in some code
+// which declares and uses a deprecated variable with the same name as the
+// macro. The wrapping macro evaluates to the same thing as the original macro.
+// The definition must be an c++ expression and not a statement because of how
+// the original macro is wrapped.
+#  define GEM5_DEPRECATED_MACRO(name, definition, message) \
+     ([](){[[deprecated(message)]] int name{}; return name;}(), (definition))
+// This version is for macros which are statement-like, which frequently use
+// "do {} while (0)" to make their syntax look more like normal c++ statements.
+#  define GEM5_DEPRECATED_MACRO_STMT(name, definition, message) \
+     do {{definition;} GEM5_DEPRECATED_MACRO(name, {}, message);} while (0)
+
+// To mark a class as deprecated in favor of a new name, add a respective
+// instance of this macro to the file that used to declare the old name.
+// This macro should be used *after* the new class has been defined.
+#  define GEM5_DEPRECATED_CLASS(old_class, new_class) \
+    using old_class \
+        [[deprecated("Please use the new class name: '" #new_class "'")]] = \
+        new_class
+
+// These macros should be used when namespaces are deprecated in favor of
+// a new name. They should be used wherever the namespace is declared.
+// Namespace deprecation is broken for GNU < 10 [1], so there is no
+// deprecation warning in that case. Clang only supports it from C++17 on.
+// [1] https://gcc.gnu.org/bugzilla/show_bug.cgi?id=79817
+#  if HAVE_DEPRECATED_NAMESPACE
+#    define GEM5_DEPRECATED_NAMESPACE(old_namespace, new_namespace) \
+       namespace new_namespace {} \
+       namespace [[deprecated("Please use the new namespace: '" \
+         #new_namespace "'")]] old_namespace { \
+         using namespace new_namespace; \
+       }
+#  else
+#    define GEM5_DEPRECATED_NAMESPACE(old_namespace, new_namespace) \
+       namespace new_namespace {} \
+       namespace old_namespace = new_namespace
+#  endif
+
+// Evaluate an expanded parameter pack in order. Multiple arguments can be
+// passed in which be evaluated in order relative to each other as a group.
+// The argument(s) must include a parameter pack to expand. This works because
+// the elements of a brace inclosed initializer list are evaluated in order,
+// as are the arguments to the comma operator, which evaluates to the last
+// value. This is compiler specific because it uses variadic macros.
+#define GEM5_FOR_EACH_IN_PACK(...) \
+do { [[maybe_unused]] int i[] = { 0, ((void)(__VA_ARGS__), 0)... }; } while (0)
+
 #else
-#  define M5_CLASS_VAR_USED
+#  error "Don't know what to do for your compiler."
 #endif
 
-// This can be removed once all compilers support C++17
-#if defined __has_cpp_attribute
-    // Note: We must separate this if statement because GCC < 5.0 doesn't
-    //       support the function-like syntax in #if statements.
-    #if __has_cpp_attribute(fallthrough)
-        #define M5_FALLTHROUGH [[fallthrough]]
-    #else
-        #define M5_FALLTHROUGH
-    #endif
-
-    #if __has_cpp_attribute(nodiscard)
-        #define M5_NODISCARD [[nodiscard]]
-    #else
-        #define M5_NODISCARD
-    #endif
+// When a member variable may be unused, mark it with GEM5_CLASS_VAR_USED. This
+// needs to be limitted to clang only since clang warns on these unused
+// variables, and g++ will actually warn if you use this attribute since it
+// won't do anything there.
+#if defined(__clang__) // clang only.
+#  define GEM5_CLASS_VAR_USED GEM5_VAR_USED
 #else
-    // Unsupported (and no warning) on GCC < 7.
-    #define M5_FALLTHROUGH
-
-    #define M5_NODISCARD
+#  define GEM5_CLASS_VAR_USED
 #endif
 
-// std::make_unique redefined for C++11 compilers
-namespace m5
-{
+// Aliases for macros using the deprecated M5 prefix.
+#define M5_VAR_USED GEM5_VAR_USED
+#define M5_NODISCARD GEM5_NO_DISCARD
+#define M5_FALLTHROUGH GEM5_FALLTHROUGH
+#define M5_ATTR_PACKED GEM5_PACKED
+#define M5_NO_INLINE GEM5_NO_INLINE
+#define M5_PUBLIC GEM5_PUBLIC
+#define M5_LOCAL GEM5_LOCAL
+#define M5_WEAK GEM5_WEAK
+#define M5_ALIGNED(x) GEM5_ALIGNED(x)
+#define M5_UNREACHABLE GEM5_UNREACHABLE
+#define M5_LIKELY(x) GEM5_LIKELY(x)
+#define M5_UNLIKELY(x) GEM5_UNLIKELY(x)
+#define M5_FOR_EACH_IN_PACK(...) GEM5_FOR_EACH_IN_PACK(__VA_ARGS__)
+#define M5_CLASS_VAR_USED GEM5_CLASS_VAR_USED
 
-#if __cplusplus >= 201402L // C++14
+// Deprecated attributes which warn.
+#define GEM5_FALLTHROUGH GEM5_DEPRECATED_MACRO_STMT(GEM5_FALLTHROUGH,,\
+        "Please use the [[fallthrough]] attribute directly."); [[fallthrough]]
+#define GEM5_DEPRECATED(message) \
+     [[deprecated(message " The GEM5_DEPRECATED macro is also deprecated, "\
+             "please use the [[deprecated()]] attribute directly.")]]
+#define GEM5_DEPRECATED_ENUM_VAL(message) \
+     [[deprecated(message " The GEM5_DEPRECATED_ENUM_VAL macro is also "\
+             "deprecated, please use the [[deprecated()]] attribute "\
+             "directly.")]]
 
-using std::make_unique;
-
-#else // C++11
-
-/** Defining custom version of make_unique: m5::make_unique<>() */
-template<typename T, typename... Args>
-std::unique_ptr<T>
-make_unique( Args&&... constructor_args )
-{
-    return std::unique_ptr<T>(
-               new T( std::forward<Args>(constructor_args)... )
-           );
-}
-
-#endif // __cplusplus >= 201402L
-
-} //namespace m5
+// Deprecated attributes which can't be made to warn without possibly breaking
+// existing code.
+#define GEM5_NO_DISCARD [[nodiscard]]
+#define GEM5_VAR_USED [[maybe_unused]]
 
 #endif // __BASE_COMPILER_HH__

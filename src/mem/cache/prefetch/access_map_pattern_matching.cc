@@ -33,23 +33,28 @@
 #include "params/AMPMPrefetcher.hh"
 #include "params/AccessMapPatternMatching.hh"
 
-namespace Prefetcher {
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
 
 AccessMapPatternMatching::AccessMapPatternMatching(
-    const AccessMapPatternMatchingParams *p)
-    : ClockedObject(p), blkSize(p->block_size), limitStride(p->limit_stride),
-      startDegree(p->start_degree), hotZoneSize(p->hot_zone_size),
-      highCoverageThreshold(p->high_coverage_threshold),
-      lowCoverageThreshold(p->low_coverage_threshold),
-      highAccuracyThreshold(p->high_accuracy_threshold),
-      lowAccuracyThreshold(p->low_accuracy_threshold),
-      highCacheHitThreshold(p->high_cache_hit_threshold),
-      lowCacheHitThreshold(p->low_cache_hit_threshold),
-      epochCycles(p->epoch_cycles),
-      offChipMemoryLatency(p->offchip_memory_latency),
-      accessMapTable(p->access_map_table_assoc, p->access_map_table_entries,
-                     p->access_map_table_indexing_policy,
-                     p->access_map_table_replacement_policy,
+    const AccessMapPatternMatchingParams &p)
+    : ClockedObject(p), blkSize(p.block_size), limitStride(p.limit_stride),
+      startDegree(p.start_degree), hotZoneSize(p.hot_zone_size),
+      highCoverageThreshold(p.high_coverage_threshold),
+      lowCoverageThreshold(p.low_coverage_threshold),
+      highAccuracyThreshold(p.high_accuracy_threshold),
+      lowAccuracyThreshold(p.low_accuracy_threshold),
+      highCacheHitThreshold(p.high_cache_hit_threshold),
+      lowCacheHitThreshold(p.low_cache_hit_threshold),
+      epochCycles(p.epoch_cycles),
+      offChipMemoryLatency(p.offchip_memory_latency),
+      accessMapTable(p.access_map_table_assoc, p.access_map_table_entries,
+                     p.access_map_table_indexing_policy,
+                     p.access_map_table_replacement_policy,
                      AccessMapEntry(hotZoneSize / blkSize)),
       numGoodPrefetches(0), numTotalPrefetches(0), numRawCacheMisses(0),
       numRawCacheHits(0), degree(startDegree), usefulDegree(startDegree),
@@ -78,7 +83,7 @@ AccessMapPatternMatching::processEpochEvent()
     double num_requests = (double) (numRawCacheMisses - numGoodPrefetches +
         numTotalPrefetches);
     double memory_bandwidth = num_requests * offChipMemoryLatency /
-        clockEdge(epochCycles);
+        cyclesToTicks(epochCycles);
 
     if (prefetch_coverage > highCoverageThreshold &&
         (prefetch_accuracy > highAccuracyThreshold ||
@@ -251,8 +256,8 @@ AccessMapPatternMatching::calculatePrefetch(const Base::PrefetchInfo &pfi,
     }
 }
 
-AMPM::AMPM(const AMPMPrefetcherParams *p)
-  : Queued(p), ampm(*p->ampm)
+AMPM::AMPM(const AMPMPrefetcherParams &p)
+  : Queued(p), ampm(*p.ampm)
 {
 }
 
@@ -263,16 +268,5 @@ AMPM::calculatePrefetch(const PrefetchInfo &pfi,
     ampm.calculatePrefetch(pfi, addresses);
 }
 
-} // namespace Prefetcher
-
-Prefetcher::AccessMapPatternMatching*
-AccessMapPatternMatchingParams::create()
-{
-    return new Prefetcher::AccessMapPatternMatching(this);
-}
-
-Prefetcher::AMPM*
-AMPMPrefetcherParams::create()
-{
-    return new Prefetcher::AMPM(this);
-}
+} // namespace prefetch
+} // namespace gem5

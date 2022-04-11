@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2017 ARM Limited
+# Copyright (c) 2014-2017, 2020 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -41,9 +41,6 @@ Research Starter Kit on System Modeling. More information can be found
 at: http://www.arm.com/ResearchEnablement/SystemModeling
 
 """
-
-from __future__ import print_function
-from __future__ import absolute_import
 
 from m5.objects import *
 
@@ -1331,21 +1328,9 @@ class HPI_FUPool(MinorFUPool):
         HPI_MiscFU() # 6
         ]
 
-class HPI_DTB(ArmDTB):
-    size = 256
-
-class HPI_ITB(ArmITB):
-    size = 256
-
-class HPI_WalkCache(Cache):
-    data_latency = 4
-    tag_latency = 4
-    response_latency = 4
-    mshrs = 6
-    tgts_per_mshr = 8
-    size = '1kB'
-    assoc = 8
-    write_buffers = 16
+class HPI_MMU(ArmMMU):
+    itb = ArmTLB(entry_type="instruction", size=256)
+    dtb = ArmTLB(entry_type="data", size=256)
 
 class HPI_BP(TournamentBP):
     localPredictorSize = 64
@@ -1443,12 +1428,11 @@ class HPI(MinorCPU):
 
     branchPred = HPI_BP()
 
-    itb = HPI_ITB()
-    dtb = HPI_DTB()
+    mmu = HPI_MMU()
 
 __all__ = [
     "HPI_BP",
-    "HPI_ITB", "HPI_DTB", "HPI_WalkCache",
+    "HPI_ITB", "HPI_DTB",
     "HPI_ICache", "HPI_DCache", "HPI_L2",
     "HPI",
 ]

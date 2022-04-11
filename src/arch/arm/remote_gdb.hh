@@ -46,10 +46,13 @@
 
 #include <algorithm>
 
-#include "arch/arm/registers.hh"
+#include "arch/arm/regs/vec.hh"
 #include "arch/arm/utility.hh"
 #include "base/compiler.hh"
 #include "base/remote_gdb.hh"
+
+namespace gem5
+{
 
 class System;
 class ThreadContext;
@@ -60,18 +63,19 @@ namespace ArmISA
 class RemoteGDB : public BaseRemoteGDB
 {
   protected:
-    bool acc(Addr addr, size_t len);
+    bool acc(Addr addr, size_t len) override;
 
     class AArch32GdbRegCache : public BaseGdbRegCache
     {
       using BaseGdbRegCache::BaseGdbRegCache;
       private:
-        struct {
+        struct GEM5_PACKED
+        {
           uint32_t gpr[16];
           uint32_t cpsr;
           uint64_t fpr[32];
           uint32_t fpscr;
-        } M5_ATTR_PACKED r;
+        } r;
       public:
         char *data() const { return (char *)&r; }
         size_t size() const { return sizeof(r); }
@@ -88,7 +92,8 @@ class RemoteGDB : public BaseRemoteGDB
     {
       using BaseGdbRegCache::BaseGdbRegCache;
       private:
-        struct {
+        struct GEM5_PACKED
+        {
           uint64_t x[31];
           uint64_t spx;
           uint64_t pc;
@@ -96,7 +101,7 @@ class RemoteGDB : public BaseRemoteGDB
           VecElem v[NumVecV8ArchRegs * NumVecElemPerNeonVecReg];
           uint32_t fpsr;
           uint32_t fpcr;
-        } M5_ATTR_PACKED r;
+        } r;
       public:
         char *data() const { return (char *)&r; }
         size_t size() const { return sizeof(r); }
@@ -113,15 +118,19 @@ class RemoteGDB : public BaseRemoteGDB
     AArch64GdbRegCache regCache64;
 
   public:
-    RemoteGDB(System *_system, ThreadContext *tc, int _port);
-    BaseGdbRegCache *gdbRegs();
+    RemoteGDB(System *_system, int _port);
+    BaseGdbRegCache *gdbRegs() override;
+    bool checkBpLen(size_t len) override;
     std::vector<std::string>
-    availableFeatures() const
+    availableFeatures() const override
     {
         return {"qXfer:features:read+"};
     };
-    bool getXferFeaturesRead(const std::string &annex, std::string &output);
+    bool getXferFeaturesRead(const std::string &annex,
+                             std::string &output) override;
 };
+
 } // namespace ArmISA
+} // namespace gem5
 
 #endif /* __ARCH_ARM_REMOTE_GDB_H__ */

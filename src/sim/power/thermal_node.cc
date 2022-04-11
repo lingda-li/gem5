@@ -40,16 +40,15 @@
 
 #include "params/ThermalNode.hh"
 
+namespace gem5
+{
+
 /**
  * ThermalNode
  */
-ThermalNode::ThermalNode(const ThermalNodeParams *p)
+ThermalNode::ThermalNode(const ThermalNodeParams &p)
     : SimObject(p), id(-1), isref(false), temp(0.0f)
 {
 }
 
-ThermalNode *
-ThermalNodeParams::create()
-{
-    return new ThermalNode(this);
-}
+} // namespace gem5

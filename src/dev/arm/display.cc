@@ -39,12 +39,11 @@
 
 #include "params/Display.hh"
 
-Display::Display(const DisplayParams *p)
+namespace gem5
+{
+
+Display::Display(const DisplayParams &p)
   : SimObject(p)
 {}
 
-Display *
-DisplayParams::create()
-{
-    return new Display(this);
-}
+} // namespace gem5

@@ -30,7 +30,7 @@ from slicc.symbols import Func, Type
 
 class FuncDeclAST(DeclAST):
     def __init__(self, slicc, return_type, ident, formals, pairs, statements):
-        super(FuncDeclAST, self).__init__(slicc, pairs)
+        super().__init__(slicc, pairs)
 
         self.return_type = return_type
         self.ident = ident
@@ -43,7 +43,7 @@ class FuncDeclAST(DeclAST):
     def files(self, parent=None):
         return set()
 
-    def generate(self, parent = None):
+    def generate(self, parent = None, **kwargs):
         types = []
         params = []
         void_type = self.symtab.find("void", Type)

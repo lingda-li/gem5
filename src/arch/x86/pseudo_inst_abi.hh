@@ -35,15 +35,19 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "arch/x86/registers.hh"
+#include "arch/x86/regs/int.hh"
 #include "sim/guest_abi.hh"
+
+namespace gem5
+{
 
 struct X86PseudoInstABI
 {
     using State = int;
 };
 
-namespace GuestABI
+GEM5_DEPRECATED_NAMESPACE(GuestABI, guest_abi);
+namespace guest_abi
 {
 
 template <typename T>
@@ -81,4 +85,5 @@ struct Argument<X86PseudoInstABI, uint64_t>
     }
 };
 
-} // namespace GuestABI
+} // namespace guest_abi
+} // namespace gem5

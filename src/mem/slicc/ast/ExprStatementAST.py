@@ -32,14 +32,14 @@ from slicc.symbols import Type
 
 class ExprStatementAST(StatementAST):
     def __init__(self, slicc, expr):
-        super(ExprStatementAST, self).__init__(slicc)
+        super().__init__(slicc)
         self.expr = expr
 
     def __repr__(self):
         return "[ExprStatementAST: %s]" % (self.expr)
 
-    def generate(self, code, return_type):
-        actual_type,rcode = self.expr.inline(True)
+    def generate(self, code, return_type, **kwargs):
+        actual_type,rcode = self.expr.inline(True, **kwargs)
         code("$rcode;")
 
         # The return type must be void, except for local var decls

@@ -37,9 +37,14 @@
 #include "mem/cache/prefetch/queued.hh"
 #include "mem/packet.hh"
 
+namespace gem5
+{
+
 struct TaggedPrefetcherParams;
 
-namespace Prefetcher {
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
 
 class Tagged : public Queued
 {
@@ -47,13 +52,14 @@ class Tagged : public Queued
       const int degree;
 
   public:
-    Tagged(const TaggedPrefetcherParams *p);
+    Tagged(const TaggedPrefetcherParams &p);
     ~Tagged() = default;
 
     void calculatePrefetch(const PrefetchInfo &pfi,
                            std::vector<AddrPriority> &addresses) override;
 };
 
-} // namespace Prefetcher
+} // namespace prefetch
+} // namespace gem5
 
 #endif // __MEM_CACHE_PREFETCH_TAGGED_HH__

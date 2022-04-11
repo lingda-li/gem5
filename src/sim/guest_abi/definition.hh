@@ -28,9 +28,15 @@
 #ifndef __SIM_GUEST_ABI_DEFINITION_HH__
 #define __SIM_GUEST_ABI_DEFINITION_HH__
 
+#include "base/compiler.hh"
+
+namespace gem5
+{
+
 class ThreadContext;
 
-namespace GuestABI
+GEM5_DEPRECATED_NAMESPACE(GuestABI, guest_abi);
+namespace guest_abi
 {
 
 /*
@@ -57,27 +63,28 @@ namespace GuestABI
 template <typename ABI, typename Ret, typename Enabled=void>
 struct Result
 {
-  private:
     /*
      * Store result "ret" into the state accessible through tc. Optionally
      * accept "state" in case it holds some signature wide information.
      *
      * Note that the declaration below is only to document the expected
-     * signature and is private so it won't be used by accident.
+     * signature and is commented out so it won't be used by accident.
      * Specializations of this Result class should define their own version
-     * of this method which actually does something and is public.
+     * of this method which actually does something.
+     *
+     * static void store(ThreadContext *tc, const Ret &ret);
+     * static void store(ThreadContext *tc, const Ret &ret,
+     *                   typename ABI::State &state);
      */
-    static void store(ThreadContext *tc, const Ret &ret);
-    static void store(ThreadContext *tc, const Ret &ret,
-                      typename ABI::State &state);
 
     /*
      * Prepare for a result of type Ret. This might mean, for instance,
      * allocating an argument register for a result pointer.
      *
      * This method can be excluded if no preparation is necessary.
+     *
+     * static void prepare(ThreadContext *tc, typename ABI::State &state);
      */
-    static void prepare(ThreadContext *tc, typename ABI::State &state);
 };
 
 /*
@@ -98,18 +105,21 @@ struct Argument
      *
      * Like Result::store above, the declaration below is only to document
      * the expected method signature.
+     *
+     * static Arg get(ThreadContext *tc, typename ABI::State &state);
      */
-    static Arg get(ThreadContext *tc, typename ABI::State &state);
 
     /*
      * Prepare for an argument of type Arg. This might mean, for instance,
      * allocating an argument register for a result pointer.
      *
      * This method can be excluded if no preparation is necessary.
+     *
+     * static void allocate(ThreadContext *tc, typename ABI::State &state);
      */
-    static void allocate(ThreadContext *tc, typename ABI::State &state);
 };
 
-} // namespace GuestABI
+} // namespace guest_abi
+} // namespace gem5
 
 #endif // __SIM_GUEST_ABI_DEFINITION_HH__

@@ -44,7 +44,14 @@
 #include "mem/packet.hh"
 #include "params/SectorTags.hh"
 
-class BaseReplacementPolicy;
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
+namespace replacement_policy
+{
+    class Base;
+}
 class ReplaceableEntry;
 
 /**
@@ -71,7 +78,7 @@ class SectorTags : public BaseTags
     const bool sequentialAccess;
 
     /** Replacement policy */
-    BaseReplacementPolicy *replacementPolicy;
+    replacement_policy::Base *replacementPolicy;
 
     /** Number of data blocks per sector. */
     const unsigned numBlocksPerSector;
@@ -87,7 +94,7 @@ class SectorTags : public BaseTags
     /** Mask out all bits that aren't part of the sector tag. */
     const unsigned sectorMask;
 
-    struct SectorTagsStats : public Stats::Group
+    struct SectorTagsStats : public statistics::Group
     {
         const SectorTags& tags;
 
@@ -96,7 +103,7 @@ class SectorTags : public BaseTags
         void regStats() override;
 
         /** Number of sub-blocks evicted due to a replacement. */
-        Stats::Vector evictionsReplacement;
+        statistics::Vector evictionsReplacement;
     } sectorStats;
 
   public:
@@ -106,7 +113,7 @@ class SectorTags : public BaseTags
     /**
      * Construct and initialize this tag store.
      */
-    SectorTags(const Params *p);
+    SectorTags(const Params &p);
 
     /**
      * Destructor.
@@ -132,12 +139,11 @@ class SectorTags : public BaseTags
      * access and should only be used as such. Returns the tag lookup latency
      * as a side effect.
      *
-     * @param addr The address to find.
-     * @param is_secure True if the target memory space is secure.
+     * @param pkt The packet holding the address to find.
      * @param lat The latency of the tag lookup.
      * @return Pointer to the cache block if found.
      */
-    CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat) override;
+    CacheBlk* accessBlock(const PacketPtr pkt, Cycles &lat) override;
 
     /**
      * Insert the new block into the cache and update replacement data.
@@ -146,6 +152,8 @@ class SectorTags : public BaseTags
      * @param blk The block to update.
      */
     void insertBlock(const PacketPtr pkt, CacheBlk *blk) override;
+
+    void moveBlock(CacheBlk *src_blk, CacheBlk *dest_blk) override;
 
     /**
      * Finds the given address in the cache, do not update replacement data.
@@ -207,5 +215,7 @@ class SectorTags : public BaseTags
      */
     bool anyBlk(std::function<bool(CacheBlk &)> visitor) override;
 };
+
+} // namespace gem5
 
 #endif //__MEM_CACHE_TAGS_SECTOR_TAGS_HH__

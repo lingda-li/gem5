@@ -34,7 +34,6 @@
 output header {{
 
 #include <iostream>
-    using namespace std;
 
     /**
      * Base class for instructions whose disassembly is not purely a
@@ -52,7 +51,7 @@ output header {{
         mutable Addr cachedPC;
 
         /// Cached symbol table pointer from last disassembly
-        mutable const Loader::SymbolTable *cachedSymtab;
+        mutable const loader::SymbolTable *cachedSymtab;
 
         /// Constructor
         PCDependentDisassembly(const char *mnem, MachInst _machInst,
@@ -63,7 +62,7 @@ output header {{
         }
 
         const std::string &
-        disassemble(Addr pc, const Loader::SymbolTable *symtab) const;
+        disassemble(Addr pc, const loader::SymbolTable *symtab) const;
     };
 
     /**
@@ -87,14 +86,14 @@ output header {{
             }
         }
 
-        MipsISA::PCState branchTarget(
-                const MipsISA::PCState &branchPC) const override;
+        std::unique_ptr<PCStateBase> branchTarget(
+                const PCStateBase &branch_pc) const override;
 
         /// Explicitly import the otherwise hidden branchTarget
         using StaticInst::branchTarget;
 
         std::string generateDisassembly(
-                Addr pc, const Loader::SymbolTable *symtab) const override;
+                Addr pc, const loader::SymbolTable *symtab) const override;
     };
 
     /**
@@ -118,50 +117,50 @@ output header {{
         {
         }
 
-        MipsISA::PCState branchTarget(ThreadContext *tc) const override;
+        std::unique_ptr<PCStateBase> branchTarget(
+                ThreadContext *tc) const override;
 
         /// Explicitly import the otherwise hidden branchTarget
         using StaticInst::branchTarget;
 
         std::string generateDisassembly(
-                Addr pc, const Loader::SymbolTable *symtab) const override;
+                Addr pc, const loader::SymbolTable *symtab) const override;
     };
 }};
 
 output decoder {{
-    MipsISA::PCState
-    Branch::branchTarget(const MipsISA::PCState &branchPC) const
+    std::unique_ptr<PCStateBase>
+    Branch::branchTarget(const PCStateBase &branch_pc) const
     {
-        MipsISA::PCState target = branchPC;
+        PCStateBase *target_ptr = branch_pc.clone();
+        auto &target = target_ptr->as<MipsISA::PCState>();
         target.advance();
-        target.npc(branchPC.pc() + sizeof(MachInst) + disp);
+        target.npc(branch_pc.instAddr() + sizeof(MachInst) + disp);
         target.nnpc(target.npc() + sizeof(MachInst));
-        return target;
+        return std::unique_ptr<PCStateBase>{target_ptr};
     }
 
-    MipsISA::PCState
+    std::unique_ptr<PCStateBase>
     Jump::branchTarget(ThreadContext *tc) const
     {
-        MipsISA::PCState target = tc->pcState();
+        PCStateBase *target_ptr = tc->pcState().clone();
+        auto &target = target_ptr->as<MipsISA::PCState>();
         Addr pc = target.pc();
         target.advance();
         target.npc((pc & 0xF0000000) | disp);
         target.nnpc(target.npc() + sizeof(MachInst));
-        return target;
+        return std::unique_ptr<PCStateBase>{target_ptr};
     }
 
     const std::string &
     PCDependentDisassembly::disassemble(
-            Addr pc, const Loader::SymbolTable *symtab) const
+            Addr pc, const loader::SymbolTable *symtab) const
     {
-        if (!cachedDisassembly ||
-            pc != cachedPC || symtab != cachedSymtab)
-        {
-            if (cachedDisassembly)
-                delete cachedDisassembly;
+        if (!cachedDisassembly || pc != cachedPC || symtab != cachedSymtab) {
+            if (!cachedDisassembly)
+                cachedDisassembly.reset(new std::string);
 
-            cachedDisassembly =
-                new std::string(generateDisassembly(pc, symtab));
+            *cachedDisassembly = generateDisassembly(pc, symtab);
             cachedPC = pc;
             cachedSymtab = symtab;
         }
@@ -171,7 +170,7 @@ output decoder {{
 
     std::string
     Branch::generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const
+            Addr pc, const loader::SymbolTable *symtab) const
     {
         std::stringstream ss;
 
@@ -182,28 +181,28 @@ output decoder {{
         // branches) or a destination (the link reg for
         // unconditional branches)
         if (_numSrcRegs == 1) {
-            printReg(ss, _srcRegIdx[0]);
+            printReg(ss, srcRegIdx(0));
             ss << ", ";
         } else if(_numSrcRegs == 2) {
-            printReg(ss, _srcRegIdx[0]);
+            printReg(ss, srcRegIdx(0));
             ss << ", ";
-            printReg(ss, _srcRegIdx[1]);
+            printReg(ss, srcRegIdx(1));
             ss << ", ";
         }
 
         Addr target = pc + 4 + disp;
 
-        std::string str;
-        if (symtab && symtab->findSymbol(target, str))
-            ss << str;
+        loader::SymbolTable::const_iterator it;
+        if (symtab && (it = symtab->find(target)) != symtab->end())
+            ss << it->name;
         else
-            ccprintf(ss, "0x%x", target);
+            ccprintf(ss, "%#x", target);
 
         return ss.str();
     }
 
     std::string
-    Jump::generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+    Jump::generateDisassembly(Addr pc, const loader::SymbolTable *symtab) const
     {
         std::stringstream ss;
 
@@ -213,17 +212,17 @@ output decoder {{
             Addr npc = pc + 4;
             ccprintf(ss,"0x%x",(npc & 0xF0000000) | disp);
         } else if (_numSrcRegs == 0) {
-            std::string str;
-            if (symtab && symtab->findSymbol(disp, str))
-                ss << str;
+            loader::SymbolTable::const_iterator it;
+            if (symtab && (it = symtab->find(disp)) != symtab->end())
+                ss << it->name;
             else
                 ccprintf(ss, "0x%x", disp);
         } else if (_numSrcRegs == 1) {
-             printReg(ss, _srcRegIdx[0]);
+             printReg(ss, srcRegIdx(0));
         } else if(_numSrcRegs == 2) {
-            printReg(ss, _srcRegIdx[0]);
+            printReg(ss, srcRegIdx(0));
             ss << ", ";
-            printReg(ss, _srcRegIdx[1]);
+            printReg(ss, srcRegIdx(1));
         }
 
         return ss.str();
@@ -241,7 +240,6 @@ def format Branch(code, *opt_flags) {{
             code += 'R31 = NNPC;\n'
         elif x == 'Likely':
             not_taken_code = 'NNPC = NPC; NPC = PC;'
-            inst_flags += ('IsCondDelaySlot', )
         else:
             inst_flags += (x, )
 
@@ -280,7 +278,6 @@ def format DspBranch(code, *opt_flags) {{
             code += 'R32 = NNPC;'
         elif x == 'Likely':
             not_taken_code = 'NNPC = NPC, NPC = PC;'
-            inst_flags += ('IsCondDelaySlot', )
         else:
             inst_flags += (x, )
 

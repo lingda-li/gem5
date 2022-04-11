@@ -39,6 +39,9 @@
 #include "mem/cache/tags/indexing_policies/base.hh"
 #include "params/SkewedAssociative.hh"
 
+namespace gem5
+{
+
 class ReplaceableEntry;
 
 /**
@@ -142,7 +145,7 @@ class SkewedAssociative : public BaseIndexingPolicy
     /**
      * Construct and initialize this policy.
      */
-    SkewedAssociative(const Params *p);
+    SkewedAssociative(const Params &p);
 
     /**
      * Destructor.
@@ -171,5 +174,7 @@ class SkewedAssociative : public BaseIndexingPolicy
     Addr regenerateAddr(const Addr tag, const ReplaceableEntry* entry) const
                                                                    override;
 };
+
+} // namespace gem5
 
 #endif //__MEM_CACHE_INDEXING_POLICIES_SKEWED_ASSOCIATIVE_HH__

@@ -1,4 +1,4 @@
-# Copyright (c) 2015 ARM Limited
+# Copyright (c) 2015, 2021 Arm Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -40,10 +40,11 @@ from m5.params import *
 class ThermalDomain(SimObject):
     type = 'ThermalDomain'
     cxx_header = "sim/power/thermal_domain.hh"
+    cxx_class = 'gem5::ThermalDomain'
 
     cxx_exports = [
         PyBindMethod("setNode"),
     ]
 
     # Static temperature which may change over time
-    initial_temperature = Param.Float(25.0, "Initial temperature")
+    initial_temperature = Param.Temperature("25.0C", "Initial temperature")

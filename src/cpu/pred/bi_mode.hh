@@ -37,6 +37,12 @@
 #include "cpu/pred/bpred_unit.hh"
 #include "params/BiModeBP.hh"
 
+namespace gem5
+{
+
+namespace branch_prediction
+{
+
 /**
  * Implements a bi-mode branch predictor. The bi-mode predictor is a two-level
  * branch predictor that has three seprate history arrays: a taken array, a
@@ -54,7 +60,7 @@
 class BiModeBP : public BPredUnit
 {
   public:
-    BiModeBP(const BiModeBPParams *params);
+    BiModeBP(const BiModeBPParams &params);
     void uncondBranch(ThreadID tid, Addr pc, void * &bp_history);
     void squash(ThreadID tid, void *bp_history);
     bool lookup(ThreadID tid, Addr branch_addr, void * &bp_history);
@@ -65,7 +71,8 @@ class BiModeBP : public BPredUnit
   private:
     void updateGlobalHistReg(ThreadID tid, bool taken);
 
-    struct BPHistory {
+    struct BPHistory
+    {
         unsigned globalHistoryReg;
         // was the taken array's prediction used?
         // true: takenPred used
@@ -97,15 +104,18 @@ class BiModeBP : public BPredUnit
     unsigned globalHistoryMask;
 
     // choice predictors
-    std::vector<SatCounter> choiceCounters;
+    std::vector<SatCounter8> choiceCounters;
     // taken direction predictors
-    std::vector<SatCounter> takenCounters;
+    std::vector<SatCounter8> takenCounters;
     // not-taken direction predictors
-    std::vector<SatCounter> notTakenCounters;
+    std::vector<SatCounter8> notTakenCounters;
 
     unsigned choiceThreshold;
     unsigned takenThreshold;
     unsigned notTakenThreshold;
 };
+
+} // namespace branch_prediction
+} // namespace gem5
 
 #endif // __CPU_PRED_BI_MODE_PRED_HH__

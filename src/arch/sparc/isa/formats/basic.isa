@@ -31,6 +31,9 @@ def template BasicDeclare {{
  */
 class %(class_name)s : public %(base_class)s
 {
+  private:
+    %(reg_idx_arr_decl)s;
+
   public:
     // Constructor.
     %(class_name)s(ExtMachInst machInst);
@@ -45,11 +48,14 @@ def template FpBasicDeclare {{
  */
 class %(class_name)s : public %(base_class)s
 {
+  private:
+    %(reg_idx_arr_decl)s;
+
   public:
     // Constructor.
     %(class_name)s(ExtMachInst machInst);
     Fault execute(ExecContext *, Trace::InstRecord *) const override;
-    Fault doFpOp(ExecContext *, Trace::InstRecord *) const M5_NO_INLINE;
+    GEM5_NO_INLINE Fault doFpOp(ExecContext *, Trace::InstRecord *) const;
 };
 }};
 
@@ -60,6 +66,9 @@ def template BasicDeclareWithMnemonic {{
  */
 class %(class_name)s : public %(base_class)s
 {
+  private:
+    %(reg_idx_arr_decl)s;
+
   public:
     // Constructor.
     %(class_name)s(const char *mnemonic, ExtMachInst machInst);
@@ -72,6 +81,7 @@ def template BasicConstructor {{
 %(class_name)s::%(class_name)s(ExtMachInst machInst) :
         %(base_class)s("%(mnemonic)s", machInst, %(op_class)s)
 {
+    %(set_reg_idx_arr)s;
     %(constructor)s;
 }
 }};
@@ -81,12 +91,32 @@ def template BasicConstructorWithMnemonic {{
 %(class_name)s::%(class_name)s(const char *mnemonic, ExtMachInst machInst) :
         %(base_class)s(mnemonic, machInst, %(op_class)s)
 {
+    %(set_reg_idx_arr)s;
     %(constructor)s;
 }
 }};
 
 // Basic instruction class execute method template.
 def template BasicExecute {{
+Fault
+%(class_name)s::execute(ExecContext *xc,
+        Trace::InstRecord *traceData) const
+{
+    Fault fault = NoFault;
+
+    %(op_decl)s;
+    %(op_rd)s;
+    %(code)s;
+
+    if (fault == NoFault) {
+        %(op_wb)s;
+    }
+    return fault;
+}
+}};
+
+// Basic instruction class execute method template.
+def template FpExecute {{
 Fault
 %(class_name)s::execute(ExecContext *xc,
         Trace::InstRecord *traceData) const
@@ -141,28 +171,42 @@ def format BasicOperate(code, *flags) {{
 
 }};
 
+let {{
+    fp_enabled = 'fault = checkFpEnabled(Pstate, Fprs);'
+}};
+
 def format FpBasic(code, *flags) {{
     exec_code = """
     Fsr |= bits(Fsr, 4, 0) << 5;
     Fsr = insertBits(Fsr, 4, 0, 0);
-    int newrnd = M5_FE_TONEAREST;
+    gem5::RoundingMode newrnd = gem5::RoundingMode::ToNearest;
     switch (Fsr<31:30>) {
-      case 0: newrnd = M5_FE_TONEAREST; break;
-      case 1: newrnd = M5_FE_TOWARDZERO; break;
-      case 2: newrnd = M5_FE_UPWARD; break;
-      case 3: newrnd = M5_FE_DOWNWARD; break;
+      case 0:
+        newrnd = gem5::RoundingMode::ToNearest;
+        break;
+      case 1:
+        newrnd = gem5::RoundingMode::TowardZero;
+        break;
+      case 2:
+        newrnd = gem5::RoundingMode::Upward;
+        break;
+      case 3:
+        newrnd = gem5::RoundingMode::Downward;
+        break;
     }
-    int oldrnd = m5_fegetround();
-    m5_fesetround(newrnd);
+    gem5::RoundingMode oldrnd = gem5::getFpRound();
+    gem5::setFpRound(newrnd);
     __asm__ __volatile__("" ::: "memory");
     fault = doFpOp(xc, traceData);
     __asm__ __volatile__("" ::: "memory");
-    m5_fesetround(oldrnd);
+    gem5::setFpRound(oldrnd);
     return fault;
 """
     fp_code = filterDoubles(code)
     iop = InstObjParams(name, Name, 'SparcStaticInst',
-                        { "code" : exec_code, "fp_code" : fp_code }, flags)
+                        { "code" : exec_code,
+                          "fp_code" : fp_code,
+                          "fp_enabled" : fp_enabled }, flags)
     header_output = FpBasicDeclare.subst(iop)
     decoder_output = BasicConstructor.subst(iop)
     decode_block = BasicDecode.subst(iop)

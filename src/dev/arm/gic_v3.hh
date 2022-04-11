@@ -41,8 +41,12 @@
 #ifndef __DEV_ARM_GICV3_H__
 #define __DEV_ARM_GICV3_H__
 
+#include "arch/arm/interrupts.hh"
 #include "dev/arm/base_gic.hh"
 #include "params/Gicv3.hh"
+
+namespace gem5
+{
 
 class Gicv3CPUInterface;
 class Gicv3Distributor;
@@ -55,7 +59,6 @@ class Gicv3 : public BaseGic
     friend class Gicv3CPUInterface;
     friend class Gicv3Redistributor;
 
-    typedef Gicv3Params Params;
     Gicv3Distributor * distributor;
     std::vector<Gicv3Redistributor *> redistributors;
     std::vector<Gicv3CPUInterface *> cpuInterfaces;
@@ -78,24 +81,27 @@ class Gicv3 : public BaseGic
     static const int PPI_MAX = 16;
 
     // Interrupt states for PPIs, SGIs and SPIs, as per SPEC 4.1.2 section
-    typedef enum {
+    enum IntStatus
+    {
         INT_INACTIVE,
         INT_PENDING,
         INT_ACTIVE,
         INT_ACTIVE_PENDING,
-    } IntStatus;
+    };
 
     // Interrupt groups, as per SPEC section 4.6
-    typedef enum {
+    enum GroupId
+    {
         G0S,
         G1S,
         G1NS,
-    } GroupId;
+    };
 
-    typedef enum {
+    enum IntTriggerType
+    {
         INT_LEVEL_SENSITIVE,
         INT_EDGE_TRIGGERED,
-    } IntTriggerType;
+    };
 
   protected:
 
@@ -110,11 +116,7 @@ class Gicv3 : public BaseGic
 
     void init() override;
 
-    const Params *
-    params() const
-    {
-        return dynamic_cast<const Params *>(_params);
-    }
+    PARAMS(Gicv3);
 
     Tick read(PacketPtr pkt) override;
     void reset();
@@ -127,7 +129,7 @@ class Gicv3 : public BaseGic
 
   public:
 
-    Gicv3(const Params * p);
+    Gicv3(const Params &p);
     void deassertInt(uint32_t cpu, ArmISA::InterruptTypes int_type);
     void deassertAll(uint32_t cpu);
     bool haveAsserted(uint32_t cpu) const;
@@ -161,5 +163,7 @@ class Gicv3 : public BaseGic
 
     void postInt(uint32_t cpu, ArmISA::InterruptTypes int_type);
 };
+
+} // namespace gem5
 
 #endif //__DEV_ARM_GICV3_H__

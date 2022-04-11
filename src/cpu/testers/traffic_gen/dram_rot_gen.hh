@@ -50,6 +50,9 @@
 #include "enums/AddrMap.hh"
 #include "mem/packet.hh"
 
+namespace gem5
+{
+
 class DramRotGen : public DramGen
 {
 
@@ -63,7 +66,7 @@ class DramRotGen : public DramGen
      * 3) Ranks per channel
      *
      * @param obj SimObject owning this sequence generator
-     * @param master_id MasterID related to the memory requests
+     * @param requestor_id RequestorID related to the memory requests
      * @param _duration duration of this state before transitioning
      * @param start_addr Start address
      * @param end_addr End address
@@ -82,17 +85,17 @@ class DramRotGen : public DramGen
      * @param addr_mapping Address mapping to be used,
      *                     assumes single channel system
      */
-    DramRotGen(SimObject &obj, MasterID master_id, Tick _duration,
+    DramRotGen(SimObject &obj, RequestorID requestor_id, Tick _duration,
             Addr start_addr, Addr end_addr,
             Addr _blocksize, Addr cacheline_size,
             Tick min_period, Tick max_period,
             uint8_t read_percent, Addr data_limit,
             unsigned int num_seq_pkts, unsigned int page_size,
             unsigned int nbr_of_banks_DRAM, unsigned int nbr_of_banks_util,
-            Enums::AddrMap addr_mapping,
+            enums::AddrMap addr_mapping,
             unsigned int nbr_of_ranks,
             unsigned int max_seq_count_per_rank)
-        : DramGen(obj, master_id, _duration, start_addr, end_addr,
+        : DramGen(obj, requestor_id, _duration, start_addr, end_addr,
           _blocksize, cacheline_size, min_period, max_period,
           read_percent, data_limit,
           num_seq_pkts, page_size, nbr_of_banks_DRAM,
@@ -122,5 +125,7 @@ class DramRotGen : public DramGen
         packet series       */
     unsigned int nextSeqCount;
 };
+
+} // namespace gem5
 
 #endif

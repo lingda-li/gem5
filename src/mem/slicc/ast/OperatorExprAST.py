@@ -30,7 +30,7 @@ from slicc.symbols import Type
 
 class InfixOperatorExprAST(ExprAST):
     def __init__(self, slicc, left, op, right):
-        super(InfixOperatorExprAST, self).__init__(slicc)
+        super().__init__(slicc)
 
         self.left = left
         self.op = op
@@ -39,7 +39,7 @@ class InfixOperatorExprAST(ExprAST):
     def __repr__(self):
         return "[InfixExpr: %r %s %r]" % (self.left, self.op, self.right)
 
-    def generate(self, code):
+    def generate(self, code, **kwargs):
         lcode = self.slicc.codeFormatter()
         rcode = self.slicc.codeFormatter()
 
@@ -64,7 +64,7 @@ class InfixOperatorExprAST(ExprAST):
             elif self.op in ("<<", ">>"):
                 expected_types = [("int", "int", "int"),
                                   ("Cycles", "int", "Cycles")]
-            elif self.op in ("+", "-", "*", "/"):
+            elif self.op in ("+", "-", "*", "/", "%"):
                 expected_types = [("int", "int", "int"),
                                   ("Cycles", "Cycles", "Cycles"),
                                   ("Tick", "Tick", "Tick"),
@@ -96,7 +96,7 @@ class InfixOperatorExprAST(ExprAST):
 
 class PrefixOperatorExprAST(ExprAST):
     def __init__(self, slicc, op, operand):
-        super(PrefixOperatorExprAST, self).__init__(slicc)
+        super().__init__(slicc)
 
         self.op = op
         self.operand = operand
@@ -104,7 +104,7 @@ class PrefixOperatorExprAST(ExprAST):
     def __repr__(self):
         return "[PrefixExpr: %s %r]" % (self.op, self.operand)
 
-    def generate(self, code):
+    def generate(self, code, **kwargs):
         opcode = self.slicc.codeFormatter()
         optype = self.operand.generate(opcode)
 

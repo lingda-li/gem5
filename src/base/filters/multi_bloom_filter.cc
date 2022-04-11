@@ -32,10 +32,15 @@
 #include "base/logging.hh"
 #include "params/BloomFilterMulti.hh"
 
-namespace BloomFilter {
+namespace gem5
+{
 
-Multi::Multi(const BloomFilterMultiParams* p)
-    : Base(p), filters(p->filters)
+GEM5_DEPRECATED_NAMESPACE(BloomFilter, bloom_filter);
+namespace bloom_filter
+{
+
+Multi::Multi(const BloomFilterMultiParams &p)
+    : Base(p), filters(p.filters)
 {
 }
 
@@ -109,11 +114,5 @@ Multi::getTotalCount() const
     return count;
 }
 
-} // namespace BloomFilter
-
-BloomFilter::Multi*
-BloomFilterMultiParams::create()
-{
-    return new BloomFilter::Multi(this);
-}
-
+} // namespace bloom_filter
+} // namespace gem5

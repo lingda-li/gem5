@@ -136,22 +136,22 @@
 #include <string>
 
 #include "arch/arm/decoder.hh"
+#include "arch/arm/gdb-xml/gdb_xml_aarch64_core.hh"
+#include "arch/arm/gdb-xml/gdb_xml_aarch64_fpu.hh"
+#include "arch/arm/gdb-xml/gdb_xml_aarch64_target.hh"
+#include "arch/arm/gdb-xml/gdb_xml_arm_core.hh"
+#include "arch/arm/gdb-xml/gdb_xml_arm_target.hh"
+#include "arch/arm/gdb-xml/gdb_xml_arm_vfpv3.hh"
 #include "arch/arm/pagetable.hh"
-#include "arch/arm/registers.hh"
+#include "arch/arm/regs/vec.hh"
 #include "arch/arm/system.hh"
 #include "arch/arm/utility.hh"
-#include "arch/generic/tlb.hh"
+#include "arch/generic/mmu.hh"
 #include "base/chunk_generator.hh"
 #include "base/intmath.hh"
 #include "base/remote_gdb.hh"
 #include "base/socket.hh"
 #include "base/trace.hh"
-#include "blobs/gdb_xml_aarch64_core.hh"
-#include "blobs/gdb_xml_aarch64_fpu.hh"
-#include "blobs/gdb_xml_aarch64_target.hh"
-#include "blobs/gdb_xml_arm_core.hh"
-#include "blobs/gdb_xml_arm_target.hh"
-#include "blobs/gdb_xml_arm_vfpv3.hh"
 #include "cpu/static_inst.hh"
 #include "cpu/thread_context.hh"
 #include "cpu/thread_state.hh"
@@ -163,7 +163,9 @@
 #include "sim/full_system.hh"
 #include "sim/system.hh"
 
-using namespace std;
+namespace gem5
+{
+
 using namespace ArmISA;
 
 static bool
@@ -180,14 +182,13 @@ tryTranslate(ThreadContext *tc, Addr addr)
     //
     // Calling translateFunctional invokes a table-walk if required
     // so we should always succeed
-    auto *dtb = tc->getDTBPtr();
-    auto *itb = tc->getITBPtr();
-    return dtb->translateFunctional(req, tc, BaseTLB::Read) == NoFault ||
-           itb->translateFunctional(req, tc, BaseTLB::Read) == NoFault;
+    auto *mmu = tc->getMMUPtr();
+    return mmu->translateFunctional(req, tc, BaseMMU::Read) == NoFault ||
+           mmu->translateFunctional(req, tc, BaseMMU::Execute) == NoFault;
 }
 
-RemoteGDB::RemoteGDB(System *_system, ThreadContext *tc, int _port)
-    : BaseRemoteGDB(_system, tc, _port), regCache32(this), regCache64(this)
+RemoteGDB::RemoteGDB(System *_system, int _port)
+    : BaseRemoteGDB(_system, _port), regCache32(this), regCache64(this)
 {
 }
 
@@ -222,7 +223,7 @@ RemoteGDB::AArch64GdbRegCache::getRegs(ThreadContext *context)
     for (int i = 0; i < 31; ++i)
         r.x[i] = context->readIntReg(INTREG_X0 + i);
     r.spx = context->readIntReg(INTREG_SPX);
-    r.pc = context->pcState().pc();
+    r.pc = context->pcState().instAddr();
     r.cpsr = context->readMiscRegNoEffect(MISCREG_CPSR);
 
     size_t base = 0;
@@ -244,7 +245,7 @@ RemoteGDB::AArch64GdbRegCache::setRegs(ThreadContext *context) const
 
     for (int i = 0; i < 31; ++i)
         context->setIntReg(INTREG_X0 + i, r.x[i]);
-    auto pc_state = context->pcState();
+    auto pc_state = context->pcState().as<PCState>();
     pc_state.set(r.pc);
     context->pcState(pc_state);
     context->setMiscRegNoEffect(MISCREG_CPSR, r.cpsr);
@@ -286,7 +287,7 @@ RemoteGDB::AArch32GdbRegCache::getRegs(ThreadContext *context)
     r.gpr[12] = context->readIntReg(INTREG_R12);
     r.gpr[13] = context->readIntReg(INTREG_SP);
     r.gpr[14] = context->readIntReg(INTREG_LR);
-    r.gpr[15] = context->pcState().pc();
+    r.gpr[15] = context->pcState().instAddr();
     r.cpsr = context->readMiscRegNoEffect(MISCREG_CPSR);
 
     // One day somebody will implement transfer of FPRs correctly.
@@ -316,7 +317,7 @@ RemoteGDB::AArch32GdbRegCache::setRegs(ThreadContext *context) const
     context->setIntReg(INTREG_R12, r.gpr[12]);
     context->setIntReg(INTREG_SP, r.gpr[13]);
     context->setIntReg(INTREG_LR, r.gpr[14]);
-    auto pc_state = context->pcState();
+    PCState pc_state = context->pcState().as<PCState>();
     pc_state.set(r.gpr[15]);
     context->pcState(pc_state);
 
@@ -359,3 +360,12 @@ RemoteGDB::gdbRegs()
     else
         return &regCache32;
 }
+
+bool
+RemoteGDB::checkBpLen(size_t len)
+{
+    // 2 for Thumb ISA, 4 for ARM ISA.
+    return len == 2 || len == 4;
+}
+
+} // namespace gem5

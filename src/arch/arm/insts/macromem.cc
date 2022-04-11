@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2014 ARM Limited
+ * Copyright (c) 2010-2014, 2020 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -44,8 +44,11 @@
 
 #include "arch/arm/generated/decoder.hh"
 #include "arch/arm/insts/neon64_mem.hh"
+#include "base/compiler.hh"
 
-using namespace std;
+namespace gem5
+{
+
 using namespace ArmISAInst;
 
 namespace ArmISA
@@ -561,7 +564,7 @@ VldSingleOp::VldSingleOp(const char *mnem, ExtMachInst machInst,
 
     unsigned eBytes = (1 << size);
     unsigned loadSize = eBytes * elems;
-    unsigned loadRegs M5_VAR_USED =
+    [[maybe_unused]] unsigned loadRegs =
         (loadSize + sizeof(uint32_t) - 1) / sizeof(uint32_t);
 
     assert(loadRegs > 0 && loadRegs <= 4);
@@ -925,7 +928,7 @@ VstSingleOp::VstSingleOp(const char *mnem, ExtMachInst machInst,
 
     unsigned eBytes = (1 << size);
     unsigned storeSize = eBytes * elems;
-    unsigned storeRegs M5_VAR_USED =
+    [[maybe_unused]] unsigned storeRegs =
         (storeSize + sizeof(uint32_t) - 1) / sizeof(uint32_t);
 
     assert(storeRegs > 0 && storeRegs <= 4);
@@ -1143,7 +1146,7 @@ VldMultOp64::VldMultOp64(const char *mnem, ExtMachInst machInst,
 
     microOps = new StaticInstPtr[numMicroops];
     unsigned uopIdx = 0;
-    uint32_t memaccessFlags = (TLB::ArmFlags)eSize | TLB::AllowUnaligned;
+    uint32_t memaccessFlags = (MMU::ArmFlags)eSize | MMU::AllowUnaligned;
 
     int i = 0;
     for (; i < numMemMicroops - 1; ++i) {
@@ -1196,6 +1199,7 @@ VldMultOp64::VldMultOp64(const char *mnem, ExtMachInst machInst,
     for (int i = 0; i < numMicroops - 1; ++i) {
         microOps[i]->setDelayedCommit();
     }
+    microOps[0]->setFirstMicroop();
     microOps[numMicroops - 1]->setLastMicroop();
 }
 
@@ -1250,7 +1254,7 @@ VstMultOp64::VstMultOp64(const char *mnem, ExtMachInst machInst,
         }
     }
 
-    uint32_t memaccessFlags = (TLB::ArmFlags)eSize | TLB::AllowUnaligned;
+    uint32_t memaccessFlags = (MMU::ArmFlags)eSize | MMU::AllowUnaligned;
 
     int i = 0;
     for (; i < numMemMicroops - 1; ++i) {
@@ -1280,6 +1284,7 @@ VstMultOp64::VstMultOp64(const char *mnem, ExtMachInst machInst,
     for (int i = 0; i < numMicroops - 1; i++) {
         microOps[i]->setDelayedCommit();
     }
+    microOps[0]->setFirstMicroop();
     microOps[numMicroops - 1]->setLastMicroop();
 }
 
@@ -1317,7 +1322,7 @@ VldSingleOp64::VldSingleOp64(const char *mnem, ExtMachInst machInst,
     microOps = new StaticInstPtr[numMicroops];
     unsigned uopIdx = 0;
 
-    uint32_t memaccessFlags = (TLB::ArmFlags)eSize | TLB::AllowUnaligned;
+    uint32_t memaccessFlags = (MMU::ArmFlags)eSize | MMU::AllowUnaligned;
 
     int i = 0;
     for (; i < numMemMicroops - 1; ++i) {
@@ -1353,6 +1358,7 @@ VldSingleOp64::VldSingleOp64(const char *mnem, ExtMachInst machInst,
     for (int i = 0; i < numMicroops - 1; i++) {
         microOps[i]->setDelayedCommit();
     }
+    microOps[0]->setFirstMicroop();
     microOps[numMicroops - 1]->setLastMicroop();
 }
 
@@ -1395,7 +1401,7 @@ VstSingleOp64::VstSingleOp64(const char *mnem, ExtMachInst machInst,
             numStructElems, index, i /* step */, replicate);
     }
 
-    uint32_t memaccessFlags = (TLB::ArmFlags)eSize | TLB::AllowUnaligned;
+    uint32_t memaccessFlags = (MMU::ArmFlags)eSize | MMU::AllowUnaligned;
 
     int i = 0;
     for (; i < numMemMicroops - 1; ++i) {
@@ -1425,6 +1431,7 @@ VstSingleOp64::VstSingleOp64(const char *mnem, ExtMachInst machInst,
     for (int i = 0; i < numMicroops - 1; i++) {
         microOps[i]->setDelayedCommit();
     }
+    microOps[0]->setFirstMicroop();
     microOps[numMicroops - 1]->setLastMicroop();
 }
 
@@ -1495,6 +1502,7 @@ MacroVFPMemOp::MacroVFPMemOp(const char *mnem, ExtMachInst machInst,
     }
 
     assert(numMicroops == i);
+    microOps[0]->setFirstMicroop();
     microOps[numMicroops - 1]->setLastMicroop();
 
     for (StaticInstPtr *curUop = microOps;
@@ -1507,7 +1515,7 @@ MacroVFPMemOp::MacroVFPMemOp(const char *mnem, ExtMachInst machInst,
 
 std::string
 MicroIntImmOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -1521,7 +1529,7 @@ MicroIntImmOp::generateDisassembly(
 
 std::string
 MicroIntImmXOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -1535,7 +1543,7 @@ MicroIntImmXOp::generateDisassembly(
 
 std::string
 MicroSetPCCPSR::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -1545,7 +1553,7 @@ MicroSetPCCPSR::generateDisassembly(
 
 std::string
 MicroIntRegXOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -1558,7 +1566,7 @@ MicroIntRegXOp::generateDisassembly(
 
 std::string
 MicroIntMov::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -1570,7 +1578,7 @@ MicroIntMov::generateDisassembly(
 
 std::string
 MicroIntOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -1584,7 +1592,7 @@ MicroIntOp::generateDisassembly(
 
 std::string
 MicroMemOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -1602,7 +1610,7 @@ MicroMemOp::generateDisassembly(
 
 std::string
 MicroMemPairOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss);
@@ -1617,4 +1625,5 @@ MicroMemPairOp::generateDisassembly(
     return ss.str();
 }
 
-}
+} // namespace ArmISA
+} // namespace gem5

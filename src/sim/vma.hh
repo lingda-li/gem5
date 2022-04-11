@@ -31,11 +31,14 @@
 
 #include <string>
 
-#include "arch/isa_traits.hh"
 #include "base/addr_range.hh"
+#include "base/trace.hh"
 #include "base/types.hh"
 #include "debug/Vma.hh"
 #include "mem/se_translating_port_proxy.hh"
+
+namespace gem5
+{
 
 class VMA
 {
@@ -194,5 +197,7 @@ class VMA
         size_t _length;       // Length of host ptr
     };
 };
+
+} // namespace gem5
 
 #endif // __SRC_MEM_VMA_HH__

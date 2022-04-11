@@ -40,17 +40,22 @@
 
 #include "arch/arm/nativetrace.hh"
 
-#include "arch/arm/isa_traits.hh"
-#include "arch/arm/miscregs.hh"
+#include "arch/arm/regs/cc.hh"
+#include "arch/arm/regs/misc.hh"
+#include "base/compiler.hh"
 #include "cpu/thread_context.hh"
 #include "debug/ExecRegDelta.hh"
 #include "params/ArmNativeTrace.hh"
 #include "sim/byteswap.hh"
 
+namespace gem5
+{
+
+using namespace ArmISA;
+
 namespace Trace {
 
-#if TRACING_ON
-static const char *regNames[] = {
+[[maybe_unused]] static const char *regNames[] = {
     "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
     "r8", "r9", "r10", "fp", "r12", "sp", "lr", "pc",
     "cpsr", "f0", "f1", "f2", "f3", "f4", "f5", "f6",
@@ -59,7 +64,6 @@ static const char *regNames[] = {
     "f23", "f24", "f25", "f26", "f27", "f28", "f29", "f30",
     "f31", "fpscr"
 };
-#endif
 
 void
 Trace::ArmNativeTrace::ThreadState::update(NativeTrace *parent)
@@ -110,7 +114,7 @@ Trace::ArmNativeTrace::ThreadState::update(ThreadContext *tc)
     }
 
     //R15, aliased with the PC
-    newState[STATE_PC] = tc->pcState().npc();
+    newState[STATE_PC] = tc->pcState().as<ArmISA::PCState>().npc();
     changed[STATE_PC] = (newState[STATE_PC] != oldState[STATE_PC]);
 
     //CPSR
@@ -124,8 +128,7 @@ Trace::ArmNativeTrace::ThreadState::update(ThreadContext *tc)
     changed[STATE_CPSR] = (newState[STATE_CPSR] != oldState[STATE_CPSR]);
 
     for (int i = 0; i < NumVecV7ArchRegs; i++) {
-        auto vec(tc->readVecReg(RegId(VecRegClass,i))
-            .as<uint64_t, MaxSveVecLenInDWords>());
+        auto *vec = tc->readVecReg(RegId(VecRegClass,i)).as<uint64_t>();
         newState[STATE_F0 + 2*i] = vec[0];
         newState[STATE_F0 + 2*i + 1] = vec[1];
     }
@@ -139,7 +142,7 @@ Trace::ArmNativeTrace::check(NativeTraceRecord *record)
     ThreadContext *tc = record->getThread();
     // This area is read only on the target. It can't stop there to tell us
     // what's going on, so we should skip over anything there also.
-    if (tc->nextInstAddr() > 0xffff0000)
+    if (tc->pcState().as<ArmISA::PCState>().npc() > 0xffff0000)
         return;
     nState.update(this);
     mState.update(tc);
@@ -217,13 +220,4 @@ Trace::ArmNativeTrace::check(NativeTraceRecord *record)
 }
 
 } // namespace Trace
-
-////////////////////////////////////////////////////////////////////////
-//
-//  ExeTracer Simulation Object
-//
-Trace::ArmNativeTrace *
-ArmNativeTraceParams::create()
-{
-    return new Trace::ArmNativeTrace(this);
-}
+} // namespace gem5

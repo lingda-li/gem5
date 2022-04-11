@@ -41,12 +41,15 @@
 #include "sim/power/power_model.hh"
 #include "sim/power/thermal_domain.hh"
 
-SubSystem::SubSystem(const Params *p)
+namespace gem5
+{
+
+SubSystem::SubSystem(const Params &p)
  : SimObject(p)
 {
     // Link thermalDomain <-> SubSystem
-    if (p->thermal_domain)
-        p->thermal_domain->setSubSystem(this);
+    if (p.thermal_domain)
+        p.thermal_domain->setSubSystem(this);
 }
 
 double
@@ -67,8 +70,4 @@ SubSystem::getStaticPower() const
     return ret;
 }
 
-SubSystem *
-SubSystemParams::create()
-{
-    return new SubSystem(this);
-}
+} // namespace gem5

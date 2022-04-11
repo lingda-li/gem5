@@ -45,12 +45,16 @@
 #include <utility>
 #include <vector>
 
-#include "arch/arm/intregs.hh"
+#include "arch/arm/regs/int.hh"
 #include "arch/arm/utility.hh"
 #include "cpu/thread_context.hh"
 #include "mem/port_proxy.hh"
+#include "sim/core.hh"
 #include "sim/guest_abi.hh"
 #include "sim/sim_object.hh"
+
+namespace gem5
+{
 
 struct ArmSemihostingParams;
 class SerialDevice;
@@ -72,6 +76,17 @@ class SerialDevice;
 class ArmSemihosting : public SimObject
 {
   public:
+    enum
+    {
+        // Standard ARM immediate values which trigger semihosting.
+        T32Imm = 0xAB,
+        A32Imm = 0x123456,
+        A64Imm = 0xF000,
+
+        // The immediate value which enables gem5 semihosting calls. Use the
+        // standard value for thumb.
+        Gem5Imm = 0x5D57
+    };
 
     static PortProxy &portProxy(ThreadContext *tc);
 
@@ -122,6 +137,8 @@ class ArmSemihosting : public SimObject
 
     struct Abi64 : public AbiBase
     {
+        using UintPtr = uint64_t;
+
         class State : public StateBase<uint64_t>
         {
           public:
@@ -134,6 +151,8 @@ class ArmSemihosting : public SimObject
 
     struct Abi32 : public AbiBase
     {
+        using UintPtr = uint32_t;
+
         class State : public StateBase<uint64_t>
         {
           public:
@@ -182,7 +201,8 @@ class ArmSemihosting : public SimObject
         }
     };
 
-    enum Operation {
+    enum Operation
+    {
         SYS_OPEN = 0x01,
         SYS_CLOSE = 0x02,
         SYS_WRITEC = 0x03,
@@ -213,7 +233,7 @@ class ArmSemihosting : public SimObject
         SYS_GEM5_PSEUDO_OP = 0x100
     };
 
-    ArmSemihosting(const ArmSemihostingParams *p);
+    ArmSemihosting(const ArmSemihostingParams &p);
 
     /** Perform an Arm Semihosting call from aarch64 code. */
     bool call64(ThreadContext *tc, bool gem5_ops);
@@ -398,7 +418,7 @@ class ArmSemihosting : public SimObject
     unsigned
     calcTickShift() const
     {
-        int msb = findMsbSet(SimClock::Frequency);
+        int msb = findMsbSet(sim_clock::Frequency);
         return msb > 31 ? msb - 31 : 0;
     }
     uint64_t
@@ -570,17 +590,22 @@ class ArmSemihosting : public SimObject
     static const std::map<uint64_t, const char *> exitCodes;
     static const std::vector<uint8_t> features;
     static const std::map<const std::string, FILE *> stdioMap;
+
+    // used in callTmpNam() to deterministically generate a temp filename
+    uint16_t tmpNameIndex = 0;
+
 };
 
 std::ostream &operator << (
         std::ostream &os, const ArmSemihosting::InPlaceArg &ipa);
 
-namespace GuestABI
+GEM5_DEPRECATED_NAMESPACE(GuestABI, guest_abi);
+namespace guest_abi
 {
 
 template <typename Arg>
 struct Argument<ArmSemihosting::Abi64, Arg,
-    typename std::enable_if<std::is_integral<Arg>::value>::type>
+    typename std::enable_if_t<std::is_integral_v<Arg>>>
 {
     static Arg
     get(ThreadContext *tc, ArmSemihosting::Abi64::State &state)
@@ -591,12 +616,12 @@ struct Argument<ArmSemihosting::Abi64, Arg,
 
 template <typename Arg>
 struct Argument<ArmSemihosting::Abi32, Arg,
-    typename std::enable_if<std::is_integral<Arg>::value>::type>
+    typename std::enable_if_t<std::is_integral_v<Arg>>>
 {
     static Arg
     get(ThreadContext *tc, ArmSemihosting::Abi32::State &state)
     {
-        if (std::is_signed<Arg>::value)
+        if (std::is_signed_v<Arg>)
             return sext<32>(state.get(tc));
         else
             return state.get(tc);
@@ -604,8 +629,8 @@ struct Argument<ArmSemihosting::Abi32, Arg,
 };
 
 template <typename Abi>
-struct Argument<Abi, ArmSemihosting::InPlaceArg, typename std::enable_if<
-    std::is_base_of<ArmSemihosting::AbiBase, Abi>::value>::type>
+struct Argument<Abi, ArmSemihosting::InPlaceArg, typename std::enable_if_t<
+    std::is_base_of_v<ArmSemihosting::AbiBase, Abi>>>
 {
     static ArmSemihosting::InPlaceArg
     get(ThreadContext *tc, typename Abi::State &state)
@@ -635,6 +660,7 @@ struct Result<ArmSemihosting::Abi64, ArmSemihosting::RetErrno>
     }
 };
 
-} // namespace GuestABI
+} // namespace guest_abi
+} // namespace gem5
 
 #endif // __ARCH_ARM_SEMIHOSTING_HH__

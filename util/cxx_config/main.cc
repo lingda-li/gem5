@@ -72,6 +72,8 @@
 #include "sim/system.hh"
 #include "stats.hh"
 
+using namespace gem5;
+
 void
 usage(const std::string &prog_name)
 {
@@ -113,8 +115,8 @@ main(int argc, char **argv)
     setClockFrequency(1000000000000);
     curEventQueue(getEventQueue(0));
 
-    Stats::initSimStats();
-    Stats::registerHandlers(CxxConfig::statsReset, CxxConfig::statsDump);
+    statistics::initSimStats();
+    statistics::registerHandlers(CxxConfig::statsReset, CxxConfig::statsDump);
 
     Trace::enable();
     setDebugFlag("Terminal");
@@ -291,7 +293,7 @@ main(int argc, char **argv)
         } while (drain_count > 0);
 
         old_cpu.switchOut();
-        system.setMemoryMode(Enums::timing);
+        system.setMemoryMode(enums::timing);
         new_cpu.takeOverFrom(&old_cpu);
         config_manager->drainResume();
 

@@ -41,13 +41,16 @@
 #include "dev/io_device.hh"
 #include "dev/virtio/base.hh"
 
+namespace gem5
+{
+
 class ArmInterruptPin;
 struct MmioVirtIOParams;
 
 class MmioVirtIO : public BasicPioDevice
 {
   public:
-    MmioVirtIO(const MmioVirtIOParams *params);
+    MmioVirtIO(const MmioVirtIOParams &params);
     virtual ~MmioVirtIO();
 
   protected: // BasicPioDevice
@@ -58,7 +61,8 @@ class MmioVirtIO : public BasicPioDevice
     /** @{ */
     /** Offsets into VirtIO MMIO space. */
 
-    enum : Addr {
+    enum : Addr
+    {
         OFF_MAGIC = 0x00,
         OFF_VERSION = 0x04,
         OFF_DEVICE_ID = 0x08,
@@ -82,7 +86,8 @@ class MmioVirtIO : public BasicPioDevice
 
     /** @} */
 
-    enum {
+    enum
+    {
         INT_USED_RING = 1 << 0,
         INT_CONFIG = 1 << 1,
     };
@@ -103,11 +108,11 @@ class MmioVirtIO : public BasicPioDevice
     uint32_t pageSize;
     uint32_t interruptStatus;
 
-    MakeCallback<MmioVirtIO, &MmioVirtIO::kick> callbackKick;
-
   protected: // Params
     VirtIODeviceBase &vio;
     ArmInterruptPin *const interrupt;
 };
+
+} // namespace gem5
 
 #endif // __DEV_ARM_VIO_MMIO_HH__

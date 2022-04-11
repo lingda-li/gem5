@@ -37,7 +37,10 @@
 
 #include "dev/arm/smmu_v3_events.hh"
 
-#include "dev/arm/smmu_v3_slaveifc.hh"
+#include "dev/arm/smmu_v3_deviceifc.hh"
+
+namespace gem5
+{
 
 void
 SMMUDeviceRetryEvent::process()
@@ -50,3 +53,5 @@ SMMUDeviceRetryEvent::name() const
 {
     return smmuIfc.name() + ".device_retry_event";
 }
+
+} // namespace gem5

@@ -60,6 +60,9 @@
 #include "params/BaseTags.hh"
 #include "sim/clocked_object.hh"
 
+namespace gem5
+{
+
 class System;
 class IndexingPolicy;
 class ReplaceableEntry;
@@ -102,7 +105,7 @@ class BaseTags : public ClockedObject
     /**
      * TODO: It would be good if these stats were acquired after warmup.
      */
-    struct BaseTagStats : public Stats::Group
+    struct BaseTagStats : public statistics::Group
     {
         BaseTagStats(BaseTags &tags);
 
@@ -111,52 +114,52 @@ class BaseTags : public ClockedObject
 
         BaseTags &tags;
 
-        /** Per cycle average of the number of tags that hold valid data. */
-        Stats::Average tagsInUse;
+        /** Per tick average of the number of tags that hold valid data. */
+        statistics::Average tagsInUse;
 
         /** The total number of references to a block before it is replaced. */
-        Stats::Scalar totalRefs;
+        statistics::Scalar totalRefs;
 
         /**
          * The number of reference counts sampled. This is different
          * from replacements because we sample all the valid blocks
          * when the simulator exits.
          */
-        Stats::Scalar sampledRefs;
+        statistics::Scalar sampledRefs;
 
         /**
          * Average number of references to a block before is was replaced.
          * @todo This should change to an average stat once we have them.
          */
-        Stats::Formula avgRefs;
+        statistics::Formula avgRefs;
 
-        /** The cycle that the warmup percentage was hit. 0 on failure. */
-        Stats::Scalar warmupCycle;
+        /** The tick that the warmup percentage was hit. 0 on failure. */
+        statistics::Scalar warmupTick;
 
         /** Average occupancy of each requestor using the cache */
-        Stats::AverageVector occupancies;
+        statistics::AverageVector occupancies;
 
         /** Average occ % of each requestor using the cache */
-        Stats::Formula avgOccs;
+        statistics::Formula avgOccs;
 
         /** Occupancy of each context/cpu using the cache */
-        Stats::Vector occupanciesTaskId;
+        statistics::Vector occupanciesTaskId;
 
         /** Occupancy of each context/cpu using the cache */
-        Stats::Vector2d ageTaskId;
+        statistics::Vector2d ageTaskId;
 
-        /** Occ % of each context/cpu using the cache */
-        Stats::Formula percentOccsTaskId;
+        /** Occ ratio of each context/cpu using the cache */
+        statistics::Formula ratioOccsTaskId;
 
         /** Number of tags consulted over all accesses. */
-        Stats::Scalar tagAccesses;
+        statistics::Scalar tagAccesses;
         /** Number of data blocks consulted over all accesses. */
-        Stats::Scalar dataAccesses;
+        statistics::Scalar dataAccesses;
     } stats;
 
   public:
     typedef BaseTagsParams Params;
-    BaseTags(const Params *p);
+    BaseTags(const Params &p);
 
     /**
      * Destructor.
@@ -253,8 +256,8 @@ class BaseTags : public ClockedObject
         assert(blk);
         assert(blk->isValid());
 
-        stats.occupancies[blk->srcMasterId]--;
-        stats.totalRefs += blk->refCount;
+        stats.occupancies[blk->getSrcRequestorId()]--;
+        stats.totalRefs += blk->getRefCount();
         stats.sampledRefs++;
 
         blk->invalidate();
@@ -285,12 +288,11 @@ class BaseTags : public ClockedObject
      * should only be used as such. Returns the tag lookup latency as a side
      * effect.
      *
-     * @param addr The address to find.
-     * @param is_secure True if the target memory space is secure.
+     * @param pkt The packet holding the address to find.
      * @param lat The latency of the tag lookup.
      * @return Pointer to the cache block if found.
      */
-    virtual CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat) = 0;
+    virtual CacheBlk* accessBlock(const PacketPtr pkt, Cycles &lat) = 0;
 
     /**
      * Generate the tag from the given address.
@@ -307,6 +309,16 @@ class BaseTags : public ClockedObject
      * @param blk The block to update.
      */
     virtual void insertBlock(const PacketPtr pkt, CacheBlk *blk);
+
+    /**
+     * Move a block's metadata to another location decided by the replacement
+     * policy. It behaves as a swap, however, since the destination block
+     * should be invalid, the result is a move.
+     *
+     * @param src_blk The source block.
+     * @param dest_blk The destination block. Must be invalid.
+     */
+    virtual void moveBlock(CacheBlk *src_blk, CacheBlk *dest_blk);
 
     /**
      * Regenerate the block address.
@@ -353,12 +365,6 @@ class BaseTags : public ClockedObject
     void computeStatsVisitor(CacheBlk &blk);
 };
 
-class BaseTagsCallback : public Callback
-{
-    BaseTags *tags;
-  public:
-    BaseTagsCallback(BaseTags *t) : tags(t) {}
-    virtual void process() { tags->cleanupRefs(); };
-};
+} // namespace gem5
 
 #endif //__MEM_CACHE_TAGS_BASE_HH__

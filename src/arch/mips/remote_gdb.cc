@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 LabWare
+ * Copyright 2015-2020 LabWare
  * Copyright 2014 Google, Inc.
  * Copyright (c) 2010 ARM Limited
  * All rights reserved
@@ -136,17 +136,23 @@
 #include <string>
 
 #include "arch/mips/decoder.hh"
+#include "arch/mips/gdb-xml/gdb_xml_mips.hh"
+#include "arch/mips/regs/float.hh"
+#include "arch/mips/regs/int.hh"
+#include "arch/mips/regs/misc.hh"
 #include "cpu/thread_state.hh"
 #include "debug/GDBAcc.hh"
 #include "debug/GDBMisc.hh"
 #include "mem/page_table.hh"
 #include "sim/full_system.hh"
 
-using namespace std;
+namespace gem5
+{
+
 using namespace MipsISA;
 
-RemoteGDB::RemoteGDB(System *_system, ThreadContext *tc, int _port)
-    : BaseRemoteGDB(_system, tc, _port), regCache(this)
+RemoteGDB::RemoteGDB(System *_system, int _port)
+    : BaseRemoteGDB(_system, _port), regCache(this)
 {
 }
 
@@ -173,7 +179,7 @@ RemoteGDB::MipsGdbRegCache::getRegs(ThreadContext *context)
     r.hi = context->readIntReg(INTREG_HI);
     r.badvaddr = context->readMiscRegNoEffect(MISCREG_BADVADDR);
     r.cause = context->readMiscRegNoEffect(MISCREG_CAUSE);
-    r.pc = context->pcState().pc();
+    r.pc = context->pcState().instAddr();
     for (int i = 0; i < 32; i++) r.fpr[i] = context->readFloatReg(i);
     r.fsr = context->readFloatReg(FLOATREG_FCCR);
     r.fir = context->readFloatReg(FLOATREG_FIR);
@@ -201,3 +207,22 @@ RemoteGDB::gdbRegs()
 {
     return &regCache;
 }
+
+bool
+RemoteGDB::getXferFeaturesRead(const std::string &annex, std::string &output)
+{
+#define GDB_XML(x, s) \
+        { x, std::string(reinterpret_cast<const char *>(Blobs::s), \
+        Blobs::s ## _len) }
+    static const std::map<std::string, std::string> annexMap {
+        GDB_XML("target.xml", gdb_xml_mips),
+    };
+#undef GDB_XML
+    auto it = annexMap.find(annex);
+    if (it == annexMap.end())
+        return false;
+    output = it->second;
+    return true;
+}
+
+} // namespace gem5

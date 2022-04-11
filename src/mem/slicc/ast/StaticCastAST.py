@@ -28,7 +28,7 @@ from slicc.ast.ExprAST import ExprAST
 
 class StaticCastAST(ExprAST):
     def __init__(self, slicc, type_ast, type_modifier, expr_ast):
-        super(StaticCastAST, self).__init__(slicc)
+        super().__init__(slicc)
 
         self.type_ast = type_ast
         self.expr_ast = expr_ast
@@ -37,7 +37,7 @@ class StaticCastAST(ExprAST):
     def __repr__(self):
         return "[StaticCastAST: %r]" % self.expr_ast
 
-    def generate(self, code):
+    def generate(self, code, **kwargs):
         actual_type, ecode = self.expr_ast.inline(True)
         if self.type_modifier == "pointer":
             code('static_cast<${{self.type_ast.type.c_ident}} *>($ecode)')

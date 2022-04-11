@@ -29,7 +29,7 @@ from slicc.symbols import Event, State
 
 class TypeFieldStateAST(TypeFieldAST):
     def __init__(self, slicc, field_id, perm_ast, pairs_ast):
-        super(TypeFieldStateAST, self).__init__(slicc, pairs_ast)
+        super().__init__(slicc, pairs_ast)
 
         self.field_id = field_id
         self.perm_ast = perm_ast
@@ -40,7 +40,7 @@ class TypeFieldStateAST(TypeFieldAST):
     def __repr__(self):
         return "[TypeFieldState: %r]" % self.field_id
 
-    def generate(self, type):
+    def generate(self, type, **kwargs):
         if not str(type) == "State":
             self.error("State Declaration must be of type State.")
 

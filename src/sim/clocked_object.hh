@@ -51,6 +51,9 @@
 #include "sim/power_state.hh"
 #include "sim/sim_object.hh"
 
+namespace gem5
+{
+
 /**
  * Helper class for objects that need to be clocked. Clocked objects
  * typically inherit from this class. Objects that need SimObject
@@ -209,7 +212,7 @@ class Clocked
      */
     Tick nextCycle() const { return clockEdge(Cycles(1)); }
 
-    uint64_t frequency() const { return SimClock::Frequency / clockPeriod(); }
+    uint64_t frequency() const { return sim_clock::Frequency / clockPeriod(); }
 
     Tick clockPeriod() const { return clockDomain.clockPeriod(); }
 
@@ -231,20 +234,17 @@ class Clocked
 class ClockedObject : public SimObject, public Clocked
 {
   public:
-    ClockedObject(const ClockedObjectParams *p);
+    ClockedObject(const ClockedObjectParams &p);
 
     /** Parameters of ClockedObject */
-    typedef ClockedObjectParams Params;
-    const Params *
-    params() const
-    {
-        return reinterpret_cast<const Params*>(_params);
-    }
+    using Params = ClockedObjectParams;
 
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
 
     PowerState *powerState;
 };
+
+} // namespace gem5
 
 #endif //__SIM_CLOCKED_OBJECT_HH__

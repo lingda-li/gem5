@@ -29,18 +29,22 @@
 #include "learning_gem5/part2/hello_object.hh"
 
 #include "base/logging.hh"
+#include "base/trace.hh"
 #include "debug/HelloExample.hh"
 
-HelloObject::HelloObject(HelloObjectParams *params) :
+namespace gem5
+{
+
+HelloObject::HelloObject(const HelloObjectParams &params) :
     SimObject(params),
     // This is a C++ lambda. When the event is triggered, it will call the
     // processEvent() function. (this must be captured)
     event([this]{ processEvent(); }, name() + ".event"),
-    goodbye(params->goodbye_object),
+    goodbye(params.goodbye_object),
     // Note: This is not needed as you can *always* reference this->name()
-    myName(params->name),
-    latency(params->time_to_wait),
-    timesLeft(params->number_of_fires)
+    myName(params.name),
+    latency(params.time_to_wait),
+    timesLeft(params.number_of_fires)
 {
     DPRINTF(HelloExample, "Created the hello object\n");
     panic_if(!goodbye, "HelloObject must have a non-null GoodbyeObject");
@@ -68,8 +72,4 @@ HelloObject::processEvent()
     }
 }
 
-HelloObject*
-HelloObjectParams::create()
-{
-    return new HelloObject(this);
-}
+} // namespace gem5

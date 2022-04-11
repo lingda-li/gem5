@@ -24,17 +24,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import print_function
-from __future__ import absolute_import
-
-from m5.internal import params
-from m5.SimObject import *
-
-try:
-    modules = __loader__.modules
-except NameError:
-    modules = { }
-
-for module in modules.keys():
+for module in __spec__.loader_state:
     if module.startswith('m5.objects.'):
         exec("from %s import *" % module)

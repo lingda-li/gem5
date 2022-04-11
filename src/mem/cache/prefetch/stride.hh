@@ -60,11 +60,20 @@
 #include "mem/packet.hh"
 #include "params/StridePrefetcherHashedSetAssociative.hh"
 
+namespace gem5
+{
+
 class BaseIndexingPolicy;
-class BaseReplacementPolicy;
+GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
+namespace replacement_policy
+{
+    class Base;
+}
 struct StridePrefetcherParams;
 
-namespace Prefetcher {
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
 
 /**
  * Override the default set associative to apply a specific hash function
@@ -78,7 +87,7 @@ class StridePrefetcherHashedSetAssociative : public SetAssociative
 
   public:
     StridePrefetcherHashedSetAssociative(
-        const StridePrefetcherHashedSetAssociativeParams *p)
+        const StridePrefetcherHashedSetAssociativeParams &p)
       : SetAssociative(p)
     {
     }
@@ -89,12 +98,12 @@ class Stride : public Queued
 {
   protected:
     /** Initial confidence counter value for the pc tables. */
-    const SatCounter initConfidence;
+    const SatCounter8 initConfidence;
 
     /** Confidence threshold for prefetch generation. */
     const double threshConf;
 
-    const bool useMasterId;
+    const bool useRequestorId;
 
     const int degree;
 
@@ -107,14 +116,13 @@ class Stride : public Queued
         const int numEntries;
 
         BaseIndexingPolicy* const indexingPolicy;
-        BaseReplacementPolicy* const replacementPolicy;
+        replacement_policy::Base* const replacementPolicy;
 
         PCTableInfo(int assoc, int num_entries,
             BaseIndexingPolicy* indexing_policy,
-            BaseReplacementPolicy* replacement_policy)
+            replacement_policy::Base* repl_policy)
           : assoc(assoc), numEntries(num_entries),
-            indexingPolicy(indexing_policy),
-            replacementPolicy(replacement_policy)
+            indexingPolicy(indexing_policy), replacementPolicy(repl_policy)
         {
         }
     } pcTableInfo;
@@ -122,13 +130,13 @@ class Stride : public Queued
     /** Tagged by hashed PCs. */
     struct StrideEntry : public TaggedEntry
     {
-        StrideEntry(const SatCounter& init_confidence);
+        StrideEntry(const SatCounter8& init_confidence);
 
         void invalidate() override;
 
         Addr lastAddr;
         int stride;
-        SatCounter confidence;
+        SatCounter8 confidence;
     };
     typedef AssociativeSet<StrideEntry> PCTable;
     std::unordered_map<int, PCTable> pcTables;
@@ -151,12 +159,13 @@ class Stride : public Queued
     PCTable* allocateNewContext(int context);
 
   public:
-    Stride(const StridePrefetcherParams *p);
+    Stride(const StridePrefetcherParams &p);
 
     void calculatePrefetch(const PrefetchInfo &pfi,
                            std::vector<AddrPriority> &addresses) override;
 };
 
-} // namespace Prefetcher
+} // namespace prefetch
+} // namespace gem5
 
 #endif // __MEM_CACHE_PREFETCH_STRIDE_HH__

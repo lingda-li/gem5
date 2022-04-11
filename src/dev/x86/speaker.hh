@@ -33,6 +33,9 @@
 #include "dev/io_device.hh"
 #include "params/PcSpeaker.hh"
 
+namespace gem5
+{
+
 namespace X86ISA
 {
 
@@ -54,16 +57,10 @@ class Speaker : public BasicPioDevice
     I8254 * timer;
 
   public:
-    typedef PcSpeakerParams Params;
+    using Params = PcSpeakerParams;
 
-    const Params *
-    params() const
-    {
-        return dynamic_cast<const Params *>(_params);
-    }
-
-    Speaker(Params *p) : BasicPioDevice(p, 1),
-        latency(p->pio_latency), controlVal(0), timer(p->i8254)
+    Speaker(const Params &p) : BasicPioDevice(p, 1),
+        latency(p.pio_latency), controlVal(0), timer(p.i8254)
     {
     }
 
@@ -76,5 +73,6 @@ class Speaker : public BasicPioDevice
 };
 
 } // namespace X86ISA
+} // namespace gem5
 
 #endif //__DEV_X86_SPEAKER_HH__

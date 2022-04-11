@@ -31,11 +31,25 @@ from m5.objects.SimpleMemory import *
 class Workload(SimObject):
     type = 'Workload'
     cxx_header = "sim/workload.hh"
+    cxx_class = 'gem5::Workload'
     abstract = True
+
+    wait_for_remote_gdb = Param.Bool(False,
+        "Wait for a remote GDB connection");
+
+class StubWorkload(Workload):
+    type = 'StubWorkload'
+    cxx_header = "sim/workload.hh"
+    cxx_class = 'gem5::StubWorkload'
+
+    entry = Param.Addr(0, 'Dummy entry point for this workload.')
+    byte_order = Param.ByteOrder('little',
+            'Dummy byte order for this workload.')
 
 class KernelWorkload(Workload):
     type = 'KernelWorkload'
     cxx_header = "sim/kernel_workload.hh"
+    cxx_class = 'gem5::KernelWorkload'
 
     object_file = Param.String("", "File that contains the kernel code")
     extras = VectorParam.String([], "Additional object files to load")
@@ -50,3 +64,44 @@ class KernelWorkload(Workload):
     load_addr_offset = Param.UInt64(0, "Address to offset the kernel with")
 
     command_line = Param.String("a", "boot flags to pass to the kernel")
+
+class SEWorkloadMeta(type(Workload)):
+    all_se_workload_classes = []
+    def __new__(mcls, name, bases, dct):
+        cls = super().__new__(mcls, name, bases, dct)
+        SEWorkloadMeta.all_se_workload_classes.append(cls)
+        return cls
+
+class SEWorkload(Workload, metaclass=SEWorkloadMeta):
+    type = 'SEWorkload'
+    cxx_header = "sim/se_workload.hh"
+    cxx_class = 'gem5::SEWorkload'
+    abstract = True
+
+    @classmethod
+    def _is_compatible_with(cls, obj):
+        return False
+
+    @classmethod
+    def find_compatible(cls, path):
+        '''List the SE workloads compatible with the binary at path'''
+
+        from _m5 import object_file
+        obj = object_file.create(path)
+        options = list(filter(lambda wld: wld._is_compatible_with(obj),
+                              SEWorkloadMeta.all_se_workload_classes))
+
+        return options
+
+    @classmethod
+    def init_compatible(cls, path, *args, **kwargs):
+        '''Construct the only SE workload compatible with the binary at path'''
+
+        options = SEWorkload.find_compatible(path)
+
+        if len(options) > 1:
+            raise ValueError("More than one SE workload is compatible with %s")
+        elif len(options) < 1:
+            raise ValueError("No SE workload is compatible with %s", path)
+
+        return options[0](*args, **kwargs)

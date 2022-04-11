@@ -37,7 +37,6 @@
 
 #include "cpu/minor/cpu.hh"
 
-#include "arch/utility.hh"
 #include "cpu/minor/dyn_inst.hh"
 #include "cpu/minor/fetch1.hh"
 #include "cpu/minor/pipeline.hh"
@@ -45,22 +44,26 @@
 #include "debug/MinorCPU.hh"
 #include "debug/Quiesce.hh"
 
-MinorCPU::MinorCPU(MinorCPUParams *params) :
+namespace gem5
+{
+
+MinorCPU::MinorCPU(const MinorCPUParams &params) :
     BaseCPU(params),
-    threadPolicy(params->threadPolicy)
+    threadPolicy(params.threadPolicy),
+    stats(this)
 {
     /* This is only written for one thread at the moment */
-    Minor::MinorThread *thread;
+    minor::MinorThread *thread;
 
     for (ThreadID i = 0; i < numThreads; i++) {
         if (FullSystem) {
-            thread = new Minor::MinorThread(this, i, params->system,
-                    params->itb, params->dtb, params->isa[i]);
+            thread = new minor::MinorThread(this, i, params.system,
+                    params.mmu, params.isa[i], params.decoder[i]);
             thread->setStatus(ThreadContext::Halted);
         } else {
-            thread = new Minor::MinorThread(this, i, params->system,
-                    params->workload[i], params->itb, params->dtb,
-                    params->isa[i]);
+            thread = new minor::MinorThread(this, i, params.system,
+                    params.workload[i], params.mmu,
+                    params.isa[i], params.decoder[i]);
         }
 
         threads.push_back(thread);
@@ -69,19 +72,22 @@ MinorCPU::MinorCPU(MinorCPUParams *params) :
     }
 
 
-    if (params->checker) {
+    if (params.checker) {
         fatal("The Minor model doesn't support checking (yet)\n");
     }
 
-    Minor::MinorDynInst::init();
-
-    pipeline = new Minor::Pipeline(*this, *params);
+    pipeline = new minor::Pipeline(*this, params);
     activityRecorder = pipeline->getActivityRecorder();
+
+    fetchEventWrapper = NULL;
 }
 
 MinorCPU::~MinorCPU()
 {
     delete pipeline;
+
+    if (fetchEventWrapper != NULL)
+        delete fetchEventWrapper;
 
     for (ThreadID thread_id = 0; thread_id < threads.size(); thread_id++) {
         delete threads[thread_id];
@@ -93,18 +99,9 @@ MinorCPU::init()
 {
     BaseCPU::init();
 
-    if (!params()->switched_out &&
-        system->getMemoryMode() != Enums::timing)
-    {
+    if (!params().switched_out && system->getMemoryMode() != enums::timing) {
         fatal("The Minor CPU requires the memory system to be in "
             "'timing' mode.\n");
-    }
-
-    /* Initialise the ThreadContext's memory proxies */
-    for (ThreadID thread_id = 0; thread_id < threads.size(); thread_id++) {
-        ThreadContext *tc = getContext(thread_id);
-
-        tc->initMemProxies(tc);
     }
 }
 
@@ -113,7 +110,6 @@ void
 MinorCPU::regStats()
 {
     BaseCPU::regStats();
-    stats.regStats(name(), *this);
     pipeline->regStats();
 }
 
@@ -161,10 +157,8 @@ MinorCPU::startup()
 
     BaseCPU::startup();
 
-    for (ThreadID tid = 0; tid < numThreads; tid++) {
-        threads[tid]->startup();
+    for (ThreadID tid = 0; tid < numThreads; tid++)
         pipeline->wakeupFetch(tid);
-    }
 }
 
 DrainState
@@ -267,8 +261,18 @@ MinorCPU::activateContext(ThreadID thread_id)
 
     /* Wake up the thread, wakeup the pipeline tick */
     threads[thread_id]->activate();
-    wakeupOnEvent(Minor::Pipeline::CPUStageId);
-    pipeline->wakeupFetch(thread_id);
+    wakeupOnEvent(minor::Pipeline::CPUStageId);
+
+    if (!threads[thread_id]->getUseForClone())//the thread is not cloned
+    {
+        pipeline->wakeupFetch(thread_id);
+    } else { //the thread from clone
+        if (fetchEventWrapper != NULL)
+            delete fetchEventWrapper;
+        fetchEventWrapper = new EventFunctionWrapper([this, thread_id]
+                  { pipeline->wakeupFetch(thread_id); }, "wakeupFetch");
+        schedule(*fetchEventWrapper, clockEdge(Cycles(0)));
+    }
 
     BaseCPU::activateContext(thread_id);
 }
@@ -291,12 +295,6 @@ MinorCPU::wakeupOnEvent(unsigned int stage_id)
     /* Mark that some activity has taken place and start the pipeline */
     activityRecorder->activateStage(stage_id);
     pipeline->start();
-}
-
-MinorCPU *
-MinorCPUParams::create()
-{
-    return new MinorCPU(this);
 }
 
 Port &
@@ -332,3 +330,5 @@ MinorCPU::totalOps() const
 
     return ret;
 }
+
+} // namespace gem5

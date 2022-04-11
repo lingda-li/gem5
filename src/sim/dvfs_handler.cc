@@ -40,29 +40,30 @@
 #include <set>
 #include <utility>
 
-#include "base/logging.hh"
 #include "base/trace.hh"
 #include "debug/DVFS.hh"
 #include "params/DVFSHandler.hh"
-#include "sim/clock_domain.hh"
-#include "sim/eventq_impl.hh"
+#include "sim/serialize.hh"
 #include "sim/stat_control.hh"
 #include "sim/voltage_domain.hh"
+
+namespace gem5
+{
 
 //
 //
 // DVFSHandler methods implementation
 //
 
-DVFSHandler::DVFSHandler(const Params *p)
+DVFSHandler::DVFSHandler(const Params &p)
     : SimObject(p),
-      sysClkDomain(p->sys_clk_domain),
-      enableHandler(p->enable),
-      _transLatency(p->transition_latency)
+      sysClkDomain(p.sys_clk_domain),
+      enableHandler(p.enable),
+      _transLatency(p.transition_latency)
 {
     // Check supplied list of domains for sanity and add them to the
     // domain ID -> domain* hash
-    for (auto dit = p->domains.begin(); dit != p->domains.end(); ++dit) {
+    for (auto dit = p.domains.begin(); dit != p.domains.end(); ++dit) {
         SrcClockDomain *d = *dit;
         DomainID domain_id = d->domainID();
 
@@ -158,8 +159,8 @@ DVFSHandler::UpdateEvent::updatePerfLevel()
 {
     // Perform explicit stats dump for power estimation before performance
     // level migration
-    Stats::dump();
-    Stats::reset();
+    statistics::dump();
+    statistics::reset();
 
     // Update the performance level in the clock domain
     auto d = dvfsHandler->findDomain(domainIDToSet);
@@ -252,8 +253,4 @@ DVFSHandler::unserialize(CheckpointIn &cp)
     UpdateEvent::dvfsHandler = this;
 }
 
-DVFSHandler*
-DVFSHandlerParams::create()
-{
-    return new DVFSHandler(this);
-}
+} // namespace gem5

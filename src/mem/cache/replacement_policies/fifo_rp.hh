@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Inria
+ * Copyright (c) 2018-2020 Inria
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,9 +39,16 @@
 #include "base/types.hh"
 #include "mem/cache/replacement_policies/base.hh"
 
+namespace gem5
+{
+
 struct FIFORPParams;
 
-class FIFORP : public BaseReplacementPolicy
+GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
+namespace replacement_policy
+{
+
+class FIFO : public Base
 {
   protected:
     /** FIFO-specific implementation of replacement data. */
@@ -57,18 +64,9 @@ class FIFORP : public BaseReplacementPolicy
     };
 
   public:
-    /** Convenience typedef. */
     typedef FIFORPParams Params;
-
-    /**
-     * Construct and initiliaze this replacement policy.
-     */
-    FIFORP(const Params *p);
-
-    /**
-     * Destructor.
-     */
-    ~FIFORP() {}
+    FIFO(const Params &p);
+    ~FIFO() = default;
 
     /**
      * Invalidate replacement data to set it as the next probable victim.
@@ -77,7 +75,7 @@ class FIFORP : public BaseReplacementPolicy
      * @param replacement_data Replacement data to be invalidated.
      */
     void invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
-                                                              const override;
+                                                                    override;
 
     /**
      * Touch an entry to update its replacement data.
@@ -113,5 +111,8 @@ class FIFORP : public BaseReplacementPolicy
      */
     std::shared_ptr<ReplacementData> instantiateEntry() override;
 };
+
+} // namespace replacement_policy
+} // namespace gem5
 
 #endif // __MEM_CACHE_REPLACEMENT_POLICIES_FIFO_RP_HH__

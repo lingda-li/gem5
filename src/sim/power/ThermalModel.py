@@ -1,4 +1,4 @@
-# Copyright (c) 2015 ARM Limited
+# Copyright (c) 2015, 2021 Arm Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -44,11 +44,13 @@ from m5.objects import ThermalDomain
 class ThermalNode(SimObject):
     type = 'ThermalNode'
     cxx_header = "sim/power/thermal_node.hh"
+    cxx_class = 'gem5::ThermalNode'
 
 # Represents a thermal resistor
 class ThermalResistor(SimObject):
     type = 'ThermalResistor'
     cxx_header = "sim/power/thermal_model.hh"
+    cxx_class = 'gem5::ThermalResistor'
 
     cxx_exports = [
         PyBindMethod("setNodes"),
@@ -60,6 +62,7 @@ class ThermalResistor(SimObject):
 class ThermalCapacitor(SimObject):
     type = 'ThermalCapacitor'
     cxx_header = "sim/power/thermal_model.hh"
+    cxx_class = 'gem5::ThermalCapacitor'
 
     cxx_exports = [
         PyBindMethod("setNodes"),
@@ -71,19 +74,21 @@ class ThermalCapacitor(SimObject):
 class ThermalReference(SimObject, object):
     type = 'ThermalReference'
     cxx_header = "sim/power/thermal_model.hh"
+    cxx_class = 'gem5::ThermalReference'
 
     cxx_exports = [
         PyBindMethod("setNode"),
     ]
 
     # Static temperature which may change over time
-    temperature = Param.Float(25.0, "Operational temperature in Celsius")
+    temperature = Param.Temperature("25.0C", "Operational temperature")
 
 
 # Represents a thermal capacitor
 class ThermalModel(ClockedObject):
     type = 'ThermalModel'
     cxx_header = "sim/power/thermal_model.hh"
+    cxx_class = 'gem5::ThermalModel'
 
     cxx_exports = [
         PyBindMethod("addCapacitor"),

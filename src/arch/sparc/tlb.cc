@@ -33,7 +33,9 @@
 #include "arch/sparc/asi.hh"
 #include "arch/sparc/faults.hh"
 #include "arch/sparc/interrupts.hh"
-#include "arch/sparc/registers.hh"
+#include "arch/sparc/mmu.hh"
+#include "arch/sparc/regs/misc.hh"
+#include "arch/sparc/types.hh"
 #include "base/bitfield.hh"
 #include "base/compiler.hh"
 #include "base/trace.hh"
@@ -48,12 +50,15 @@
 #include "sim/process.hh"
 #include "sim/system.hh"
 
+namespace gem5
+{
+
 /* @todo remove some of the magic constants.  -- ali
  * */
 namespace SparcISA {
 
-TLB::TLB(const Params *p)
-    : BaseTLB(p), size(p->size), usedEntries(0), lastReplaced(0),
+TLB::TLB(const Params &p)
+    : BaseTLB(p), size(p.size), usedEntries(0), lastReplaced(0),
       cacheState(0), cacheValid(false)
 {
     // To make this work you'll have to change the hypervisor and OS
@@ -357,7 +362,7 @@ TLB::TagRead(int entry)
     tag = tlb[entry].range.contextId;
     tag |= tlb[entry].range.va;
     tag |= (uint64_t)tlb[entry].range.partitionId << 61;
-    tag |= tlb[entry].range.real ? ULL(1) << 60 : 0;
+    tag |= tlb[entry].range.real ? 1ULL << 60 : 0;
     tag |= (uint64_t)~tlb[entry].pte._size() << 56;
     return tag;
 }
@@ -826,16 +831,18 @@ handleMmuRegAccess:
 };
 
 Fault
-TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode)
+TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc,
+                     BaseMMU::Mode mode)
 {
-    if (mode == Execute)
+    if (mode == BaseMMU::Execute)
         return translateInst(req, tc);
     else
-        return translateData(req, tc, mode == Write);
+        return translateData(req, tc, mode == BaseMMU::Write);
 }
 
 Fault
-TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
+TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc,
+                         BaseMMU::Mode mode)
 {
     Addr vaddr = req->getVaddr();
 
@@ -861,7 +868,7 @@ TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
     int pri_context = bits(tlbdata,47,32);
     // int sec_context = bits(tlbdata,63,48);
 
-    bool real = (mode == Execute) ? inst_real : data_real;
+    bool real = (mode == BaseMMU::Execute) ? inst_real : data_real;
 
     TlbEntry* tbe;
     PageTableEntry pte;
@@ -878,7 +885,7 @@ TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
         vaddr = vaddr & VAddrAMask;
 
     if (!validVirtualAddress(vaddr, addr_mask)) {
-        if (mode == Execute)
+        if (mode == BaseMMU::Execute)
             return std::make_shared<InstructionAccessException>();
         else
             return std::make_shared<DataAccessException>();
@@ -896,7 +903,7 @@ TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
     if (!FullSystem)
         return tc->getProcessPtr()->pTable->translate(req);
 
-    PortProxy &mem = tc->getPhysProxy();
+    PortProxy mem(tc, tc->getSystemPtr()->cacheLineSize());
     // We didn't find it in the tlbs, so lets look at the TSBs
     GetTsbPtr(tc, vaddr, ctx_zero ? 0 : pri_context, tsbs);
     va_tag = bits(vaddr, 63, 22);
@@ -913,7 +920,7 @@ TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
         }
     }
 
-    if (mode == Execute) {
+    if (mode == BaseMMU::Execute) {
         if (real)
             return std::make_shared<InstructionRealTranslationMiss>();
         else if (FullSystem)
@@ -932,7 +939,7 @@ TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
 
 void
 TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
-        Translation *translation, Mode mode)
+        BaseMMU::Translation *translation, BaseMMU::Mode mode)
 {
     assert(translation);
     translation->finish(translateAtomic(req, tc, mode), req, tc, mode);
@@ -940,7 +947,7 @@ TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
 
 Fault
 TLB::finalizePhysical(const RequestPtr &req,
-                      ThreadContext *tc, Mode mode) const
+                      ThreadContext *tc, BaseMMU::Mode mode) const
 {
     return NoFault;
 }
@@ -955,7 +962,7 @@ TLB::doMmuRegRead(ThreadContext *tc, Packet *pkt)
     DPRINTF(IPR, "Memory Mapped IPR Read: asi=%#X a=%#x\n",
          (uint32_t)pkt->req->getArchFlags(), pkt->getAddr());
 
-    TLB *itb = dynamic_cast<TLB *>(tc->getITBPtr());
+    TLB *itb = static_cast<TLB *>(tc->getMMUPtr()->itb);
 
     switch (asi) {
       case ASI_LSU_CONTROL_REG:
@@ -1151,7 +1158,7 @@ TLB::doMmuRegWrite(ThreadContext *tc, Packet *pkt)
     DPRINTF(IPR, "Memory Mapped IPR Write: asi=%#X a=%#x d=%#X\n",
          (uint32_t)asi, va, data);
 
-    TLB *itb = dynamic_cast<TLB *>(tc->getITBPtr());
+    TLB *itb = static_cast<TLB *>(tc->getMMUPtr()->itb);
 
     switch (asi) {
       case ASI_LSU_CONTROL_REG:
@@ -1237,8 +1244,7 @@ TLB::doMmuRegWrite(ThreadContext *tc, Packet *pkt)
             itb->sfsr = data;
             break;
           case 0x30:
-            sext<59>(bits(data, 59,0));
-            itb->tag_access = data;
+            itb->tag_access = szext<60>(data);
             break;
           default:
             goto doMmuWriteError;
@@ -1246,7 +1252,7 @@ TLB::doMmuRegWrite(ThreadContext *tc, Packet *pkt)
         break;
       case ASI_ITLB_DATA_ACCESS_REG:
         entry_insert = bits(va, 8,3);
-        M5_FALLTHROUGH;
+        [[fallthrough]];
       case ASI_ITLB_DATA_IN_REG:
         assert(entry_insert != -1 || mbits(va,10,9) == va);
         ta_insert = itb->tag_access;
@@ -1261,7 +1267,7 @@ TLB::doMmuRegWrite(ThreadContext *tc, Packet *pkt)
         break;
       case ASI_DTLB_DATA_ACCESS_REG:
         entry_insert = bits(va, 8,3);
-        M5_FALLTHROUGH;
+        [[fallthrough]];
       case ASI_DTLB_DATA_IN_REG:
         assert(entry_insert != -1 || mbits(va,10,9) == va);
         ta_insert = tag_access;
@@ -1314,8 +1320,7 @@ TLB::doMmuRegWrite(ThreadContext *tc, Packet *pkt)
             sfsr = data;
             break;
           case 0x30:
-            sext<59>(bits(data, 59,0));
-            tag_access = data;
+            tag_access = szext<60>(data);
             break;
           case 0x80:
             tc->setMiscReg(MISCREG_MMU_PART_ID, data);
@@ -1372,8 +1377,8 @@ TLB::doMmuRegWrite(ThreadContext *tc, Packet *pkt)
         }
         break;
       case ASI_SWVR_UDB_INTR_W:
-            tc->getSystemPtr()->threadContexts[bits(data,12,8)]->getCpuPtr()->
-            postInterrupt(0, bits(data, 5, 0), 0);
+            tc->getSystemPtr()->threads[bits(data,12,8)]->
+                getCpuPtr()->postInterrupt(0, bits(data, 5, 0), 0);
         break;
       default:
 doMmuWriteError:
@@ -1388,7 +1393,7 @@ void
 TLB::GetTsbPtr(ThreadContext *tc, Addr addr, int ctx, Addr *ptrs)
 {
     uint64_t tag_access = mbits(addr,63,13) | mbits(ctx,12,0);
-    TLB *itb = dynamic_cast<TLB *>(tc->getITBPtr());
+    TLB *itb = static_cast<TLB *>(tc->getMMUPtr()->itb);
     ptrs[0] = MakeTsbPtr(Ps0, tag_access,
                 c0_tsb_ps0,
                 c0_config,
@@ -1432,7 +1437,7 @@ TLB::MakeTsbPtr(TsbPageSize ps, uint64_t tag_access, uint64_t c0_tsb,
     int page_size = (ps == Ps0) ? bits(config, 2,0) : bits(config,10,8);
 
     if (ps == Ps1  && split)
-        ptr |= ULL(1) << (13 + tsb_size);
+        ptr |= 1ULL << (13 + tsb_size);
     ptr |= (tag_access >> (9 + page_size * 3)) & mask(12+tsb_size, 4);
 
     return ptr;
@@ -1506,9 +1511,4 @@ TLB::unserialize(CheckpointIn &cp)
 }
 
 } // namespace SparcISA
-
-SparcISA::TLB *
-SparcTLBParams::create()
-{
-    return new SparcISA::TLB(this);
-}
+} // namespace gem5

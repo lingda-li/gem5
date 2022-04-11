@@ -29,6 +29,11 @@
 
 #include "sim/global_event.hh"
 
+#include "sim/cur_tick.hh"
+
+namespace gem5
+{
+
 std::mutex BaseGlobalEvent::globalQMutex;
 
 BaseGlobalEvent::BaseGlobalEvent(Priority p, Flags f)
@@ -162,3 +167,5 @@ GlobalSyncEvent::description() const
 {
     return "GlobalSyncEvent";
 }
+
+} // namespace gem5

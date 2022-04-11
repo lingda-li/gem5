@@ -26,21 +26,25 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "arch/sparc/linux/process.hh"
+#include "arch/sparc/linux/se_workload.hh"
+#include "mem/se_translating_port_proxy.hh"
 #include "sim/syscall_desc.hh"
 #include "sim/syscall_emul.hh"
+
+namespace gem5
+{
 
 class Process;
 class ThreadContext;
 
-namespace SparcISA {
+namespace SparcISA
+{
 
 /// Target uname() handler.
 static SyscallReturn
-unameFunc(SyscallDesc *desc, ThreadContext *tc, Addr utsname)
+unameFunc(SyscallDesc *desc, ThreadContext *tc, VPtr<Linux::utsname> name)
 {
     auto process = tc->getProcessPtr();
-    TypedBufferArg<Linux::utsname> name(utsname);
 
     strcpy(name->sysname, "Linux");
     strcpy(name->nodename, "sim.gem5.org");
@@ -48,41 +52,39 @@ unameFunc(SyscallDesc *desc, ThreadContext *tc, Addr utsname)
     strcpy(name->version, "#1 Mon Aug 18 11:32:15 EDT 2003");
     strcpy(name->machine, "sparc");
 
-    name.copyOut(tc->getVirtProxy());
-
     return 0;
 }
 
 
-SyscallReturn
+static SyscallReturn
 getresuidFunc(SyscallDesc *desc, ThreadContext *tc,
-              Addr ruid, Addr euid, Addr suid)
+              VPtr<> ruid, VPtr<> euid, VPtr<> suid)
 {
+    SETranslatingPortProxy proxy(tc);
     const uint64_t id = htobe(100);
     // Handle the EFAULT case
     // Set the ruid
     if (ruid) {
         BufferArg ruidBuff(ruid, sizeof(uint64_t));
         memcpy(ruidBuff.bufferPtr(), &id, sizeof(uint64_t));
-        ruidBuff.copyOut(tc->getVirtProxy());
+        ruidBuff.copyOut(proxy);
     }
     // Set the euid
     if (euid) {
         BufferArg euidBuff(euid, sizeof(uint64_t));
         memcpy(euidBuff.bufferPtr(), &id, sizeof(uint64_t));
-        euidBuff.copyOut(tc->getVirtProxy());
+        euidBuff.copyOut(proxy);
     }
     // Set the suid
     if (suid) {
         BufferArg suidBuff(suid, sizeof(uint64_t));
         memcpy(suidBuff.bufferPtr(), &id, sizeof(uint64_t));
-        suidBuff.copyOut(tc->getVirtProxy());
+        suidBuff.copyOut(proxy);
     }
     return 0;
 }
 
-SyscallDescTable<Sparc32Process::SyscallABI>
-    SparcLinuxProcess::syscall32Descs = {
+SyscallDescTable<SEWorkload::SyscallABI32> EmuLinux::syscall32Descs = {
     {   0, "restart_syscall" },
     {   1, "exit", exitFunc }, // 32 bit
     {   2, "fork" },
@@ -141,7 +143,7 @@ SyscallDescTable<Sparc32Process::SyscallABI>
     {  55, "reboot" }, // 32 bit
     {  56, "mmap2" }, // 32 bit
     {  57, "symlink" },
-    {  58, "readlink", readlinkFunc }, // 32 bit
+    {  58, "readlink", readlinkFunc<Sparc32Linux> }, // 32 bit
     {  59, "execve" }, // 32 bit
     {  60, "umask" }, // 32 bit
     {  61, "chroot" },
@@ -156,7 +158,7 @@ SyscallDescTable<Sparc32Process::SyscallABI>
     {  70, "getegid32" },
     {  71, "mmap", mmapFunc<Sparc32Linux> },
     {  72, "setreuid32" },
-    {  73, "munmap", munmapFunc },
+    {  73, "munmap", munmapFunc<Sparc32Linux> },
     {  74, "mprotect", ignoreFunc },
     {  75, "madvise" },
     {  76, "vhangup" },
@@ -385,8 +387,7 @@ SyscallDescTable<Sparc32Process::SyscallABI>
     { 299, "unshare" }
 };
 
-SyscallDescTable<Sparc64Process::SyscallABI>
-    SparcLinuxProcess::syscallDescs = {
+SyscallDescTable<SEWorkload::SyscallABI64> EmuLinux::syscallDescs = {
     {  0, "restart_syscall" },
     {  1, "exit", exitFunc },
     {  2, "fork" },
@@ -445,7 +446,7 @@ SyscallDescTable<Sparc64Process::SyscallABI>
     { 55, "reboot" },
     { 56, "mmap2" },
     { 57, "symlink" },
-    { 58, "readlink", readlinkFunc },
+    { 58, "readlink", readlinkFunc<SparcLinux> },
     { 59, "execve" },
     { 60, "umask" },
     { 61, "chroot" },
@@ -460,7 +461,7 @@ SyscallDescTable<Sparc64Process::SyscallABI>
     { 70, "getegid32" },
     { 71, "mmap", mmapFunc<SparcLinux> },
     { 72, "setreuid32" },
-    { 73, "munmap", munmapFunc },
+    { 73, "munmap", munmapFunc<SparcLinux> },
     { 74, "mprotect", ignoreFunc },
     { 75, "madvise" },
     { 76, "vhangup" },
@@ -674,3 +675,4 @@ SyscallDescTable<Sparc64Process::SyscallABI>
 };
 
 } // namespace SparcISA
+} // namespace gem5

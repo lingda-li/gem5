@@ -1,4 +1,16 @@
 /*
+ * Copyright (c) 2020 ARM Limited
+ * All rights reserved
+ *
+ * The license below extends only to copyright in the software and shall
+ * not be construed as granting a license to any other intellectual
+ * property including but not limited to intellectual property relating
+ * to a hardware implementation of the functionality of the software
+ * licensed hereunder.  You may use the software subject to the license
+ * terms below provided that you ensure that this notice is replicated
+ * unmodified and in its entirety in all distributions of the software,
+ * modified or unmodified, in source code or in binary form.
+ *
  * Copyright (c) 2003-2005 The Regents of The University of Michigan
  * All rights reserved.
  *
@@ -37,9 +49,12 @@
 #include "base/cprintf.hh"
 #include "base/logging.hh"
 
-using namespace std;
+namespace gem5
+{
 
-namespace Debug {
+GEM5_DEPRECATED_NAMESPACE(Debug, debug);
+namespace debug
+{
 
 //
 // This function will cause the process to signal itself with a
@@ -52,63 +67,75 @@ breakpoint()
 #ifndef NDEBUG
     kill(getpid(), SIGTRAP);
 #else
-    cprintf("Debug::breakpoint suppressed, compiled with NDEBUG\n");
+    cprintf("debug::breakpoint suppressed, compiled with NDEBUG\n");
 #endif
 }
 
-//
-// Flags for debugging purposes.  Primarily for trace.hh
-//
-int allFlagsVersion = 0;
+// Used to check the freshness of cached views of all flags.
 FlagsMap &
 allFlags()
 {
+    // Ensure that the special "All" compound debug flag has been created,
+    // and avoid infinite recursion.
+    static bool done = false;
+    if (!done) {
+        done = true;
+        AllFlagsFlag::instance();
+    }
     static FlagsMap flags;
     return flags;
 }
 
-bool SimpleFlag::_active = false;
+bool Flag::_globalEnable = false;
 
 Flag *
 findFlag(const std::string &name)
 {
     FlagsMap::iterator i = allFlags().find(name);
-    if (i == allFlags().end())
+    if (i == allFlags().end()) {
         return NULL;
+    }
     return i->second;
 }
 
 Flag::Flag(const char *name, const char *desc)
     : _name(name), _desc(desc)
 {
-    pair<FlagsMap::iterator, bool> result =
-        allFlags().insert(make_pair(name, this));
+    std::pair<FlagsMap::iterator, bool> result =
+        allFlags().insert(std::make_pair(name, this));
 
-    if (!result.second)
-        panic("Flag %s already defined!", name);
+    panic_if(!result.second, "Flag %s already defined!", name);
 
-    ++allFlagsVersion;
+    sync();
 }
 
 Flag::~Flag()
 {
-    // should find and remove flag.
+    allFlags().erase(name());
 }
 
 void
-SimpleFlag::enableAll()
+Flag::globalEnable()
 {
-    _active = true;
+    _globalEnable = true;
     for (auto& i : allFlags())
         i.second->sync();
 }
 
 void
-SimpleFlag::disableAll()
+Flag::globalDisable()
 {
-    _active = false;
+    _globalEnable = false;
     for (auto& i : allFlags())
         i.second->sync();
+}
+
+SimpleFlag::SimpleFlag(const char *name, const char *desc, bool is_format)
+  : Flag(name, desc), _isFormat(is_format)
+{
+    // Add non-format flags to the special "All" compound flag.
+    if (!isFormat())
+        AllFlagsFlag::instance().add(this);
 }
 
 void
@@ -125,35 +152,25 @@ CompoundFlag::disable()
         k->disable();
 }
 
-struct AllFlags : public Flag
+AllFlagsFlag::AllFlagsFlag() : CompoundFlag("All",
+        "Controls all debug flags. It should not be used within C++ code.", {})
+{}
+
+void
+AllFlagsFlag::add(SimpleFlag *flag)
 {
-    AllFlags()
-        : Flag("All", "All Flags")
-    {}
+    ++_version;
+    _kids.push_back(flag);
+}
 
-    void
-    enable()
-    {
-        FlagsMap::iterator i = allFlags().begin();
-        FlagsMap::iterator end = allFlags().end();
-        for (; i != end; ++i)
-            if (i->second != this)
-                i->second->enable();
-    }
+int AllFlagsFlag::_version = 0;
 
-    void
-    disable()
-    {
-        FlagsMap::iterator i = allFlags().begin();
-        FlagsMap::iterator end = allFlags().end();
-        for (; i != end; ++i)
-            if (i->second != this)
-                i->second->disable();
-    }
-};
-
-AllFlags theAllFlags;
-Flag *const All = &theAllFlags;
+AllFlagsFlag &
+AllFlagsFlag::instance()
+{
+    static AllFlagsFlag flag;
+    return flag;
+}
 
 bool
 changeFlag(const char *s, bool value)
@@ -170,30 +187,32 @@ changeFlag(const char *s, bool value)
     return true;
 }
 
-} // namespace Debug
+} // namespace debug
 
 // add a set of functions that can easily be invoked from gdb
 void
 setDebugFlag(const char *string)
 {
-    Debug::changeFlag(string, true);
+    debug::changeFlag(string, true);
 }
 
 void
 clearDebugFlag(const char *string)
 {
-    Debug::changeFlag(string, false);
+    debug::changeFlag(string, false);
 }
 
 void
-dumpDebugFlags()
+dumpDebugFlags(std::ostream &os)
 {
-    using namespace Debug;
+    using namespace debug;
     FlagsMap::iterator i = allFlags().begin();
     FlagsMap::iterator end = allFlags().end();
     for (; i != end; ++i) {
         SimpleFlag *f = dynamic_cast<SimpleFlag *>(i->second);
-        if (f && f->status())
-            cprintf("%s\n", f->name());
+        if (f && f->tracing())
+            ccprintf(os, "%s\n", f->name());
     }
 }
+
+} // namespace gem5

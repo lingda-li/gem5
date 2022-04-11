@@ -44,7 +44,7 @@ from m5.objects.ClockedObject import ClockedObject
 # generated (Random, Linear, Trace etc)
 class StreamGenType(ScopedEnum): vals = [ 'none', 'fixed', 'random' ]
 
-# The traffic generator is a master module that generates stimuli for
+# The traffic generator is a requestor module that generates stimuli for
 # the memory system, based on a collection of simple behaviours that
 # are either probabilistic or based on traces. It can be used stand
 # alone for creating test cases for interconnect and memory
@@ -55,9 +55,10 @@ class BaseTrafficGen(ClockedObject):
     type = 'BaseTrafficGen'
     abstract = True
     cxx_header = "cpu/testers/traffic_gen/traffic_gen.hh"
+    cxx_class = 'gem5::BaseTrafficGen'
 
     # Port used for sending requests and receiving responses
-    port = MasterPort("Master port")
+    port = RequestPort("This port sends requests and receives responses")
 
     # System used to determine the mode of the memory system
     system = Param.System(Parent.any, "System this generator is part of")
@@ -107,15 +108,19 @@ class BaseTrafficGen(ClockedObject):
     def createInterruptController(self):
         pass
 
-    def connectCachedPorts(self, bus):
+    def connectCachedPorts(self, in_ports):
         if hasattr(self, '_cached_ports') and (len(self._cached_ports) > 0):
             for p in self._cached_ports:
-                exec('self.%s = bus.slave' % p)
+                exec('self.%s = in_ports' % p)
         else:
-            self.port = bus.slave
+            self.port = in_ports
 
-    def connectAllPorts(self, cached_bus, uncached_bus = None):
-        self.connectCachedPorts(cached_bus)
+    def connectAllPorts(self, cached_in, uncached_in, uncached_out):
+        self.connectCachedPorts(cached_in)
+
+    def connectBus(self, bus):
+        self.connectAllPorts(bus.cpu_side_ports,
+            bus.cpu_side_ports, bus.mem_side_ports)
 
     def addPrivateSplitL1Caches(self, ic, dc, iwc = None, dwc = None):
         self.dcache = dc

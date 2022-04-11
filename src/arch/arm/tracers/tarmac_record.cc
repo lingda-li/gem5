@@ -37,8 +37,15 @@
 
 #include "arch/arm/tracers/tarmac_record.hh"
 
+#include <memory>
+
 #include "arch/arm/insts/static_inst.hh"
 #include "tarmac_tracer.hh"
+
+namespace gem5
+{
+
+using namespace ArmISA;
 
 namespace Trace {
 
@@ -104,7 +111,7 @@ opModeToStr(OperatingMode opMode)
 // TarmacTracerRecord ctor
 TarmacTracerRecord::TarmacTracerRecord(Tick _when, ThreadContext *_thread,
                                      const StaticInstPtr _staticInst,
-                                     PCState _pc,
+                                     const PCStateBase &_pc,
                                      TarmacTracer& _tracer,
                                      const StaticInstPtr _macroStaticInst)
     : TarmacBaseRecord(_when, _thread, _staticInst,
@@ -116,9 +123,9 @@ TarmacTracerRecord::TarmacTracerRecord(Tick _when, ThreadContext *_thread,
 TarmacTracerRecord::TraceInstEntry::TraceInstEntry(
     const TarmacContext& tarmCtx,
     bool predicate)
-      : InstEntry(tarmCtx.thread, tarmCtx.pc, tarmCtx.staticInst, predicate)
+      : InstEntry(tarmCtx.thread, *tarmCtx.pc, tarmCtx.staticInst, predicate)
 {
-    secureMode = inSecureState(tarmCtx.thread);
+    secureMode = isSecure(tarmCtx.thread);
 
     auto arm_inst = static_cast<const ArmStaticInst*>(
         tarmCtx.staticInst.get()
@@ -149,7 +156,7 @@ TarmacTracerRecord::TraceMemEntry::TraceMemEntry(
 TarmacTracerRecord::TraceRegEntry::TraceRegEntry(
     const TarmacContext& tarmCtx,
     const RegId& reg)
-      : RegEntry(tarmCtx.pc),
+      : RegEntry(*tarmCtx.pc),
         regValid(false),
         regClass(reg.classValue()),
         regRel(reg.index())
@@ -289,7 +296,7 @@ TarmacTracerRecord::addInstEntry(std::vector<InstPtr>& queue,
     // Generate an instruction entry in the record and
     // add it to the Instruction Queue
     queue.push_back(
-        m5::make_unique<TraceInstEntry>(tarmCtx, predicate)
+        std::make_unique<TraceInstEntry>(tarmCtx, predicate)
     );
 }
 
@@ -302,9 +309,9 @@ TarmacTracerRecord::addMemEntry(std::vector<MemPtr>& queue,
     // Memory Queue
     if (getMemValid()) {
         queue.push_back(
-            m5::make_unique<TraceMemEntry>(tarmCtx,
-                                           static_cast<uint8_t>(getSize()),
-                                           getAddr(), getIntData())
+            std::make_unique<TraceMemEntry>(tarmCtx,
+                                            static_cast<uint8_t>(getSize()),
+                                            getAddr(), getIntData())
         );
     }
 }
@@ -324,9 +331,7 @@ TarmacTracerRecord::addRegEntry(std::vector<RegPtr>& queue,
 
         // Copying the entry and adding it to the "list"
         // of entries to be dumped to trace.
-        queue.push_back(
-            m5::make_unique<TraceRegEntry>(single_reg)
-        );
+        queue.push_back(std::make_unique<TraceRegEntry>(single_reg));
     }
 
     // Gem5 is treating CPSR flags as separate registers (CC registers),
@@ -346,7 +351,7 @@ TarmacTracerRecord::dump()
     const TarmacContext tarmCtx(
         thread,
         staticInst->isMicroop()? macroStaticInst : staticInst,
-        pc
+        *pc
     );
 
     if (!staticInst->isMicroop()) {
@@ -459,3 +464,4 @@ TarmacTracerRecord::TraceRegEntry::print(
 }
 
 } // namespace Trace
+} // namespace gem5

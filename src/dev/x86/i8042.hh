@@ -31,10 +31,14 @@
 
 #include <deque>
 
+#include "base/bitunion.hh"
 #include "dev/intpin.hh"
 #include "dev/io_device.hh"
 #include "dev/ps2/device.hh"
 #include "params/I8042.hh"
+
+namespace gem5
+{
 
 namespace X86ISA
 {
@@ -109,22 +113,16 @@ class I8042 : public BasicPioDevice
     std::vector<IntSourcePin<I8042> *> mouseIntPin;
     std::vector<IntSourcePin<I8042> *> keyboardIntPin;
 
-    PS2Device *mouse;
-    PS2Device *keyboard;
+    ps2::Device *mouse;
+    ps2::Device *keyboard;
 
     void writeData(uint8_t newData, bool mouse = false);
     uint8_t readDataOut();
 
   public:
-    typedef I8042Params Params;
+    using Params = I8042Params;
 
-    const Params *
-    params() const
-    {
-        return dynamic_cast<const Params *>(_params);
-    }
-
-    I8042(Params *p);
+    I8042(const Params &p);
 
     Port &
     getPort(const std::string &if_name, PortID idx=InvalidPortID) override
@@ -148,5 +146,6 @@ class I8042 : public BasicPioDevice
 };
 
 } // namespace X86ISA
+} // namespace gem5
 
 #endif //__DEV_X86_I8042_HH__

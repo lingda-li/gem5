@@ -31,10 +31,14 @@
 #ifndef __ARCH_RISCV_PAGETABLE_H__
 #define __ARCH_RISCV_PAGETABLE_H__
 
+#include "base/bitunion.hh"
 #include "base/logging.hh"
 #include "base/trie.hh"
 #include "base/types.hh"
 #include "sim/serialize.hh"
+
+namespace gem5
+{
 
 namespace RiscvISA {
 
@@ -108,6 +112,7 @@ struct TlbEntry : public Serializable
     void unserialize(CheckpointIn &cp) override;
 };
 
-};
-#endif // __ARCH_RISCV_PAGETABLE_H__
+} // namespace RiscvISA
+} // namespace gem5
 
+#endif // __ARCH_RISCV_PAGETABLE_H__

@@ -31,18 +31,18 @@
 #include "params/KernelWorkload.hh"
 #include "sim/system.hh"
 
-KernelWorkload::KernelWorkload(const Params &p) : Workload(&p), _params(p),
-    _loadAddrMask(p.load_addr_mask), _loadAddrOffset(p.load_addr_offset),
-    kernelSymtab(new Loader::SymbolTable), commandLine(p.command_line)
+namespace gem5
 {
-    if (!Loader::debugSymbolTable)
-        Loader::debugSymbolTable = new Loader::SymbolTable;
 
+KernelWorkload::KernelWorkload(const Params &p) : Workload(p),
+    _loadAddrMask(p.load_addr_mask), _loadAddrOffset(p.load_addr_offset),
+    commandLine(p.command_line)
+{
     if (params().object_file == "") {
         inform("No kernel set for full system simulation. "
                "Assuming you know what you're doing.");
     } else {
-        kernelObj = Loader::createObjectFile(params().object_file);
+        kernelObj = loader::createObjectFile(params().object_file);
         inform("kernel located at: %s", params().object_file);
 
         fatal_if(!kernelObj,
@@ -63,18 +63,15 @@ KernelWorkload::KernelWorkload(const Params &p) : Workload(&p), _params(p),
             return (a & _loadAddrMask) + _loadAddrOffset;
         });
 
-        // load symbols
-        fatal_if(!kernelObj->loadGlobalSymbols(kernelSymtab),
-                "Could not load kernel symbols.");
+        kernelSymtab = kernelObj->symtab();
+        auto initKernelSymtab = kernelSymtab.mask(_loadAddrMask)
+            ->offset(_loadAddrOffset)
+            ->rename([](std::string &name) {
+                name = "kernel_init." + name;
+            });
 
-        fatal_if(!kernelObj->loadLocalSymbols(kernelSymtab),
-                "Could not load kernel local symbols.");
-
-        fatal_if(!kernelObj->loadGlobalSymbols(Loader::debugSymbolTable),
-                "Could not load kernel symbols.");
-
-        fatal_if(!kernelObj->loadLocalSymbols(Loader::debugSymbolTable),
-                "Could not load kernel local symbols.");
+        loader::debugSymbolTable.insert(*initKernelSymtab);
+        loader::debugSymbolTable.insert(kernelSymtab);
     }
 
     // Loading only needs to happen once and after memory system is
@@ -88,16 +85,11 @@ KernelWorkload::KernelWorkload(const Params &p) : Workload(&p), _params(p),
     for (int ker_idx = 0; ker_idx < p.extras.size(); ker_idx++) {
         const std::string &obj_name = p.extras[ker_idx];
         const bool raw = extras_addrs[ker_idx] != MaxAddr;
-        auto *obj = Loader::createObjectFile(obj_name, raw);
+        auto *obj = loader::createObjectFile(obj_name, raw);
         fatal_if(!obj, "Failed to build additional kernel object '%s'.\n",
                  obj_name);
         extras.push_back(obj);
     }
-}
-
-KernelWorkload::~KernelWorkload()
-{
-    delete kernelSymtab;
 }
 
 void
@@ -145,17 +137,13 @@ KernelWorkload::initState()
 void
 KernelWorkload::serialize(CheckpointOut &cp) const
 {
-    kernelSymtab->serialize("symtab", cp);
+    kernelSymtab.serialize("symtab", cp);
 }
 
 void
 KernelWorkload::unserialize(CheckpointIn &cp)
 {
-    kernelSymtab->unserialize("symtab", cp);
+    kernelSymtab.unserialize("symtab", cp);
 }
 
-KernelWorkload *
-KernelWorkloadParams::create()
-{
-    return new KernelWorkload(*this);
-}
+} // namespace gem5

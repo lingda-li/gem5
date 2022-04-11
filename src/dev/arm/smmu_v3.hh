@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2018-2019 ARM Limited
+ * Copyright (c) 2013, 2018-2020 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -48,11 +48,10 @@
 #include "dev/arm/smmu_v3_caches.hh"
 #include "dev/arm/smmu_v3_cmdexec.hh"
 #include "dev/arm/smmu_v3_defs.hh"
+#include "dev/arm/smmu_v3_deviceifc.hh"
 #include "dev/arm/smmu_v3_events.hh"
 #include "dev/arm/smmu_v3_ports.hh"
 #include "dev/arm/smmu_v3_proc.hh"
-#include "dev/arm/smmu_v3_ptops.hh"
-#include "dev/arm/smmu_v3_slaveifc.hh"
 #include "mem/packet.hh"
 #include "params/SMMUv3.hh"
 #include "sim/clocked_object.hh"
@@ -76,6 +75,10 @@
  * - Checkpointing is not supported
  * - Stall/resume for faulting transactions is not supported
  */
+
+namespace gem5
+{
+
 class SMMUTranslationProcess;
 
 class SMMUv3 : public ClockedObject
@@ -85,14 +88,16 @@ class SMMUv3 : public ClockedObject
     friend class SMMUProcess;
     friend class SMMUTranslationProcess;
     friend class SMMUCommandExecProcess;
-    friend class SMMUv3SlaveInterface;
+    friend class SMMUv3DeviceInterface;
 
     const System &system;
-    const MasterID masterId;
+    const RequestorID requestorId;
 
-    SMMUMasterPort    masterPort;
-    SMMUMasterTableWalkPort masterTableWalkPort;
+    SMMURequestPort    requestPort;
+    SMMUTableWalkPort tableWalkPort;
     SMMUControlPort   controlPort;
+
+    const bool irqInterfaceEnable;
 
     ARMArchTLB  tlb;
     ConfigCache configCache;
@@ -108,7 +113,7 @@ class SMMUv3 : public ClockedObject
     const bool walkCacheNonfinalEnable;
     const unsigned walkCacheS1Levels;
     const unsigned walkCacheS2Levels;
-    const unsigned masterPortWidth; // in bytes
+    const unsigned requestPortWidth; // in bytes
 
     SMMUSemaphore tlbSem;
     SMMUSemaphore ifcSmmuSem;
@@ -116,7 +121,7 @@ class SMMUv3 : public ClockedObject
     SMMUSemaphore configSem;
     SMMUSemaphore ipaSem;
     SMMUSemaphore walkSem;
-    SMMUSemaphore masterPortSem;
+    SMMUSemaphore requestPortSem;
 
     SMMUSemaphore transSem; // max N transactions in SMMU
     SMMUSemaphore ptwSem; // max N concurrent PTWs
@@ -131,14 +136,18 @@ class SMMUv3 : public ClockedObject
     const Cycles walkLat;
 
     // Stats
-    Stats::Scalar steL1Fetches;
-    Stats::Scalar steFetches;
-    Stats::Scalar cdL1Fetches;
-    Stats::Scalar cdFetches;
-    Stats::Distribution translationTimeDist;
-    Stats::Distribution ptwTimeDist;
+    struct SMMUv3Stats : public statistics::Group
+    {
+        SMMUv3Stats(statistics::Group *parent);
+        statistics::Scalar steL1Fetches;
+        statistics::Scalar steFetches;
+        statistics::Scalar cdL1Fetches;
+        statistics::Scalar cdFetches;
+        statistics::Distribution translationTimeDist;
+        statistics::Distribution ptwTimeDist;
+    } stats;
 
-    std::vector<SMMUv3SlaveInterface *> slaveInterfaces;
+    std::vector<SMMUv3DeviceInterface *> deviceInterfaces;
 
     SMMUCommandExecProcess commandExecutor;
 
@@ -151,7 +160,7 @@ class SMMUv3 : public ClockedObject
     std::queue<SMMUAction> packetsTableWalkToRetry;
 
 
-    void scheduleSlaveRetries();
+    void scheduleDeviceRetries();
 
     SMMUAction runProcess(SMMUProcess *proc, PacketPtr pkt);
     SMMUAction runProcessAtomic(SMMUProcess *proc, PacketPtr pkt);
@@ -162,22 +171,19 @@ class SMMUv3 : public ClockedObject
 
     void processCommand(const SMMUCommand &cmd);
 
-    const PageTableOps *getPageTableOps(uint8_t trans_granule);
-
   public:
-    SMMUv3(SMMUv3Params *p);
+    SMMUv3(const SMMUv3Params &p);
     virtual ~SMMUv3() {}
 
     virtual void init() override;
-    virtual void regStats() override;
 
-    Tick slaveRecvAtomic(PacketPtr pkt, PortID id);
-    bool slaveRecvTimingReq(PacketPtr pkt, PortID id);
-    bool masterRecvTimingResp(PacketPtr pkt);
-    void masterRecvReqRetry();
+    Tick recvAtomic(PacketPtr pkt, PortID id);
+    bool recvTimingReq(PacketPtr pkt, PortID id);
+    bool recvTimingResp(PacketPtr pkt);
+    void recvReqRetry();
 
-    bool masterTableWalkRecvTimingResp(PacketPtr pkt);
-    void masterTableWalkRecvReqRetry();
+    bool tableWalkRecvTimingResp(PacketPtr pkt);
+    void tableWalkRecvReqRetry();
 
     Tick readControl(PacketPtr pkt);
     Tick writeControl(PacketPtr pkt);
@@ -189,5 +195,7 @@ class SMMUv3 : public ClockedObject
     virtual Port &getPort(const std::string &name,
                           PortID id = InvalidPortID) override;
 };
+
+} // namespace gem5
 
 #endif /* __DEV_ARM_SMMU_V3_HH__ */

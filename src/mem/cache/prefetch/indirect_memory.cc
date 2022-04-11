@@ -32,29 +32,27 @@
  #include "mem/cache/prefetch/associative_set_impl.hh"
  #include "params/IndirectMemoryPrefetcher.hh"
 
-namespace Prefetcher {
-
-IndirectMemory::IndirectMemory(const IndirectMemoryPrefetcherParams *p)
-  : Queued(p),
-    maxPrefetchDistance(p->max_prefetch_distance),
-    shiftValues(p->shift_values), prefetchThreshold(p->prefetch_threshold),
-    streamCounterThreshold(p->stream_counter_threshold),
-    streamingDistance(p->streaming_distance),
-    prefetchTable(p->pt_table_assoc, p->pt_table_entries,
-                  p->pt_table_indexing_policy, p->pt_table_replacement_policy,
-                  PrefetchTableEntry(p->num_indirect_counter_bits)),
-    ipd(p->ipd_table_assoc, p->ipd_table_entries, p->ipd_table_indexing_policy,
-        p->ipd_table_replacement_policy,
-        IndirectPatternDetectorEntry(p->addr_array_len, shiftValues.size())),
-    ipdEntryTrackingMisses(nullptr),
-#if THE_ISA != NULL_ISA
-    byteOrder(TheISA::GuestByteOrder)
-#else
-    byteOrder((ByteOrder) -1)
-#endif
+namespace gem5
 {
-    fatal_if(byteOrder == static_cast<ByteOrder>(-1),
-            "This prefetcher requires a defined ISA\n");
+
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
+
+IndirectMemory::IndirectMemory(const IndirectMemoryPrefetcherParams &p)
+  : Queued(p),
+    maxPrefetchDistance(p.max_prefetch_distance),
+    shiftValues(p.shift_values), prefetchThreshold(p.prefetch_threshold),
+    streamCounterThreshold(p.stream_counter_threshold),
+    streamingDistance(p.streaming_distance),
+    prefetchTable(p.pt_table_assoc, p.pt_table_entries,
+                  p.pt_table_indexing_policy, p.pt_table_replacement_policy,
+                  PrefetchTableEntry(p.num_indirect_counter_bits)),
+    ipd(p.ipd_table_assoc, p.ipd_table_entries, p.ipd_table_indexing_policy,
+        p.ipd_table_replacement_policy,
+        IndirectPatternDetectorEntry(p.addr_array_len, shiftValues.size())),
+    ipdEntryTrackingMisses(nullptr), byteOrder(p.sys->getGuestByteOrder())
+{
 }
 
 void
@@ -261,10 +259,5 @@ IndirectMemory::checkAccessMatchOnActiveEntries(Addr addr)
     }
 }
 
-} // namespace Prefetcher
-
-Prefetcher::IndirectMemory*
-IndirectMemoryPrefetcherParams::create()
-{
-    return new Prefetcher::IndirectMemory(this);
-}
+} // namespace prefetch
+} // namespace gem5

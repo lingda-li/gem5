@@ -53,19 +53,28 @@
 #include "base/types.hh"
 #include "sim/serialize.hh"
 
+namespace gem5
+{
+
 class Checkpoint;
 
 class Random : public Serializable
 {
 
-  private:
-
-    std::mt19937_64 gen;
-
   public:
 
+    /**
+     * @ingroup api_base_utils
+     */
+    std::mt19937_64 gen;
+
+    /**
+     * @ingroup api_base_utils
+     * @{
+     */
     Random();
     Random(uint32_t s);
+    /** @} */ // end of api_base_utils
     ~Random();
 
     void init(uint32_t s);
@@ -73,9 +82,11 @@ class Random : public Serializable
     /**
      * Use the SFINAE idiom to choose an implementation based on
      * whether the type is integral or floating point.
+     *
+     * @ingroup api_base_utils
      */
     template <typename T>
-    typename std::enable_if<std::is_integral<T>::value, T>::type
+    typename std::enable_if_t<std::is_integral_v<T>, T>
     random()
     {
         // [0, max_value] for integer types
@@ -83,17 +94,22 @@ class Random : public Serializable
         return dist(gen);
     }
 
+    /**
+     * @ingroup api_base_utils
+     */
     template <typename T>
-    typename std::enable_if<std::is_floating_point<T>::value, T>::type
+    typename std::enable_if_t<std::is_floating_point_v<T>, T>
     random()
     {
         // [0, 1) for real types
         std::uniform_real_distribution<T> dist;
         return dist(gen);
     }
-
+    /**
+     * @ingroup api_base_utils
+     */
     template <typename T>
-    typename std::enable_if<std::is_integral<T>::value, T>::type
+    typename std::enable_if_t<std::is_integral_v<T>, T>
     random(T min, T max)
     {
         std::uniform_int_distribution<T> dist(min, max);
@@ -104,6 +120,11 @@ class Random : public Serializable
     void unserialize(CheckpointIn &cp) override;
 };
 
+/**
+ * @ingroup api_base_utils
+ */
 extern Random random_mt;
+
+} // namespace gem5
 
 #endif // __BASE_RANDOM_HH__

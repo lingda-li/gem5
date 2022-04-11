@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Inria
+ * Copyright (c) 2018-2020 Inria
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -75,9 +75,16 @@
 
 #include "mem/cache/replacement_policies/base.hh"
 
+namespace gem5
+{
+
 struct TreePLRURPParams;
 
-class TreePLRURP : public BaseReplacementPolicy
+GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
+namespace replacement_policy
+{
+
+class TreePLRU : public Base
 {
   private:
     /**
@@ -149,18 +156,9 @@ class TreePLRURP : public BaseReplacementPolicy
     };
 
   public:
-    /** Convenience typedef. */
     typedef TreePLRURPParams Params;
-
-    /**
-     * Construct and initiliaze this replacement policy.
-     */
-    TreePLRURP(const Params *p);
-
-    /**
-     * Destructor.
-     */
-    ~TreePLRURP() {}
+    TreePLRU(const Params &p);
+    ~TreePLRU() = default;
 
     /**
      * Invalidate replacement data to set it as the next probable victim.
@@ -169,7 +167,7 @@ class TreePLRURP : public BaseReplacementPolicy
      * @param replacement_data Replacement data to be invalidated.
      */
     void invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
-                                                              const override;
+                                                                    override;
 
     /**
      * Touch an entry to update its replacement data.
@@ -211,5 +209,8 @@ class TreePLRURP : public BaseReplacementPolicy
      */
     std::shared_ptr<ReplacementData> instantiateEntry() override;
 };
+
+} // namespace replacement_policy
+} // namespace gem5
 
 #endif // __MEM_CACHE_REPLACEMENT_POLICIES_TREE_PLRU_RP_HH__

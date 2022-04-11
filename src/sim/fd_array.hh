@@ -2,8 +2,6 @@
  * Copyright (c) 2016 Advanced Micro Devices, Inc.
  * All rights reserved.
  *
- * For use for simulation and test purposes only
- *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
@@ -35,12 +33,17 @@
 #define __FD_ARRAY_HH__
 
 #include <array>
+#include <map>
 #include <memory>
 #include <string>
 
 #include "sim/fd_entry.hh"
+#include "sim/serialize.hh"
 
-class FDArray
+namespace gem5
+{
+
+class FDArray : public Serializable
 {
   public:
     /**
@@ -110,6 +113,12 @@ class FDArray
      */
     int closeFDEntry(int tgt_fd);
 
+    /*
+     * Serialization methods for file descriptors
+     */
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
+
   private:
     /**
      * Help clarify our intention when opening files in the init and
@@ -153,5 +162,7 @@ class FDArray
     std::map<std::string, int> _imap;
     std::map<std::string, int> _oemap;
 };
+
+} // namespace gem5
 
 #endif // __FD_ARRAY_HH__

@@ -29,9 +29,19 @@
 #ifndef __SOCKET_HH__
 #define __SOCKET_HH__
 
+#include <sys/socket.h>
+#include <sys/types.h>
+
+namespace gem5
+{
+
 class ListenSocket
 {
   protected:
+    /**
+     * The following variables are only used by socket unit tests:
+     * listeningDisabled, anyListening, bindToLoopback.
+     */
     static bool listeningDisabled;
     static bool anyListening;
 
@@ -52,16 +62,31 @@ class ListenSocket
      */
     static void cleanup();
 
+  private:
+    /* Create a socket, adding SOCK_CLOEXEC if available. */
+    static int socketCloexec(int domain, int type, int protocol);
+    /* Accept a connection, adding SOCK_CLOEXEC if available. */
+    static int acceptCloexec(int sockfd, struct sockaddr *addr,
+                              socklen_t *addrlen);
+
 
   public:
+    /**
+     * @ingroup api_socket
+     * @{
+     */
     ListenSocket();
     virtual ~ListenSocket();
 
     virtual int accept(bool nodelay = false);
+
     virtual bool listen(int port, bool reuse = true);
 
     int getfd() const { return fd; }
     bool islistening() const { return listening; }
+    /** @} */ // end of api_socket
 };
+
+} // namespace gem5
 
 #endif //__SOCKET_HH__

@@ -45,17 +45,23 @@ if env['PROTOCOL'] == 'None':
 
 env.Append(CPPDEFINES=['PROTOCOL_' + env['PROTOCOL']])
 
+if env['PROTOCOL'] in env['NEED_PARTIAL_FUNC_READS']:
+    env.Append(CPPDEFINES=['PARTIAL_FUNC_READS'])
+
 if env['BUILD_GPU']:
-    SimObject('GPUCoalescer.py')
-SimObject('RubySystem.py')
-SimObject('Sequencer.py')
+    SimObject('GPUCoalescer.py', sim_objects=['RubyGPUCoalescer'])
+SimObject('RubySystem.py', sim_objects=['RubySystem'])
+SimObject('Sequencer.py', sim_objects=[
+    'RubyPort', 'RubyPortProxy', 'RubySequencer', 'RubyHTMSequencer',
+    'DMASequencer'])
 if env['BUILD_GPU']:
-    SimObject('VIPERCoalescer.py')
+    SimObject('VIPERCoalescer.py', sim_objects=['VIPERCoalescer'])
 
 Source('CacheRecorder.cc')
 Source('DMASequencer.cc')
 if env['BUILD_GPU']:
     Source('GPUCoalescer.cc')
+Source('HTMSequencer.cc')
 Source('RubyPort.cc')
 Source('RubyPortProxy.cc')
 Source('RubySystem.cc')

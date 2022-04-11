@@ -32,6 +32,9 @@
 #include "params/SparcFsWorkload.hh"
 #include "sim/system.hh"
 
+namespace gem5
+{
+
 namespace SparcISA
 {
 
@@ -40,19 +43,14 @@ FsWorkload::initState()
 {
     Workload::initState();
 
-    if (system->threadContexts.empty())
+    if (system->threads.empty())
         return;
 
     // Other CPUs will get activated by IPIs.
-    auto *tc = system->threadContexts[0];
+    auto *tc = system->threads[0];
     SparcISA::PowerOnReset().invoke(tc);
     tc->activate();
 }
 
 } // namespace SparcISA
-
-SparcISA::FsWorkload *
-SparcFsWorkloadParams::create()
-{
-    return new SparcISA::FsWorkload(this);
-}
+} // namespace gem5

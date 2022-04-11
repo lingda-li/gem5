@@ -29,19 +29,12 @@
 #ifndef __CPU_THREAD_STATE_HH__
 #define __CPU_THREAD_STATE_HH__
 
-#include "arch/types.hh"
-#include "config/the_isa.hh"
 #include "cpu/base.hh"
-#include "cpu/profile.hh"
 #include "cpu/thread_context.hh"
 #include "sim/process.hh"
 
-class EndQuiesceEvent;
-class FunctionProfile;
-class ProfileNode;
-namespace Kernel {
-    class Statistics;
-}
+namespace gem5
+{
 
 class Checkpoint;
 
@@ -51,12 +44,13 @@ class Checkpoint;
  *  memory, quiesce events, and certain stats.  This can be expanded
  *  to hold more thread-specific stats within it.
  */
-struct ThreadState : public Serializable {
+struct ThreadState : public Serializable
+{
     typedef ThreadContext::Status Status;
 
     ThreadState(BaseCPU *cpu, ThreadID _tid, Process *_process);
 
-    virtual ~ThreadState();
+    virtual ~ThreadState() = default;
 
     void serialize(CheckpointOut &cp) const override;
 
@@ -78,41 +72,9 @@ struct ThreadState : public Serializable {
 
     Tick readLastSuspend() const { return lastSuspend; }
 
-    /**
-     * Initialise the physical and virtual port proxies and tie them to
-     * the data port of the CPU.
-     *
-     * @param tc ThreadContext for the virtual-to-physical translation
-     */
-    void initMemProxies(ThreadContext *tc);
-
-    void dumpFuncProfile();
-
-    EndQuiesceEvent *getQuiesceEvent() { return quiesceEvent; }
-
-    void profileClear();
-
-    void profileSample();
-
-    Kernel::Statistics *getKernelStats() { return kernelStats; }
-
-    PortProxy &getPhysProxy();
-
-    PortProxy &getVirtProxy();
-
     Process *getProcessPtr() { return process; }
 
     void setProcessPtr(Process *p) { process = p; }
-
-    /** Reads the number of instructions functionally executed and
-     * committed.
-     */
-    Counter readFuncExeInst() const { return funcExeInst; }
-
-    /** Sets the total number of instructions functionally executed
-     * and committed.
-     */
-    void setFuncExeInst(Counter new_val) { funcExeInst = new_val; }
 
     /** Returns the status of this thread. */
     Status status() const { return _status; }
@@ -124,14 +86,19 @@ struct ThreadState : public Serializable {
 
     /** Number of instructions committed. */
     Counter numInst;
-    /** Stat for number instructions committed. */
-    Stats::Scalar numInsts;
-    /** Number of ops (including micro ops) committed. */
+     /** Number of ops (including micro ops) committed. */
     Counter numOp;
-    /** Stat for number ops (including micro ops) committed. */
-    Stats::Scalar numOps;
-    /** Stat for number of memory references. */
-    Stats::Scalar numMemRefs;
+    // Defining the stat group
+    struct ThreadStateStats : public statistics::Group
+    {
+        ThreadStateStats(BaseCPU *cpu, const ThreadID& thread);
+        /** Stat for number instructions committed. */
+        statistics::Scalar numInsts;
+        /** Stat for number ops (including micro ops) committed. */
+        statistics::Scalar numOps;
+        /** Stat for number of memory references. */
+        statistics::Scalar numMemRefs;
+    } threadStats;
 
     /** Number of simulated loads, used for tracking events based on
      * the number of loads committed.
@@ -160,36 +127,17 @@ struct ThreadState : public Serializable {
     /** Last time suspend was called on this thread. */
     Tick lastSuspend;
 
-  public:
-    FunctionProfile *profile;
-    ProfileNode *profileNode;
-    Addr profilePC;
-    EndQuiesceEvent *quiesceEvent;
-
-    Kernel::Statistics *kernelStats;
-
   protected:
     Process *process;
 
-    /** A port proxy outgoing only for functional accesses to physical
-     * addresses.*/
-    PortProxy *physProxy;
-
-    /** A translating port proxy, outgoing only, for functional
-     * accesse to virtual addresses. */
-    PortProxy *virtProxy;
-
   public:
-    /*
-     * number of executed instructions, for matching with syscall trace
-     * points in EIO files.
-     */
-    Counter funcExeInst;
 
     //
     // Count failed store conditionals so we can warn of apparent
     // application deadlock situations.
     unsigned storeCondFailures;
 };
+
+} // namespace gem5
 
 #endif // __CPU_THREAD_STATE_HH__

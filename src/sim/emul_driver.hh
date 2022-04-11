@@ -36,6 +36,9 @@
 #include "params/EmulatedDriver.hh"
 #include "sim/sim_object.hh"
 
+namespace gem5
+{
+
 class Process;
 class ThreadContext;
 
@@ -58,8 +61,8 @@ class EmulatedDriver : public SimObject
     const std::string &filename;
 
   public:
-    EmulatedDriver(EmulatedDriverParams *p)
-        : SimObject(p), filename(p->filename)
+    EmulatedDriver(const EmulatedDriverParams &p)
+        : SimObject(p), filename(p.filename)
     {
     }
 
@@ -93,8 +96,10 @@ class EmulatedDriver : public SimObject
      * (see the SyscallReturn class).
      */
     virtual Addr mmap(ThreadContext *tc, Addr start, uint64_t length,
-                      int prot, int tgtFlags, int tgtFd, int offset)
+                      int prot, int tgtFlags, int tgtFd, off_t offset)
                       { return -EBADF; }
 };
+
+} // namespace gem5
 
 #endif // __SIM_EMUL_DRIVER_HH

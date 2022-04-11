@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Inria
+ * Copyright (c) 2018-2020 Inria
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,35 +33,41 @@
 
 #include "params/LFURP.hh"
 
-LFURP::LFURP(const Params *p)
-    : BaseReplacementPolicy(p)
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
+namespace replacement_policy
+{
+
+LFU::LFU(const Params &p)
+  : Base(p)
 {
 }
 
 void
-LFURP::invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
-const
+LFU::invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
 {
     // Reset reference count
     std::static_pointer_cast<LFUReplData>(replacement_data)->refCount = 0;
 }
 
 void
-LFURP::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
+LFU::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
 {
     // Update reference count
     std::static_pointer_cast<LFUReplData>(replacement_data)->refCount++;
 }
 
 void
-LFURP::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
+LFU::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
 {
     // Reset reference count
     std::static_pointer_cast<LFUReplData>(replacement_data)->refCount = 1;
 }
 
 ReplaceableEntry*
-LFURP::getVictim(const ReplacementCandidates& candidates) const
+LFU::getVictim(const ReplacementCandidates& candidates) const
 {
     // There must be at least one replacement candidate
     assert(candidates.size() > 0);
@@ -82,13 +88,10 @@ LFURP::getVictim(const ReplacementCandidates& candidates) const
 }
 
 std::shared_ptr<ReplacementData>
-LFURP::instantiateEntry()
+LFU::instantiateEntry()
 {
     return std::shared_ptr<ReplacementData>(new LFUReplData());
 }
 
-LFURP*
-LFURPParams::create()
-{
-    return new LFURP(this);
-}
+} // namespace replacement_policy
+} // namespace gem5

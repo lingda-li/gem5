@@ -43,9 +43,14 @@
  * This prefetcher uses two other prefetchers, the AMPM and the DCPT.
  */
 
+namespace gem5
+{
+
 struct SlimAMPMPrefetcherParams;
 
-namespace Prefetcher {
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
 
 class SlimAMPM : public Queued
 {
@@ -54,13 +59,14 @@ class SlimAMPM : public Queued
    /** DCPT prefetcher object */
    DeltaCorrelatingPredictionTables &dcpt;
  public:
-   SlimAMPM(const SlimAMPMPrefetcherParams *p);
+   SlimAMPM(const SlimAMPMPrefetcherParams &p);
    ~SlimAMPM() = default;
 
    void calculatePrefetch(const PrefetchInfo &pfi,
                           std::vector<AddrPriority> &addresses) override;
 };
 
-} // namespace Prefetcher
+} // namespace prefetch
+} // namespace gem5
 
 #endif//__MEM_CACHE_PREFETCH_SLIM_AMPM_HH__

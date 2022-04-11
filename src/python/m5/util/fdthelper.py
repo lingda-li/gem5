@@ -35,10 +35,6 @@
 #
 # Author: Glenn Bergmans
 
-import six
-if six.PY3:
-    long = int
-
 from m5.ext.pyfdt import pyfdt
 import re
 import os
@@ -56,8 +52,8 @@ class FdtPropertyWords(pyfdt.FdtPropertyWords):
             words = [words]
         # Make sure all values are ints (use automatic base detection if the
         # type is str)
-        words = [long(w, base=0) if type(w) == str else long(w) for w in words]
-        super(FdtPropertyWords, self).__init__(name, words)
+        words = [int(w, base=0) if type(w) == str else int(w) for w in words]
+        super().__init__(name, words)
 
 class FdtPropertyStrings(pyfdt.FdtPropertyStrings):
     """Create a property with string values."""
@@ -66,7 +62,7 @@ class FdtPropertyStrings(pyfdt.FdtPropertyStrings):
         if type(strings) == str:
             strings = [strings]
         strings = [str(string) for string in strings] # Make all values strings
-        super(FdtPropertyStrings, self).__init__(name, strings)
+        super().__init__(name, strings)
 
 class FdtPropertyBytes(pyfdt.FdtPropertyBytes):
     """Create a property with integer (8-bit signed) values."""
@@ -78,7 +74,7 @@ class FdtPropertyBytes(pyfdt.FdtPropertyBytes):
         # type is str)
         values = [int(v, base=0)
                    if isinstance(v, str) else int(v) for v in values]
-        super(FdtPropertyBytes, self).__init__(name, values)
+        super().__init__(name, values)
 
 class FdtState(object):
     """Class for maintaining state while recursively generating a flattened
@@ -122,7 +118,7 @@ class FdtState(object):
     def int_to_cells(self, value, cells):
         """Helper function for: generates a list of 32 bit cells from an int,
         used to split up addresses in appropriate 32 bit chunks."""
-        value = long(value)
+        value = int(value)
 
         if (value >> (32 * cells)) != 0:
             fatal("Value %d doesn't fit in %d cells" % (value, cells))
@@ -176,7 +172,7 @@ class FdtNode(pyfdt.FdtNode):
     def __init__(self, name, obj=None):
         """Create a new node and immediately set the phandle property, if obj
         is supplied"""
-        super(FdtNode, self).__init__(name)
+        super().__init__(name)
         if obj != None:
             self.appendPhandle(obj)
 
@@ -202,7 +198,7 @@ class FdtNode(pyfdt.FdtNode):
                 item.merge(subnode)
                 subnode = item
 
-            super(FdtNode, self).append(subnode)
+            super().append(subnode)
 
     def appendList(self, subnode_list):
         """Append all properties/nodes in the iterable."""
@@ -249,7 +245,7 @@ class Fdt(pyfdt.Fdt):
     def add_rootnode(self, rootnode, prenops=None, postnops=None):
         """First sort the device tree, so that properties are before nodes."""
         rootnode = self.sortNodes(rootnode)
-        super(Fdt, self).add_rootnode(rootnode, prenops, postnops)
+        super().add_rootnode(rootnode, prenops, postnops)
 
     def writeDtbFile(self, filename):
         """Convert the device tree to DTB and write to a file."""

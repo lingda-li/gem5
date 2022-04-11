@@ -40,6 +40,9 @@
 #include "sim/sim_object.hh"
 #include "sim/stats.hh"
 
+namespace gem5
+{
+
 enum TrafficType {BIT_COMPLEMENT_ = 0,
                   BIT_REVERSE_ = 1,
                   BIT_ROTATION_ = 2,
@@ -55,7 +58,7 @@ class GarnetSyntheticTraffic : public ClockedObject
 {
   public:
     typedef GarnetSyntheticTrafficParams Params;
-    GarnetSyntheticTraffic(const Params *p);
+    GarnetSyntheticTraffic(const Params &p);
 
     void init() override;
 
@@ -74,14 +77,14 @@ class GarnetSyntheticTraffic : public ClockedObject
   protected:
     EventFunctionWrapper tickEvent;
 
-    class CpuPort : public MasterPort
+    class CpuPort : public RequestPort
     {
         GarnetSyntheticTraffic *tester;
 
       public:
 
         CpuPort(const std::string &_name, GarnetSyntheticTraffic *_tester)
-            : MasterPort(_name, _tester), tester(_tester)
+            : RequestPort(_name, _tester), tester(_tester)
         { }
 
       protected:
@@ -130,7 +133,7 @@ class GarnetSyntheticTraffic : public ClockedObject
 
     const Cycles responseLimit;
 
-    MasterID masterId;
+    RequestorID requestorId;
 
     void completeRequest(PacketPtr pkt);
 
@@ -142,5 +145,7 @@ class GarnetSyntheticTraffic : public ClockedObject
 
     friend class MemCompleteEvent;
 };
+
+} // namespace gem5
 
 #endif // __CPU_GARNET_SYNTHETIC_TRAFFIC_HH__

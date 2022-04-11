@@ -42,6 +42,11 @@
 #include "debug/KvmContext.hh"
 #include "params/ArmV8KvmCPU.hh"
 
+namespace gem5
+{
+
+using namespace ArmISA;
+
 // Unlike gem5, kvm doesn't count the SP as a normal integer register,
 // which means we only have 31 normal integer registers.
 constexpr static unsigned NUM_XREGS = NUM_ARCH_INTREGS - 1;
@@ -79,13 +84,16 @@ kvmFPReg(const int num)
         (SIMD_REG(fp_regs.vregs[1]) - SIMD_REG(fp_regs.vregs[0])) * num;
 }
 
-union KvmFPReg {
-    union {
+union KvmFPReg
+{
+    union
+    {
         uint32_t i;
         float f;
     } s[4];
 
-    union {
+    union
+    {
         uint64_t i;
         double f;
     } d[2];
@@ -121,7 +129,7 @@ const std::vector<ArmV8KvmCPU::MiscRegInfo> ArmV8KvmCPU::miscRegIdMap = {
     MiscRegInfo(SYS_MPIDR_EL1, MISCREG_MPIDR_EL1, "MPIDR(EL1)"),
 };
 
-ArmV8KvmCPU::ArmV8KvmCPU(ArmV8KvmCPUParams *params)
+ArmV8KvmCPU::ArmV8KvmCPU(const ArmV8KvmCPUParams &params)
     : BaseArmKvmCPU(params)
 {
 }
@@ -248,6 +256,8 @@ ArmV8KvmCPU::updateKvmState()
 
     for (int i = 0; i < NUM_QREGS; ++i) {
         KvmFPReg reg;
+        if (!inAArch64(tc))
+            syncVecElemsToRegs(tc);
         auto v = tc->readVecReg(RegId(VecRegClass, i)).as<VecElem>();
         for (int j = 0; j < FP_REGS_PER_VFP_REG; j++)
             reg.s[j].i = v[j];
@@ -272,8 +282,8 @@ ArmV8KvmCPU::updateKvmState()
         setOneReg(ri.kvm, value);
     }
 
-    setOneReg(INT_REG(regs.pc), tc->instAddr());
-    DPRINTF(KvmContext, "  PC := 0x%x\n", tc->instAddr());
+    setOneReg(INT_REG(regs.pc), tc->pcState().instAddr());
+    DPRINTF(KvmContext, "  PC := 0x%x\n", tc->pcState().instAddr());
 }
 
 void
@@ -325,6 +335,8 @@ ArmV8KvmCPU::updateThreadContext()
         auto v = tc->getWritableVecReg(RegId(VecRegClass, i)).as<VecElem>();
         for (int j = 0; j < FP_REGS_PER_VFP_REG; j++)
             v[j] = reg.s[j].i;
+        if (!inAArch64(tc))
+            syncVecRegsToElems(tc);
     }
 
     for (const auto &ri : getSysRegMap()) {
@@ -379,7 +391,7 @@ ArmV8KvmCPU::getSysRegMap() const
         const bool writeable(
             info[MISCREG_USR_NS_WR] || info[MISCREG_USR_S_WR] ||
             info[MISCREG_PRI_S_WR] || info[MISCREG_PRI_NS_WR] ||
-            info[MISCREG_HYP_WR] ||
+            info[MISCREG_HYP_NS_WR] ||
             info[MISCREG_MON_NS0_WR] || info[MISCREG_MON_NS1_WR]);
         const bool implemented(
             info[MISCREG_IMPLEMENTED] || info[MISCREG_WARN_NOT_FAIL]);
@@ -394,8 +406,4 @@ ArmV8KvmCPU::getSysRegMap() const
     return sysRegMap;
 }
 
-ArmV8KvmCPU *
-ArmV8KvmCPUParams::create()
-{
-    return new ArmV8KvmCPU(this);
-}
+} // namespace gem5

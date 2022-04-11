@@ -52,21 +52,28 @@
 #include "base/logging.hh"
 #include "base/trace.hh"
 #include "base/types.hh"
-#include "debug/Cache.hh"
+#include "debug/MSHR.hh"
 #include "mem/cache/base.hh"
 #include "mem/request.hh"
-#include "sim/core.hh"
 
-MSHR::MSHR() : downstreamPending(false),
-               pendingModified(false),
-               postInvalidate(false), postDowngrade(false),
-               wasWholeLineWrite(false), isForward(false)
+namespace gem5
+{
+
+MSHR::MSHR(const std::string &name)
+    :   QueueEntry(name),
+        downstreamPending(false),
+        pendingModified(false),
+        postInvalidate(false), postDowngrade(false),
+        wasWholeLineWrite(false), isForward(false),
+        targets(name + ".targets"),
+        deferredTargets(name + ".deferredTargets")
 {
 }
 
-MSHR::TargetList::TargetList()
-    : needsWritable(false), hasUpgrade(false), allocOnFill(false),
-      hasFromCache(false)
+MSHR::TargetList::TargetList(const std::string &name)
+    :   Named(name),
+        needsWritable(false), hasUpgrade(false),
+        allocOnFill(false), hasFromCache(false)
 {}
 
 
@@ -173,6 +180,8 @@ MSHR::TargetList::add(PacketPtr pkt, Tick readyTime,
     }
 
     emplace_back(pkt, readyTime, order, source, markPending, alloc_on_fill);
+
+    DPRINTF(MSHR, "New target allocated: %s\n", pkt->print());
 }
 
 
@@ -184,13 +193,13 @@ replaceUpgrade(PacketPtr pkt)
 
     if (pkt->cmd == MemCmd::UpgradeReq) {
         pkt->cmd = MemCmd::ReadExReq;
-        DPRINTF(Cache, "Replacing UpgradeReq with ReadExReq\n");
+        DPRINTF(MSHR, "Replacing UpgradeReq with ReadExReq\n");
     } else if (pkt->cmd == MemCmd::SCUpgradeReq) {
         pkt->cmd = MemCmd::SCUpgradeFailReq;
-        DPRINTF(Cache, "Replacing SCUpgradeReq with SCUpgradeFailReq\n");
+        DPRINTF(MSHR, "Replacing SCUpgradeReq with SCUpgradeFailReq\n");
     } else if (pkt->cmd == MemCmd::StoreCondReq) {
         pkt->cmd = MemCmd::StoreCondFailReq;
-        DPRINTF(Cache, "Replacing StoreCondReq with StoreCondFailReq\n");
+        DPRINTF(MSHR, "Replacing StoreCondReq with StoreCondFailReq\n");
     }
 
     if (!has_data) {
@@ -406,12 +415,14 @@ MSHR::allocateTarget(PacketPtr pkt, Tick whenReady, Counter _order,
         targets.add(pkt, whenReady, _order, Target::FromCPU, !inService,
                     alloc_on_fill);
     }
+
+    DPRINTF(MSHR, "After target allocation: %s", print());
 }
 
 bool
 MSHR::handleSnoop(PacketPtr pkt, Counter _order)
 {
-    DPRINTF(Cache, "%s for %s\n", __func__, pkt->print());
+    DPRINTF(MSHR, "%s for %s\n", __func__, pkt->print());
 
     // when we snoop packets the needsWritable and isInvalidate flags
     // should always be the same, however, this assumes that we never
@@ -714,12 +725,12 @@ MSHR::print(std::ostream &os, int verbosity, const std::string &prefix) const
              hasFromCache() ? "HasFromCache" : "");
 
     if (!targets.empty()) {
-        ccprintf(os, "%s  Targets:\n", prefix);
-        targets.print(os, verbosity, prefix + "    ");
+        ccprintf(os, "%s      Targets:\n", prefix);
+        targets.print(os, verbosity, prefix + "        ");
     }
     if (!deferredTargets.empty()) {
-        ccprintf(os, "%s  Deferred Targets:\n", prefix);
-        deferredTargets.print(os, verbosity, prefix + "      ");
+        ccprintf(os, "%s      Deferred Targets:\n", prefix);
+        deferredTargets.print(os, verbosity, prefix + "        ");
     }
 }
 
@@ -751,3 +762,5 @@ MSHR::conflictAddr(const QueueEntry* entry) const
     assert(hasTargets());
     return entry->matchBlockAddr(blkAddr, isSecure);
 }
+
+} // namespace gem5

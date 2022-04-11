@@ -40,6 +40,11 @@ output header {{
 #include <tuple>
 #include <vector>
 
+/* riscv softfloat library */
+#include <internals.h>
+#include <softfloat.h>
+#include <specialize.h>
+
 #include "arch/riscv/insts/amo.hh"
 #include "arch/riscv/insts/compressed.hh"
 #include "arch/riscv/insts/mem.hh"
@@ -61,7 +66,7 @@ output decoder {{
 
 #include "arch/riscv/decoder.hh"
 #include "arch/riscv/faults.hh"
-#include "arch/riscv/tlb.hh"
+#include "arch/riscv/mmu.hh"
 #include "base/cprintf.hh"
 #include "base/loader/symtab.hh"
 #include "cpu/thread_context.hh"
@@ -69,8 +74,10 @@ output decoder {{
 #include "mem/request.hh"
 #include "sim/full_system.hh"
 
+namespace gem5::RiscvISAInst
+{
 using namespace RiscvISA;
-using namespace std;
+} // namespace gem5::RiscvISAInst
 }};
 
 output exec {{
@@ -81,7 +88,11 @@ output exec {{
 
 #include "arch/generic/memhelpers.hh"
 #include "arch/riscv/faults.hh"
-#include "arch/riscv/registers.hh"
+#include "arch/riscv/fp_inst.hh"
+#include "arch/riscv/mmu.hh"
+#include "arch/riscv/reg_abi.hh"
+#include "arch/riscv/regs/float.hh"
+#include "arch/riscv/regs/misc.hh"
 #include "arch/riscv/utility.hh"
 #include "base/condcodes.hh"
 #include "cpu/base.hh"
@@ -97,6 +108,8 @@ output exec {{
 #include "sim/sim_exit.hh"
 #include "sim/system.hh"
 
+namespace gem5::RiscvISAInst
+{
 using namespace RiscvISA;
-using namespace std;
+} // namespace gem5::RiscvISAInst
 }};

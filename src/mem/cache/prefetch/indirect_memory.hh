@@ -45,9 +45,14 @@
 #include "mem/cache/prefetch/associative_set.hh"
 #include "mem/cache/prefetch/queued.hh"
 
+namespace gem5
+{
+
 struct IndirectMemoryPrefetcherParams;
 
-namespace Prefetcher {
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
 
 class IndirectMemory : public Queued
 {
@@ -85,7 +90,7 @@ class IndirectMemory : public Queued
         /** Shift detected */
         int shift;
         /** Confidence counter of the indirect fields */
-        SatCounter indirectCounter;
+        SatCounter8 indirectCounter;
         /**
          * This variable is set to indicate that there has been at least one
          * match with the current index value. This information is later used
@@ -193,13 +198,14 @@ class IndirectMemory : public Queued
     void checkAccessMatchOnActiveEntries(Addr addr);
 
   public:
-    IndirectMemory(const IndirectMemoryPrefetcherParams *p);
+    IndirectMemory(const IndirectMemoryPrefetcherParams &p);
     ~IndirectMemory() = default;
 
     void calculatePrefetch(const PrefetchInfo &pfi,
                            std::vector<AddrPriority> &addresses) override;
 };
 
-} // namespace Prefetcher
+} // namespace prefetch
+} // namespace gem5
 
 #endif//__MEM_CACHE_PREFETCH_INDIRECT_MEMORY_HH__

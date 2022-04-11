@@ -35,7 +35,12 @@
 #include "base/logging.hh"
 #include "params/BloomFilterH3.hh"
 
-namespace BloomFilter {
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(BloomFilter, bloom_filter);
+namespace bloom_filter
+{
 
 static int H3Matrix[64][16] = {
     { 33268410,   395488709,  311024285,  456111753,
@@ -359,7 +364,7 @@ static int H3Matrix[64][16] = {
       394261773,  848616745,  15446017,   517723271,  },
 };
 
-H3::H3(const BloomFilterH3Params* p)
+H3::H3(const BloomFilterH3Params &p)
     : MultiBitSel(p)
 {
     fatal_if(numHashes > 16, "There are only 16 H3 functions implemented.");
@@ -389,11 +394,5 @@ H3::hash(Addr addr, int hash_number) const
     }
 }
 
-} // namespace BloomFilter
-
-BloomFilter::H3*
-BloomFilterH3Params::create()
-{
-    return new BloomFilter::H3(this);
-}
-
+} // namespace bloom_filter
+} // namespace gem5

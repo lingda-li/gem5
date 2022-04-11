@@ -43,6 +43,9 @@
 
 #include "arch/arm/insts/pred_inst.hh"
 
+namespace gem5
+{
+
 namespace ArmISA
 {
 // Branch to a target computed with an immediate
@@ -58,7 +61,7 @@ class BranchImm : public PredOp
     {}
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 // Conditionally Branch to a target computed with an immediate
@@ -88,7 +91,7 @@ class BranchReg : public PredOp
     {}
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 // Conditionally Branch to a target computed with a register
@@ -119,7 +122,7 @@ class BranchRegReg : public PredOp
     {}
 
     std::string generateDisassembly(
-            Addr pc, const Loader::SymbolTable *symtab) const;
+            Addr pc, const loader::SymbolTable *symtab) const override;
 };
 
 // Branch to a target computed with an immediate and a register
@@ -136,6 +139,7 @@ class BranchImmReg : public PredOp
     {}
 };
 
-}
+} // namespace ArmISA
+} // namespace gem5
 
 #endif //__ARCH_ARM_INSTS_BRANCH_HH__

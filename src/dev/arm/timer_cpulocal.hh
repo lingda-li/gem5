@@ -38,14 +38,23 @@
 #ifndef __DEV_ARM_LOCALTIMER_HH__
 #define __DEV_ARM_LOCALTIMER_HH__
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
 #include "base/bitunion.hh"
+#include "base/types.hh"
 #include "dev/io_device.hh"
 #include "params/CpuLocalTimer.hh"
+#include "sim/serialize.hh"
 
 /** @file
  * This implements the cpu local timer from the Cortex-A9 MPCore
  * Technical Reference Manual rev r2p2 (ARM DDI 0407F)
  */
+
+namespace gem5
+{
 
 class BaseGic;
 class ArmInterruptPin;
@@ -57,7 +66,8 @@ class CpuLocalTimer : public BasicPioDevice
     {
 
       public:
-        enum {
+        enum
+        {
             TimerLoadReg    	   = 0x00,
             TimerCounterReg 	   = 0x04,
             TimerControlReg 	   = 0x08,
@@ -156,17 +166,13 @@ class CpuLocalTimer : public BasicPioDevice
     std::vector<std::unique_ptr<Timer>> localTimer;
 
   public:
-    typedef CpuLocalTimerParams Params;
-    const Params *
-    params() const
-    {
-        return dynamic_cast<const Params *>(_params);
-    }
+    PARAMS(CpuLocalTimer);
+
     /**
       * The constructor for RealView just registers itself with the MMU.
       * @param p params structure
       */
-    CpuLocalTimer(Params *p);
+    CpuLocalTimer(const Params &p);
 
     /** Inits the local timers */
     void init() override;
@@ -189,6 +195,6 @@ class CpuLocalTimer : public BasicPioDevice
     void unserialize(CheckpointIn &cp) override;
 };
 
+} // namespace gem5
 
 #endif // __DEV_ARM_SP804_HH__
-

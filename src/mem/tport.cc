@@ -41,9 +41,12 @@
 #include "mem/tport.hh"
 #include "sim/sim_object.hh"
 
+namespace gem5
+{
+
 SimpleTimingPort::SimpleTimingPort(const std::string& _name,
                                    SimObject* _owner) :
-    QueuedSlavePort(_name, _owner, queueImpl), queueImpl(*_owner, *this)
+    QueuedResponsePort(_name, _owner, queueImpl), queueImpl(*_owner, *this)
 {
 }
 
@@ -68,7 +71,7 @@ SimpleTimingPort::recvTimingReq(PacketPtr pkt)
 
     bool needsResponse = pkt->needsResponse();
     Tick latency = recvAtomic(pkt);
-    // turn packet around to go back to requester if response expected
+    // turn packet around to go back to requestor if response expected
     if (needsResponse) {
         // recvAtomic() should already have turned packet into
         // atomic response
@@ -81,3 +84,5 @@ SimpleTimingPort::recvTimingReq(PacketPtr pkt)
 
     return true;
 }
+
+} // namespace gem5

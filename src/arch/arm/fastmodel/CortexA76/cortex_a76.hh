@@ -37,9 +37,13 @@
 #include "sim/port.hh"
 #include "systemc/ext/core/sc_module.hh"
 
+namespace gem5
+{
+
 class BaseCPU;
 
-namespace FastModel
+GEM5_DEPRECATED_NAMESPACE(FastModel, fastmodel);
+namespace fastmodel
 {
 
 // The fast model exports a class called scx_evs_CortexA76x1 which represents
@@ -52,32 +56,16 @@ class CortexA76Cluster;
 class CortexA76 : public Iris::CPU<CortexA76TC>
 {
   protected:
-    typedef FastModelCortexA76Params Params;
     typedef Iris::CPU<CortexA76TC> Base;
-    const Params &_params;
 
     CortexA76Cluster *cluster = nullptr;
     int num = 0;
 
-    const Params &params() { return _params; }
-
   public:
-    CortexA76(Params &p) : Base(&p, scx::scx_get_iris_connection_interface()),
-        _params(p)
+    PARAMS(FastModelCortexA76);
+    CortexA76(const Params &p) :
+        Base(p, scx::scx_get_iris_connection_interface())
     {}
-
-    void
-    clockPeriodUpdated() override
-    {
-        Base::clockPeriodUpdated();
-
-        // FIXME(b/139447397): this is a workaround since CNTFRQ_EL0 should not
-        // be modified after clock is changed in real hardwares. Remove or
-        // modify this after a more reasonable solution is found.
-        for (auto *tc : threadContexts) {
-            tc->setMiscRegNoEffect(ArmISA::MISCREG_CNTFRQ_EL0, frequency());
-        }
-    }
 
     void initState() override;
 
@@ -86,6 +74,8 @@ class CortexA76 : public Iris::CPU<CortexA76TC>
 
     void setCluster(CortexA76Cluster *_cluster, int _num);
 
+    void setResetAddr(Addr addr, bool secure = false) override;
+
     Port &getPort(const std::string &if_name,
             PortID idx=InvalidPortID) override;
 };
@@ -93,13 +83,11 @@ class CortexA76 : public Iris::CPU<CortexA76TC>
 class CortexA76Cluster : public SimObject
 {
   private:
-    typedef FastModelCortexA76ClusterParams Params;
-    const Params &_params;
-
     std::vector<CortexA76 *> cores;
     sc_core::sc_module *evs;
 
   public:
+    PARAMS(FastModelCortexA76Cluster);
     template <class T>
     void
     set_evs_param(const std::string &n, T val)
@@ -107,11 +95,10 @@ class CortexA76Cluster : public SimObject
         scx::scx_set_parameter(evs->name() + std::string(".") + n, val);
     }
 
-    CortexA76 *getCore(int num) { return cores.at(num); }
-    sc_core::sc_module *getEvs() { return evs; }
+    CortexA76 *getCore(int num) const { return cores.at(num); }
+    sc_core::sc_module *getEvs() const { return evs; }
 
-    CortexA76Cluster(Params &p);
-    const Params &params() { return _params; }
+    CortexA76Cluster(const Params &p);
 
     Port &getPort(const std::string &if_name,
             PortID idx=InvalidPortID) override;
@@ -125,6 +112,7 @@ CortexA76::set_evs_param(const std::string &n, T val)
         cluster->set_evs_param(path + "." + n, val);
 }
 
-} // namespace FastModel
+} // namespace fastmodel
+} // namespace gem5
 
 #endif // __ARCH_ARM_FASTMODEL_CORTEXA76_CORETEX_A76_HH__

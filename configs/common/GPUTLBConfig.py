@@ -1,8 +1,6 @@
 # Copyright (c) 2011-2015 Advanced Micro Devices, Inc.
 # All rights reserved.
 #
-# For use for simulation and test purposes only
-#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 #
@@ -29,9 +27,6 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-from __future__ import print_function
-from __future__ import absolute_import
-
 # Configure the TLB hierarchy
 # Places which would probably need to be modified if you
 # want a different hierarchy are specified by a <Modify here .. >'
@@ -48,7 +43,7 @@ def TLB_constructor(level):
             maxOutstandingReqs = options.L%(level)dMaxOutstandingReqs,\
             accessDistance = options.L%(level)dAccessDistanceStat,\
             clk_domain = SrcClockDomain(\
-                clock = options.GPUClock,\
+                clock = options.gpu_clock,\
                 voltage_domain = VoltageDomain(\
                     voltage = options.gpu_voltage)))" % locals()
     return constructor_call
@@ -60,23 +55,21 @@ def Coalescer_constructor(level):
                 coalescingWindow = options.L%(level)dCoalescingWindow,\
                 disableCoalescing = options.L%(level)dDisableCoalescing,\
                 clk_domain = SrcClockDomain(\
-                    clock = options.GPUClock,\
+                    clock = options.gpu_clock,\
                     voltage_domain = VoltageDomain(\
                         voltage = options.gpu_voltage)))" % locals()
     return constructor_call
 
-def create_TLB_Coalescer(options, my_level, my_index, TLB_name, Coalescer_name):
-    # arguments: options, TLB level, number of private structures for this Level,
-    # TLB name and  Coalescer name
+def create_TLB_Coalescer(options, my_level, my_index, tlb_name,
+    coalescer_name):
+    # arguments: options, TLB level, number of private structures for this
+    # Level, TLB name and  Coalescer name
     for i in range(my_index):
-        TLB_name.append(eval(TLB_constructor(my_level)))
-        Coalescer_name.append(eval(Coalescer_constructor(my_level)))
+        tlb_name.append(eval(TLB_constructor(my_level)))
+        coalescer_name.append(eval(Coalescer_constructor(my_level)))
 
 def config_tlb_hierarchy(options, system, shader_idx):
     n_cu = options.num_compute_units
-    # Make this configurable now, instead of the hard coded val.  The dispatcher
-    # is always the last item in the system.cpu list.
-    dispatcher_idx = len(system.cpu) - 1
 
     if options.TLB_config == "perLane":
         num_TLBs = 64 * n_cu
@@ -90,21 +83,26 @@ def config_tlb_hierarchy(options, system, shader_idx):
         print("Bad option for TLB Configuration.")
         sys.exit(1)
 
-    #----------------------------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     # A visual representation of the TLB hierarchy
     # for ease of configuration
-    # < Modify here the width and the number of levels if you want a different configuration >
-    # width is the number of TLBs of the given type (i.e., D-TLB, I-TLB etc) for this level
-    L1 = [{'name': 'sqc', 'width': options.num_sqc, 'TLBarray': [], 'CoalescerArray': []},
-          {'name': 'dispatcher', 'width': 1, 'TLBarray': [], 'CoalescerArray': []},
-          {'name': 'l1', 'width': num_TLBs, 'TLBarray': [], 'CoalescerArray': []}]
+    # < Modify here the width and the number of levels if you want a different
+    # configuration >
+    # width is the number of TLBs of the given type (i.e., D-TLB, I-TLB etc)
+    # for this level
+    L1 = [{'name': 'sqc', 'width': options.num_sqc, 'TLBarray': [],
+           'CoalescerArray': []},
+          {'name': 'scalar', 'width' : options.num_scalar_cache,
+           'TLBarray': [], 'CoalescerArray': []},
+          {'name': 'l1', 'width': num_TLBs, 'TLBarray': [],
+           'CoalescerArray': []}]
 
     L2 = [{'name': 'l2', 'width': 1, 'TLBarray': [], 'CoalescerArray': []}]
     L3 = [{'name': 'l3', 'width': 1, 'TLBarray': [], 'CoalescerArray': []}]
 
     TLB_hierarchy = [L1, L2, L3]
 
-    #----------------------------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     # Create the hiearchy
     # Call the appropriate constructors and add objects to the system
 
@@ -136,7 +134,7 @@ def config_tlb_hierarchy(options, system, shader_idx):
 
     #===========================================================
     # Specify the TLB hierarchy (i.e., port connections)
-    # All TLBs but the last level TLB need to have a memSidePort (master)
+    # All TLBs but the last level TLB need to have a memSidePort
     #===========================================================
 
     # Each TLB is connected with its Coalescer through a single port.
@@ -148,11 +146,11 @@ def config_tlb_hierarchy(options, system, shader_idx):
         for TLB_type in hierarchy_level:
             name = TLB_type['name']
             for index in range(TLB_type['width']):
-                exec('system.%s_coalescer[%d].master[0] = \
-                        system.%s_tlb[%d].slave[0]' % \
+                exec('system.%s_coalescer[%d].mem_side_ports[0] = \
+                        system.%s_tlb[%d].cpu_side_ports[0]' % \
                         (name, index, name, index))
 
-    # Connect the cpuSidePort (slave) of all the coalescers in level 1
+    # Connect the cpuSidePort of all the coalescers in level 1
     # < Modify here if you want a different configuration >
     for TLB_type in L1:
         name = TLB_type['name']
@@ -163,40 +161,45 @@ def config_tlb_hierarchy(options, system, shader_idx):
                 if tlb_per_cu:
                     for tlb in range(tlb_per_cu):
                         exec('system.cpu[%d].CUs[%d].translation_port[%d] = \
-                                system.l1_coalescer[%d].slave[%d]' % \
-                                (shader_idx, cu_idx, tlb, cu_idx*tlb_per_cu+tlb, 0))
+                                system.l1_coalescer[%d].cpu_side_ports[%d]' % \
+                                (shader_idx, cu_idx, tlb,
+                                    cu_idx*tlb_per_cu+tlb, 0))
                 else:
                     exec('system.cpu[%d].CUs[%d].translation_port[%d] = \
-                            system.l1_coalescer[%d].slave[%d]' % \
-                            (shader_idx, cu_idx, tlb_per_cu, cu_idx / (n_cu / num_TLBs), cu_idx % (n_cu / num_TLBs)))
-
-        elif name == 'dispatcher': # Dispatcher TLB
-            for index in range(TLB_type['width']):
-                exec('system.cpu[%d].translation_port = \
-                        system.dispatcher_coalescer[%d].slave[0]' % \
-                        (dispatcher_idx, index))
+                            system.l1_coalescer[%d].cpu_side_ports[%d]' % \
+                            (shader_idx, cu_idx, tlb_per_cu,
+                                cu_idx / (n_cu / num_TLBs),
+                                cu_idx % (n_cu / num_TLBs)))
         elif name == 'sqc': # I-TLB
             for index in range(n_cu):
                 sqc_tlb_index = index / options.cu_per_sqc
                 sqc_tlb_port_id = index % options.cu_per_sqc
                 exec('system.cpu[%d].CUs[%d].sqc_tlb_port = \
-                        system.sqc_coalescer[%d].slave[%d]' % \
+                        system.sqc_coalescer[%d].cpu_side_ports[%d]' % \
                         (shader_idx, index, sqc_tlb_index, sqc_tlb_port_id))
+        elif name == 'scalar': # Scalar D-TLB
+            for index in range(n_cu):
+                scalar_tlb_index = index / options.cu_per_scalar_cache
+                scalar_tlb_port_id = index % options.cu_per_scalar_cache
+                exec('system.cpu[%d].CUs[%d].scalar_tlb_port = \
+                        system.scalar_coalescer[%d].cpu_side_ports[%d]' % \
+                        (shader_idx, index, scalar_tlb_index,
+                         scalar_tlb_port_id))
 
-
-    # Connect the memSidePorts (masters) of all the TLBs with the
-    # cpuSidePorts (slaves) of the Coalescers of the next level
+    # Connect the memSidePorts of all the TLBs with the
+    # cpuSidePorts of the Coalescers of the next level
     # < Modify here if you want a different configuration >
     # L1 <-> L2
     l2_coalescer_index = 0
     for TLB_type in L1:
         name = TLB_type['name']
         for index in range(TLB_type['width']):
-            exec('system.%s_tlb[%d].master[0] = \
-                    system.l2_coalescer[0].slave[%d]' % \
+            exec('system.%s_tlb[%d].mem_side_ports[0] = \
+                    system.l2_coalescer[0].cpu_side_ports[%d]' % \
                     (name, index, l2_coalescer_index))
             l2_coalescer_index += 1
     # L2 <-> L3
-    system.l2_tlb[0].master[0] = system.l3_coalescer[0].slave[0]
+    system.l2_tlb[0].mem_side_ports[0] = \
+        system.l3_coalescer[0].cpu_side_ports[0]
 
     return system

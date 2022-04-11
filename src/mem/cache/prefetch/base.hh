@@ -48,20 +48,26 @@
 
 #include <cstdint>
 
-#include "arch/isa_traits.hh"
 #include "arch/generic/tlb.hh"
+#include "base/compiler.hh"
 #include "base/statistics.hh"
 #include "base/types.hh"
+#include "mem/cache/cache_blk.hh"
 #include "mem/packet.hh"
 #include "mem/request.hh"
 #include "sim/byteswap.hh"
 #include "sim/clocked_object.hh"
 #include "sim/probe/probe.hh"
 
+namespace gem5
+{
+
 class BaseCache;
 struct BasePrefetcherParams;
 
-namespace Prefetcher {
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
 
 class Base : public ClockedObject
 {
@@ -88,13 +94,14 @@ class Base : public ClockedObject
      * Class containing the information needed by the prefetch to train and
      * generate new prefetch requests.
      */
-    class PrefetchInfo {
+    class PrefetchInfo
+    {
         /** The address used to train and generate prefetches */
         Addr address;
         /** The program counter that generated this address. */
         Addr pc;
         /** The requestor ID that generated this address. */
-        MasterID masterId;
+        RequestorID requestorId;
         /** Validity bit for the PC of this address. */
         bool validPC;
         /** Whether this address targets the secure memory space. */
@@ -152,9 +159,9 @@ class Base : public ClockedObject
          * Gets the requestor ID that generated this address
          * @return the requestor ID that generated this address
          */
-        MasterID getMasterId() const
+        RequestorID getRequestorId() const
         {
-            return masterId;
+            return requestorId;
         }
 
         /**
@@ -207,10 +214,10 @@ class Base : public ClockedObject
                 panic("PrefetchInfo::get called with a request with no data.");
             }
             switch (endian) {
-                case BigEndianByteOrder:
+                case ByteOrder::big:
                     return betoh(*(T*)data);
 
-                case LittleEndianByteOrder:
+                case ByteOrder::little:
                     return letoh(*(T*)data);
 
                 default:
@@ -281,12 +288,15 @@ class Base : public ClockedObject
     const bool onInst;
 
     /** Request id for prefetches */
-    const MasterID masterId;
+    const RequestorID requestorId;
 
     const Addr pageBytes;
 
     /** Prefetch on every access, not just misses */
     const bool prefetchOnAccess;
+
+    /** Prefetch on hit on prefetched lines */
+    const bool prefetchOnPfHit;
 
     /** Use Virtual Addresses for prefetching */
     const bool useVirtualAddresses;
@@ -318,8 +328,36 @@ class Base : public ClockedObject
     Addr pageOffset(Addr a) const;
     /** Build the address of the i-th block inside the page */
     Addr pageIthBlockAddress(Addr page, uint32_t i) const;
+    struct StatGroup : public statistics::Group
+    {
+        StatGroup(statistics::Group *parent);
+        statistics::Scalar demandMshrMisses;
+        statistics::Scalar pfIssued;
+        /** The number of times a HW-prefetched block is evicted w/o
+         * reference. */
+        statistics::Scalar pfUnused;
+        /** The number of times a HW-prefetch is useful. */
+        statistics::Scalar pfUseful;
+        /** The number of times there is a hit on prefetch but cache block
+         * is not in an usable state */
+        statistics::Scalar pfUsefulButMiss;
+        statistics::Formula accuracy;
+        statistics::Formula coverage;
 
-    Stats::Scalar pfIssued;
+        /** The number of times a HW-prefetch hits in cache. */
+        statistics::Scalar pfHitInCache;
+
+        /** The number of times a HW-prefetch hits in a MSHR. */
+        statistics::Scalar pfHitInMSHR;
+
+        /** The number of times a HW-prefetch hits
+         * in the Write Buffer (WB). */
+        statistics::Scalar pfHitInWB;
+
+        /** The number of times a HW-prefetch is late
+         * (hit in cache, MSHR, WB). */
+        statistics::Formula pfLate;
+    } prefetchStats;
 
     /** Total prefetches issued */
     uint64_t issuedPrefetches;
@@ -330,7 +368,7 @@ class Base : public ClockedObject
     BaseTLB * tlb;
 
   public:
-    Base(const BasePrefetcherParams *p);
+    Base(const BasePrefetcherParams &p);
     virtual ~Base() = default;
 
     virtual void setCache(BaseCache *_cache);
@@ -349,10 +387,35 @@ class Base : public ClockedObject
 
     virtual Tick nextPrefetchReadyTime() const = 0;
 
-    /**
-     * Register local statistics.
-     */
-    void regStats() override;
+    void
+    prefetchUnused()
+    {
+        prefetchStats.pfUnused++;
+    }
+
+    void
+    incrDemandMhsrMisses()
+    {
+        prefetchStats.demandMshrMisses++;
+    }
+
+    void
+    pfHitInCache()
+    {
+        prefetchStats.pfHitInCache++;
+    }
+
+    void
+    pfHitInMSHR()
+    {
+        prefetchStats.pfHitInMSHR++;
+    }
+
+    void
+    pfHitInWB()
+    {
+        prefetchStats.pfHitInWB++;
+    }
 
     /**
      * Register probe points for this object.
@@ -382,6 +445,7 @@ class Base : public ClockedObject
     void addTLB(BaseTLB *tlb);
 };
 
-} // namespace Prefetcher
+} // namespace prefetch
+} // namespace gem5
 
 #endif //__MEM_CACHE_PREFETCH_BASE_HH__

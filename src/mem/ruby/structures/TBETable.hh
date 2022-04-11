@@ -46,6 +46,12 @@
 
 #include "mem/ruby/common/Address.hh"
 
+namespace gem5
+{
+
+namespace ruby
+{
+
 template<class ENTRY>
 class TBETable
 {
@@ -140,5 +146,8 @@ inline void
 TBETable<ENTRY>::print(std::ostream& out) const
 {
 }
+
+} // namespace ruby
+} // namespace gem5
 
 #endif // __MEM_RUBY_STRUCTURES_TBETABLE_HH__

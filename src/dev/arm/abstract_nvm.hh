@@ -42,6 +42,9 @@
 #include "params/AbstractNVM.hh"
 #include "sim/sim_object.hh"
 
+namespace gem5
+{
+
 /**
  * This is an interface between the disk interface (which will handle the disk
  * data transactions) and the timing model. The timing model only takes care
@@ -54,7 +57,7 @@ class AbstractNVM : public SimObject
 {
 
   public:
-    AbstractNVM(const AbstractNVMParams* p): SimObject(p) {};
+    AbstractNVM(const AbstractNVMParams &p): SimObject(p) {};
     virtual ~AbstractNVM() {};
 
     /**
@@ -99,9 +102,11 @@ class AbstractNVM : public SimObject
      * data transfer between the disk and the disk controller.
      */
     virtual void readMemory(uint64_t address, uint32_t amount,
-                            Callback *event) = 0;
+                            const std::function<void()> &event) = 0;
     virtual void writeMemory(uint64_t address, uint32_t amount,
-                             Callback *event) = 0;
+                             const std::function<void()> &event) = 0;
 };
+
+} // namespace gem5
 
 #endif //__DEV_ARM_ABSTRACT_NVM_HH__

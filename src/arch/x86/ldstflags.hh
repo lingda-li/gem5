@@ -39,20 +39,25 @@
 #define __ARCH_X86_LDSTFLAGS_HH__
 
 #include "base/bitfield.hh"
+#include "base/compiler.hh"
 #include "mem/request.hh"
+
+namespace gem5
+{
 
 /**
  * This is exposed globally, independent of the ISA.
  */
 namespace X86ISA
 {
-    const Request::FlagsType M5_VAR_USED SegmentFlagMask = mask(4);
+    [[maybe_unused]] const Request::FlagsType SegmentFlagMask = mask(4);
     const int FlagShift = 4;
-    enum FlagBit {
+    enum FlagBit
+    {
         CPL0FlagBit = 1,
         AddrSizeFlagBit = 2,
-        StoreCheck = 4
     };
-}
+} // namespace X86ISA
+} // namespace gem5
 
 #endif //__ARCH_X86_LDSTFLAGS_HH__

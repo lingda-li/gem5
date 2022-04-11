@@ -43,6 +43,9 @@
 #include "cpu/kvm/perfevent.hh"
 #include "sim/core.hh"
 
+namespace gem5
+{
+
 /**
  * Timer functions to interrupt VM execution after a number of
  * simulation ticks. The timer allows scaling of the host time to take
@@ -93,6 +96,9 @@ class BaseKvmTimer
      * signals upon timeout.
      */
     virtual void disarm() = 0;
+    virtual bool expired() {
+        return true;
+    }
 
     /**
      * Determine the resolution of the timer in ticks. This method is
@@ -126,7 +132,7 @@ class BaseKvmTimer
      * @return Nanoseconds executed in VM converted to simulation ticks
      */
     Tick ticksFromHostNs(uint64_t ns) {
-        return ns * hostFactor * SimClock::Float::ns;
+        return ns * hostFactor * sim_clock::as_float::ns;
     }
 
   protected:
@@ -144,7 +150,7 @@ class BaseKvmTimer
      * @return Simulation ticks converted into nanoseconds on the host
      */
     uint64_t hostNs(Tick ticks) {
-        return ticks / (SimClock::Float::ns * hostFactor);
+        return ticks / (sim_clock::as_float::ns * hostFactor);
     }
 
     /**
@@ -191,15 +197,17 @@ class PosixKvmTimer : public BaseKvmTimer
                   float hostFactor, Tick hostFreq);
     ~PosixKvmTimer();
 
-    void arm(Tick ticks);
-    void disarm();
+    void arm(Tick ticks) override;
+    void disarm() override;
+    bool expired() override;
 
   protected:
-    Tick calcResolution();
+    Tick calcResolution() override;
 
   private:
     clockid_t clockID;
     timer_t timer;
+    struct itimerspec prevTimerSpec;
 };
 
 /**
@@ -241,5 +249,7 @@ class PerfKvmTimer : public BaseKvmTimer
   private:
     PerfKvmCounter &hwOverflow;
 };
+
+} // namespace gem5
 
 #endif

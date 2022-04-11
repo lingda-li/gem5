@@ -29,7 +29,7 @@ from slicc.ast.ExprAST import ExprAST
 
 class EnumExprAST(ExprAST):
     def __init__(self, slicc, type_ast, value):
-        super(EnumExprAST, self).__init__(slicc)
+        super().__init__(slicc)
 
         assert type_ast
         assert value
@@ -40,7 +40,7 @@ class EnumExprAST(ExprAST):
     def __repr__(self):
         return "[EnumExpr: %s:%s]" % (self.type_ast, self.value)
 
-    def generate(self, code):
+    def generate(self, code, **kwargs):
         fix = code.nofix()
         code('${{self.type_ast.type.c_ident}}_${{self.value}}')
         code.fix(fix)

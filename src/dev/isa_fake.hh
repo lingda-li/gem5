@@ -39,6 +39,9 @@
 #include "mem/packet.hh"
 #include "params/IsaFake.hh"
 
+namespace gem5
+{
+
 /**
  * IsaFake is a device that returns, BadAddr, 1 or 0 on all reads and
  *  rites. It is meant to be placed at an address range
@@ -55,17 +58,13 @@ class IsaFake : public BasicPioDevice
     uint64_t retData64;
 
   public:
-    typedef IsaFakeParams Params;
-    const Params *
-    params() const
-    {
-        return dynamic_cast<const Params *>(_params);
-    }
+    PARAMS(IsaFake);
+
     /**
       * The constructor for Isa Fake just registers itself with the MMU.
       * @param p params structure
       */
-    IsaFake(Params *p);
+    IsaFake(const Params &p);
 
     /**
      * This read always returns -1.
@@ -81,5 +80,7 @@ class IsaFake : public BasicPioDevice
      */
     virtual Tick write(PacketPtr pkt);
 };
+
+} // namespace gem5
 
 #endif // __ISA_FAKE_HH__

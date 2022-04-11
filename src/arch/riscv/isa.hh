@@ -34,21 +34,18 @@
 #ifndef __ARCH_RISCV_ISA_HH__
 #define __ARCH_RISCV_ISA_HH__
 
-#include <map>
-#include <string>
+#include <vector>
 
 #include "arch/generic/isa.hh"
-#include "arch/riscv/registers.hh"
+#include "arch/riscv/pcstate.hh"
 #include "arch/riscv/types.hh"
-#include "base/bitfield.hh"
-#include "base/logging.hh"
-#include "cpu/reg_class.hh"
-#include "sim/sim_object.hh"
+#include "base/types.hh"
+
+namespace gem5
+{
 
 struct RiscvISAParams;
-class ThreadContext;
 class Checkpoint;
-class EventManager;
 
 namespace RiscvISA
 {
@@ -76,18 +73,21 @@ class ISA : public BaseISA
     bool hpmCounterEnabled(int counter) const;
 
   public:
-    typedef RiscvISAParams Params;
+    using Params = RiscvISAParams;
 
-    void clear(ThreadContext *tc) { clear(); }
-
-  protected:
     void clear();
+
+    PCStateBase *
+    newPCState(Addr new_inst_addr=0) const override
+    {
+        return new PCState(new_inst_addr);
+    }
 
   public:
     RegVal readMiscRegNoEffect(int misc_reg) const;
-    RegVal readMiscReg(int misc_reg, ThreadContext *tc);
+    RegVal readMiscReg(int misc_reg);
     void setMiscRegNoEffect(int misc_reg, RegVal val);
-    void setMiscReg(int misc_reg, RegVal val, ThreadContext *tc);
+    void setMiscReg(int misc_reg, RegVal val);
 
     RegId flattenRegId(const RegId &regId) const { return regId; }
     int flattenIntIndex(int reg) const { return reg; }
@@ -98,19 +98,25 @@ class ISA : public BaseISA
     int flattenCCIndex(int reg) const { return reg; }
     int flattenMiscIndex(int reg) const { return reg; }
 
-    void startup(ThreadContext *tc) {}
+    bool inUserMode() const override;
+    void copyRegsFrom(ThreadContext *src) override;
 
-    void serialize(CheckpointOut &cp) const;
-    void unserialize(CheckpointIn &cp);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
-    /// Explicitly import the otherwise hidden startup
-    using BaseISA::startup;
+    ISA(const Params &p);
 
-    const Params *params() const;
+    void handleLockedRead(const RequestPtr &req) override;
 
-    ISA(Params *p);
+    bool handleLockedWrite(const RequestPtr &req,
+            Addr cacheBlockMask) override;
+
+    void handleLockedSnoop(PacketPtr pkt, Addr cacheBlockMask) override;
+
+    void globalClearExclusive() override;
 };
 
 } // namespace RiscvISA
+} // namespace gem5
 
 #endif // __ARCH_RISCV_ISA_HH__

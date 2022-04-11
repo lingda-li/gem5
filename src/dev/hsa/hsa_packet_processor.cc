@@ -2,8 +2,6 @@
  * Copyright (c) 2015-2018 Advanced Micro Devices, Inc.
  * All rights reserved.
  *
- * For use for simulation and test purposes only
- *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
@@ -29,25 +27,27 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Eric van Tassell
  */
 
 #include "dev/hsa/hsa_packet_processor.hh"
 
+#include <cassert>
 #include <cstring>
 
 #include "base/chunk_generator.hh"
 #include "base/compiler.hh"
+#include "base/logging.hh"
+#include "base/trace.hh"
 #include "debug/HSAPacketProcessor.hh"
 #include "dev/dma_device.hh"
-#include "dev/hsa/hsa_device.hh"
 #include "dev/hsa/hsa_packet.hh"
 #include "dev/hsa/hw_scheduler.hh"
+#include "enums/GfxVersion.hh"
+#include "gpu-compute/gpu_command_processor.hh"
 #include "mem/packet_access.hh"
 #include "mem/page_table.hh"
 #include "sim/process.hh"
-#include "sim/syscall_emul_buf.hh"
+#include "sim/proxy_ptr.hh"
 #include "sim/system.hh"
 
 #define HSAPP_EVENT_DESCRIPTION_GENERATOR(XEVENT) \
@@ -60,17 +60,22 @@
 #define PKT_TYPE(PKT) ((hsa_packet_type_t)(((PKT->header) >> \
             HSA_PACKET_HEADER_TYPE) & (HSA_PACKET_HEADER_WIDTH_TYPE - 1)))
 
-HSAPP_EVENT_DESCRIPTION_GENERATOR(UpdateReadDispIdDmaEvent)
-HSAPP_EVENT_DESCRIPTION_GENERATOR(CmdQueueCmdDmaEvent)
-HSAPP_EVENT_DESCRIPTION_GENERATOR(QueueProcessEvent)
-HSAPP_EVENT_DESCRIPTION_GENERATOR(DepSignalsReadDmaEvent)
+// checks if the barrier bit is set in the header -- shift the barrier bit
+// to LSB, then bitwise "and" to mask off all other bits
+#define IS_BARRIER(PKT) ((hsa_packet_header_t)(((PKT->header) >> \
+            HSA_PACKET_HEADER_BARRIER) & HSA_PACKET_HEADER_WIDTH_BARRIER))
 
-HSAPacketProcessor::HSAPacketProcessor(const Params *p)
-    : DmaDevice(p), numHWQueues(p->numHWQueues), pioAddr(p->pioAddr),
-      pioSize(PAGE_SIZE), pioDelay(10), pktProcessDelay(p->pktProcessDelay)
+namespace gem5
+{
+
+HSAPP_EVENT_DESCRIPTION_GENERATOR(QueueProcessEvent)
+
+HSAPacketProcessor::HSAPacketProcessor(const Params &p)
+    : DmaVirtDevice(p), numHWQueues(p.numHWQueues), pioAddr(p.pioAddr),
+      pioSize(PAGE_SIZE), pioDelay(10), pktProcessDelay(p.pktProcessDelay)
 {
     DPRINTF(HSAPacketProcessor, "%s:\n", __FUNCTION__);
-    hwSchdlr = new HWScheduler(this, p->wakeupDelay);
+    hwSchdlr = new HWScheduler(this, p.wakeupDelay);
     regdQList.resize(numHWQueues);
     for (int i = 0; i < numHWQueues; i++) {
         regdQList[i] = new RQLEntry(this, i);
@@ -85,22 +90,24 @@ HSAPacketProcessor::~HSAPacketProcessor()
 }
 
 void
-HSAPacketProcessor::unsetDeviceQueueDesc(uint64_t queue_id)
+HSAPacketProcessor::unsetDeviceQueueDesc(uint64_t queue_id, int doorbellSize)
 {
-    hwSchdlr->unregisterQueue(queue_id);
+    hwSchdlr->unregisterQueue(queue_id, doorbellSize);
 }
 
 void
 HSAPacketProcessor::setDeviceQueueDesc(uint64_t hostReadIndexPointer,
                                        uint64_t basePointer,
                                        uint64_t queue_id,
-                                       uint32_t size)
+                                       uint32_t size, int doorbellSize,
+                                       GfxVersion gfxVersion)
 {
     DPRINTF(HSAPacketProcessor,
              "%s:base = %p, qID = %d, ze = %d\n", __FUNCTION__,
              (void *)basePointer, queue_id, size);
     hwSchdlr->registerNewQueue(hostReadIndexPointer,
-                               basePointer, queue_id, size);
+                               basePointer, queue_id, size, doorbellSize,
+                               gfxVersion);
 }
 
 AddrRangeList
@@ -121,13 +128,21 @@ HSAPacketProcessor::write(Packet *pkt)
     assert(pkt->getAddr() >= pioAddr && pkt->getAddr() < pioAddr + pioSize);
 
     // TODO: How to get pid??
-    Addr M5_VAR_USED daddr = pkt->getAddr() - pioAddr;
+    [[maybe_unused]] Addr daddr = pkt->getAddr() - pioAddr;
 
     DPRINTF(HSAPacketProcessor,
           "%s: write of size %d to reg-offset %d (0x%x)\n",
           __FUNCTION__, pkt->getSize(), daddr, daddr);
 
-    uint32_t doorbell_reg = pkt->getLE<uint32_t>();
+    assert(gpu_device->driver()->doorbellSize() == pkt->getSize());
+
+    uint64_t doorbell_reg(0);
+    if (pkt->getSize() == 8)
+        doorbell_reg = pkt->getLE<uint64_t>() + 1;
+    else if (pkt->getSize() == 4)
+        doorbell_reg = pkt->getLE<uint32_t>();
+    else
+        fatal("invalid db size");
 
     DPRINTF(HSAPacketProcessor,
             "%s: write data 0x%x to offset %d (0x%x)\n",
@@ -145,67 +160,26 @@ HSAPacketProcessor::read(Packet *pkt)
     return pioDelay;
 }
 
-void
-HSAPacketProcessor::translateOrDie(Addr vaddr, Addr &paddr)
+TranslationGenPtr
+HSAPacketProcessor::translate(Addr vaddr, Addr size)
 {
     // Grab the process and try to translate the virtual address with it; with
     // new extensions, it will likely be wrong to just arbitrarily grab context
     // zero.
-    auto process = sys->getThreadContext(0)->getProcessPtr();
+    auto process = sys->threads[0]->getProcessPtr();
 
-    if (!process->pTable->translate(vaddr, paddr))
-        fatal("failed translation: vaddr 0x%x\n", vaddr);
+    return process->pTable->translateRange(vaddr, size);
 }
 
+/**
+ * this event is used to update the read_disp_id field (the read pointer)
+ * of the MQD, which is how the host code knows the status of the HQD's
+ * read pointer
+ */
 void
-HSAPacketProcessor::dmaVirt(DmaFnPtr dmaFn, Addr addr, unsigned size,
-                         Event *event, void *data, Tick delay)
+HSAPacketProcessor::updateReadDispIdDma()
 {
-    if (size == 0) {
-        schedule(event, curTick() + delay);
-        return;
-    }
-
-    // move the buffer data pointer with the chunks
-    uint8_t *loc_data = (uint8_t*)data;
-
-    for (ChunkGenerator gen(addr, size, PAGE_SIZE); !gen.done(); gen.next()) {
-        Addr phys;
-
-        // translate pages into their corresponding frames
-        translateOrDie(gen.addr(), phys);
-
-        // only send event on last transfer; transfers complete in-order
-        Event *ev = gen.last() ? event : NULL;
-
-        (this->*dmaFn)(phys, gen.size(), ev, loc_data, delay);
-
-        loc_data += gen.size();
-    }
-}
-
-void
-HSAPacketProcessor::dmaReadVirt(Addr host_addr, unsigned size,
-                             Event *event, void *data, Tick delay)
-{
-    DPRINTF(HSAPacketProcessor,
-            "%s:host_addr = 0x%lx, size = %d\n", __FUNCTION__, host_addr, size);
-    dmaVirt(&DmaDevice::dmaRead, host_addr, size, event, data, delay);
-}
-
-void
-HSAPacketProcessor::dmaWriteVirt(Addr host_addr, unsigned size,
-                              Event *event, void *data, Tick delay)
-{
-    dmaVirt(&DmaDevice::dmaWrite, host_addr, size, event, data, delay);
-}
-
-HSAPacketProcessor::UpdateReadDispIdDmaEvent::
-        UpdateReadDispIdDmaEvent()
-    : Event(Default_Pri, AutoDelete)
-{
-    DPRINTF(HSAPacketProcessor, "%s:\n", __FUNCTION__);
-    setFlags(AutoDelete);
+    DPRINTF(HSAPacketProcessor, "updateReaddispId\n");
 }
 
 void
@@ -213,14 +187,14 @@ HSAPacketProcessor::updateReadIndex(int pid, uint32_t rl_idx)
 {
     AQLRingBuffer* aqlbuf = regdQList[rl_idx]->qCntxt.aqlBuf;
     HSAQueueDescriptor* qDesc = regdQList[rl_idx]->qCntxt.qDesc;
-    auto *dmaEvent = new UpdateReadDispIdDmaEvent();
+    auto cb = new DmaVirtCallback<uint64_t>(
+        [ = ] (const uint32_t &dma_data) { this->updateReadDispIdDma(); }, 0);
 
     DPRINTF(HSAPacketProcessor,
             "%s: read-pointer offset [0x%x]\n", __FUNCTION__, aqlbuf->rdIdx());
 
-    dmaWriteVirt((Addr)qDesc->hostReadIndexPtr,
-                 sizeof(aqlbuf->rdIdx()),
-                 dmaEvent, aqlbuf->rdIdxPtr());
+    dmaWriteVirt((Addr)qDesc->hostReadIndexPtr, sizeof(aqlbuf->rdIdx()),
+                 cb, aqlbuf->rdIdxPtr());
 
     DPRINTF(HSAPacketProcessor,
             "%s: rd-ptr offset [0x%x], wr-ptr offset [0x%x], space used = %d," \
@@ -232,26 +206,13 @@ HSAPacketProcessor::updateReadIndex(int pid, uint32_t rl_idx)
     }
 }
 
-HSAPacketProcessor::CmdQueueCmdDmaEvent::
-CmdQueueCmdDmaEvent(HSAPacketProcessor *_hsaPP, int _pid, bool _isRead,
-                    uint32_t _ix_start, unsigned _num_pkts,
-                    dma_series_ctx *_series_ctx, void *_dest_4debug)
-    : Event(Default_Pri, AutoDelete), hsaPP(_hsaPP), pid(_pid), isRead(_isRead),
-      ix_start(_ix_start), num_pkts(_num_pkts), series_ctx(_series_ctx),
-      dest_4debug(_dest_4debug)
-{
-    setFlags(AutoDelete);
-
-    DPRINTF(HSAPacketProcessor, "%s, ix = %d, npkts = %d," \
-            "active list ID = %d\n", __FUNCTION__,
-            _ix_start, num_pkts, series_ctx->rl_idx);
-}
-
 void
-HSAPacketProcessor::CmdQueueCmdDmaEvent::process()
+HSAPacketProcessor::cmdQueueCmdDma(HSAPacketProcessor *hsaPP, int pid,
+    bool isRead, uint32_t ix_start, unsigned num_pkts,
+    dma_series_ctx *series_ctx, void *dest_4debug)
 {
     uint32_t rl_idx = series_ctx->rl_idx;
-    AQLRingBuffer *aqlRingBuffer M5_VAR_USED =
+    [[maybe_unused]] AQLRingBuffer *aqlRingBuffer =
         hsaPP->regdQList[rl_idx]->qCntxt.aqlBuf;
     HSAQueueDescriptor* qDesc =
         hsaPP->regdQList[rl_idx]->qCntxt.qDesc;
@@ -277,11 +238,11 @@ HSAPacketProcessor::CmdQueueCmdDmaEvent::process()
 }
 
 void
-HSAPacketProcessor::schedAQLProcessing(uint32_t rl_idx)
+HSAPacketProcessor::schedAQLProcessing(uint32_t rl_idx, Tick delay)
 {
     RQLEntry *queue = regdQList[rl_idx];
     if (!queue->aqlProcessEvent.scheduled()) {
-        Tick processingTick = curTick() + pktProcessDelay;
+        Tick processingTick = curTick() + delay;
         schedule(queue->aqlProcessEvent, processingTick);
         DPRINTF(HSAPacketProcessor, "AQL processing scheduled at tick: %d\n",
                 processingTick);
@@ -290,32 +251,58 @@ HSAPacketProcessor::schedAQLProcessing(uint32_t rl_idx)
     }
 }
 
-bool
+void
+HSAPacketProcessor::schedAQLProcessing(uint32_t rl_idx)
+{
+    schedAQLProcessing(rl_idx, pktProcessDelay);
+}
+
+Q_STATE
 HSAPacketProcessor::processPkt(void* pkt, uint32_t rl_idx, Addr host_pkt_addr)
 {
-    bool is_submitted = false;
+    Q_STATE is_submitted = BLOCKED_BPKT;
     SignalState *dep_sgnl_rd_st = &(regdQList[rl_idx]->depSignalRdState);
     // Dependency signals are not read yet. And this can only be a retry.
     // The retry logic will schedule the packet processor wakeup
     if (dep_sgnl_rd_st->pendingReads != 0) {
-        return false;
+        return BLOCKED_BPKT;
     }
     // `pkt` can be typecasted to any type of AQL packet since they all
     // have header information at offset zero
     auto disp_pkt = (_hsa_dispatch_packet_t *)pkt;
     hsa_packet_type_t pkt_type = PKT_TYPE(disp_pkt);
+    if (IS_BARRIER(disp_pkt) &&
+        regdQList[rl_idx]->compltnPending() > 0) {
+        // If this packet is using the "barrier bit" to enforce ordering with
+        // previous packets, and if there are outstanding packets, set the
+        // barrier bit for this queue and block the queue.
+        DPRINTF(HSAPacketProcessor, "%s: setting barrier bit for active" \
+                " list ID = %d\n", __FUNCTION__, rl_idx);
+        regdQList[rl_idx]->setBarrierBit(true);
+        return BLOCKED_BBIT;
+    }
     if (pkt_type == HSA_PACKET_TYPE_VENDOR_SPECIFIC) {
         DPRINTF(HSAPacketProcessor, "%s: submitting vendor specific pkt" \
                 " active list ID = %d\n", __FUNCTION__, rl_idx);
         // Submit packet to HSA device (dispatcher)
-        hsa_device->submitVendorPkt((void *)disp_pkt, rl_idx, host_pkt_addr);
-        is_submitted = true;
+        gpu_device->submitVendorPkt((void *)disp_pkt, rl_idx, host_pkt_addr);
+        is_submitted = UNBLOCKED;
     } else if (pkt_type == HSA_PACKET_TYPE_KERNEL_DISPATCH) {
         DPRINTF(HSAPacketProcessor, "%s: submitting kernel dispatch pkt" \
                 " active list ID = %d\n", __FUNCTION__, rl_idx);
         // Submit packet to HSA device (dispatcher)
-        hsa_device->submitDispatchPkt((void *)disp_pkt, rl_idx, host_pkt_addr);
-        is_submitted = true;
+        gpu_device->submitDispatchPkt((void *)disp_pkt, rl_idx, host_pkt_addr);
+        is_submitted = UNBLOCKED;
+        /*
+          If this packet is using the "barrier bit" to enforce ordering with
+          subsequent kernels, set the bit for this queue now, after
+          dispatching.
+        */
+        if (IS_BARRIER(disp_pkt)) {
+            DPRINTF(HSAPacketProcessor, "%s: setting barrier bit for active" \
+                    " list ID = %d\n", __FUNCTION__, rl_idx);
+            regdQList[rl_idx]->setBarrierBit(true);
+        }
     } else if (pkt_type == HSA_PACKET_TYPE_BARRIER_AND) {
         DPRINTF(HSAPacketProcessor, "%s: Processing barrier packet" \
                 " active list ID = %d\n", __FUNCTION__, rl_idx);
@@ -342,10 +329,12 @@ HSAPacketProcessor::processPkt(void* pkt, uint32_t rl_idx, Addr host_pkt_addr)
                     if (*signal_val != 0) {
                         // This signal is not yet ready, read it again
                         isReady = false;
-                        DepSignalsReadDmaEvent *sgnl_rd_evnt =
-                            new DepSignalsReadDmaEvent(dep_sgnl_rd_st);
+
+                        auto cb = new DmaVirtCallback<int64_t>(
+                            [ = ] (const uint32_t &dma_data)
+                                { dep_sgnl_rd_st->handleReadDMA(); }, 0);
                         dmaReadVirt(signal_addr, sizeof(hsa_signal_value_t),
-                                    sgnl_rd_evnt, signal_val);
+                                    cb, signal_val);
                         dep_sgnl_rd_st->pendingReads++;
                         DPRINTF(HSAPacketProcessor, "%s: Pending reads %d," \
                             " active list %d\n", __FUNCTION__,
@@ -354,10 +343,11 @@ HSAPacketProcessor::processPkt(void* pkt, uint32_t rl_idx, Addr host_pkt_addr)
                 } else {
                     // This signal is not yet ready, read it again
                     isReady = false;
-                    DepSignalsReadDmaEvent *sgnl_rd_evnt =
-                        new DepSignalsReadDmaEvent(dep_sgnl_rd_st);
+                    auto cb = new DmaVirtCallback<int64_t>(
+                        [ = ] (const uint32_t &dma_data)
+                            { dep_sgnl_rd_st->handleReadDMA(); }, 0);
                     dmaReadVirt(signal_addr, sizeof(hsa_signal_value_t),
-                                sgnl_rd_evnt, signal_val);
+                                cb, signal_val);
                     dep_sgnl_rd_st->pendingReads++;
                     DPRINTF(HSAPacketProcessor, "%s: Pending reads %d," \
                         " active list %d\n", __FUNCTION__,
@@ -372,37 +362,25 @@ HSAPacketProcessor::processPkt(void* pkt, uint32_t rl_idx, Addr host_pkt_addr)
             // TODO: Completion signal of barrier packet to be
             // atomically decremented here
             finishPkt((void*)bar_and_pkt, rl_idx);
-            is_submitted = true;
+            is_submitted = UNBLOCKED;
             // Reset signal values
             dep_sgnl_rd_st->resetSigVals();
             // The completion signal is connected
             if (bar_and_pkt->completion_signal != 0) {
-                // The signal value is aligned 8 bytes
-                // from the actual handle in the runtime
-                uint64_t signal_addr =
-                    (uint64_t) (((uint64_t *)
-                    bar_and_pkt->completion_signal) + 1);
+                // HACK: The semantics of the HSA signal is to
+                // decrement the current signal value
+                // I'm going to cheat here and read out
+                // the value from main memory using functional
+                // access, and then just DMA the decremented value.
+                uint64_t signal_value = gpu_device->functionalReadHsaSignal(\
+                                            bar_and_pkt->completion_signal);
+
                 DPRINTF(HSAPacketProcessor, "Triggering barrier packet" \
-                       " completion signal: %x!\n", signal_addr);
-                /**
-                 * HACK: The semantics of the HSA signal is to
-                 * decrement the current signal value.
-                 * I'm going to cheat here and read out
-                 * the value from main memory using functional
-                 * access, and then just DMA the decremented value.
-                 * The reason for this is that the DMASequencer does
-                 * not support atomic operations.
-                 */
-                auto tc = sys->getThreadContext(0);
-                auto &virt_proxy = tc->getVirtProxy();
-                TypedBufferArg<uint64_t> prev_signal(signal_addr);
-                prev_signal.copyIn(virt_proxy);
+                       " completion signal! Addr: %x\n",
+                       bar_and_pkt->completion_signal);
 
-                hsa_signal_value_t *new_signal = new hsa_signal_value_t;
-                *new_signal = (hsa_signal_value_t) *prev_signal - 1;
-
-                dmaWriteVirt(signal_addr,
-                             sizeof(hsa_signal_value_t), NULL, new_signal, 0);
+                gpu_device->updateHsaSignal(bar_and_pkt->completion_signal,
+                                            signal_value - 1);
             }
         }
         if (dep_sgnl_rd_st->pendingReads > 0) {
@@ -414,6 +392,14 @@ HSAPacketProcessor::processPkt(void* pkt, uint32_t rl_idx, Addr host_pkt_addr)
         fatal("Unsupported packet type HSA_PACKET_TYPE_BARRIER_OR");
     } else if (pkt_type == HSA_PACKET_TYPE_INVALID) {
         fatal("Unsupported packet type HSA_PACKET_TYPE_INVALID");
+    } else if (pkt_type == HSA_PACKET_TYPE_AGENT_DISPATCH) {
+        DPRINTF(HSAPacketProcessor, "%s: submitting agent dispatch pkt" \
+                " active list ID = %d\n", __FUNCTION__, rl_idx);
+        // Submit packet to HSA device (dispatcher)
+        gpu_device->submitAgentDispatchPkt(
+                (void *)disp_pkt, rl_idx, host_pkt_addr);
+        is_submitted = UNBLOCKED;
+        sendAgentDispatchCompletionSignal((void *)disp_pkt,0);
     } else {
         fatal("Unsupported packet type %d\n", pkt_type);
     }
@@ -432,6 +418,13 @@ HSAPacketProcessor::QueueProcessEvent::process()
             " dispIdx %d, active list ID = %d\n",
             __FUNCTION__, aqlRingBuffer->rdIdx(),
             aqlRingBuffer->wrIdx(), aqlRingBuffer->dispIdx(), rqIdx);
+    // If barrier bit is set, then this wakeup is a dummy wakeup
+    // just to model the processing time. Do nothing.
+    if (hsaPP->regdQList[rqIdx]->getBarrierBit()) {
+        DPRINTF(HSAPacketProcessor,
+            "Dummy wakeup with barrier bit for rdIdx %d\n", rqIdx);
+        return;
+    }
     // In the future, we may support batch processing of packets.
     // Then, we can just remove the break statements and the code
     // will support batch processing. That is why we are using a
@@ -441,7 +434,8 @@ HSAPacketProcessor::QueueProcessEvent::process()
         DPRINTF(HSAPacketProcessor, "%s: Attempting dispatch @ dispIdx[%d]\n",
                 __FUNCTION__, aqlRingBuffer->dispIdx());
         Addr host_addr = aqlRingBuffer->hostDispAddr();
-        if (hsaPP->processPkt(pkt, rqIdx, host_addr)) {
+        Q_STATE q_state = hsaPP->processPkt(pkt, rqIdx, host_addr);
+        if (q_state == UNBLOCKED) {
              aqlRingBuffer->incDispIdx(1);
              DPRINTF(HSAPacketProcessor, "%s: Increment dispIdx[%d]\n",
                      __FUNCTION__, aqlRingBuffer->dispIdx());
@@ -449,10 +443,20 @@ HSAPacketProcessor::QueueProcessEvent::process()
                  hsaPP->schedAQLProcessing(rqIdx);
              }
              break;
-        } else {
-            // This queue is blocked, scheduled a processing event
+        } else if (q_state == BLOCKED_BPKT) {
+            // This queue is blocked by barrier packet,
+            // schedule a processing event
             hsaPP->schedAQLProcessing(rqIdx);
             break;
+        } else if (q_state == BLOCKED_BBIT) {
+            // This queue is blocked by barrier bit, and processing event
+            // should be scheduled from finishPkt(). However, to elapse
+            // "pktProcessDelay" processing time, let us schedule a dummy
+            // wakeup once which will just wakeup and will do nothing.
+            hsaPP->schedAQLProcessing(rqIdx);
+            break;
+        } else {
+            panic("Unknown queue state\n");
         }
     }
 }
@@ -525,18 +529,19 @@ HSAPacketProcessor::getCommandsFromHost(int pid, uint32_t rl_idx)
         }
 
         void *aql_buf = aqlRingBuffer->ptr(dma_start_ix);
-        CmdQueueCmdDmaEvent *dmaEvent
-            = new CmdQueueCmdDmaEvent(this, pid, true, dma_start_ix,
-                                      num_2_xfer, series_ctx, aql_buf);
-        DPRINTF(HSAPacketProcessor,
-                "%s: aql_buf = %p, umq_nxt = %d, dma_ix = %d, num2xfer = %d\n",
-                __FUNCTION__, aql_buf, umq_nxt, dma_start_ix, num_2_xfer);
-
+        auto cb = new DmaVirtCallback<uint64_t>(
+            [ = ] (const uint32_t &dma_data)
+                { this->cmdQueueCmdDma(this, pid, true, dma_start_ix,
+                                num_2_xfer, series_ctx, aql_buf); }, 0);
         dmaReadVirt(qDesc->ptr(umq_nxt), num_2_xfer * qDesc->objSize(),
-                    dmaEvent, aql_buf);
+                    cb, aql_buf);
 
         aqlRingBuffer->saveHostDispAddr(qDesc->ptr(umq_nxt), num_2_xfer,
                                         dma_start_ix);
+
+        DPRINTF(HSAPacketProcessor,
+                "%s: aql_buf = %p, umq_nxt = %d, dma_ix = %d, num2xfer = %d\n",
+                __FUNCTION__, aql_buf, umq_nxt, dma_start_ix, num_2_xfer);
 
         num_umq -= num_2_xfer;
         got_aql_buf -= num_2_xfer;
@@ -554,7 +559,8 @@ HSAPacketProcessor::getCommandsFromHost(int pid, uint32_t rl_idx)
 void
 HSAPacketProcessor::displayQueueDescriptor(int pid, uint32_t rl_idx)
 {
-    HSAQueueDescriptor* M5_VAR_USED qDesc = regdQList[rl_idx]->qCntxt.qDesc;
+    [[maybe_unused]] HSAQueueDescriptor* qDesc =
+        regdQList[rl_idx]->qCntxt.qDesc;
     DPRINTF(HSAPacketProcessor,
             "%s: pid[%d], basePointer[0x%lx], dBPointer[0x%lx], "
             "writeIndex[0x%x], readIndex[0x%x], size(bytes)[0x%x]\n",
@@ -597,9 +603,9 @@ AQLRingBuffer::freeEntry(void *pkt)
 }
 
 void
-HSAPacketProcessor::setDevice(HSADevice *dev)
+HSAPacketProcessor::setDevice(GPUCommandProcessor *dev)
 {
-    this->hsa_device = dev;
+    this->gpu_device = dev;
 }
 
 int
@@ -621,16 +627,29 @@ AQLRingBuffer::allocEntry(uint32_t nBufReq)
     return nBufReq;
 }
 
-HSAPacketProcessor *
-HSAPacketProcessorParams::create()
-{
-    return new HSAPacketProcessor(this);
-}
-
 void
 HSAPacketProcessor::finishPkt(void *pvPkt, uint32_t rl_idx)
 {
     HSAQueueDescriptor* qDesc = regdQList[rl_idx]->qCntxt.qDesc;
+
+    // if barrier bit was set and this is the last
+    // outstanding packet from that queue,
+    // unset it here
+    if (regdQList[rl_idx]->getBarrierBit() &&
+        regdQList[rl_idx]->isLastOutstandingPkt()) {
+        DPRINTF(HSAPacketProcessor,
+                "Unset barrier bit for active list ID %d\n", rl_idx);
+        regdQList[rl_idx]->setBarrierBit(false);
+        // if pending kernels in the queue after this kernel, reschedule
+        if (regdQList[rl_idx]->dispPending()) {
+            DPRINTF(HSAPacketProcessor,
+                    "Rescheduling active list ID %d after unsetting barrier "
+                    "bit\n", rl_idx);
+            schedAQLProcessing(rl_idx);
+        }
+    }
+
+    // If set, then blocked schedule, so need to reschedule
     if (regdQList[rl_idx]->qCntxt.aqlBuf->freeEntry(pvPkt))
         updateReadIndex(0, rl_idx);
     DPRINTF(HSAPacketProcessor,
@@ -649,3 +668,58 @@ HSAPacketProcessor::finishPkt(void *pvPkt, uint32_t rl_idx)
                                         // multi-process support
     }
 }
+
+void
+HSAPacketProcessor::sendAgentDispatchCompletionSignal(
+    void *pkt, hsa_signal_value_t signal)
+{
+    auto agent_pkt = (_hsa_agent_dispatch_packet_t *)pkt;
+    uint64_t signal_addr =
+            (uint64_t) (((uint64_t *)agent_pkt->completion_signal) + 1);
+    DPRINTF(HSAPacketProcessor, "Triggering Agent Dispatch packet" \
+            " completion signal: %x!\n", signal_addr);
+    /**
+     * HACK: The semantics of the HSA signal is to
+     * decrement the current signal value.
+     * I'm going to cheat here and read out
+     * the value from main memory using functional
+     * access, and then just DMA the decremented value.
+     * The reason for this is that the DMASequencer does
+     * not support atomic operations.
+     */
+    VPtr<uint64_t> prev_signal(signal_addr, sys->threads[0]);
+
+    DPRINTF(HSAPacketProcessor,"HSADriver: Sending signal to %lu\n",
+            (uint64_t)sys->threads[0]->cpuId());
+
+
+    hsa_signal_value_t *new_signal = new hsa_signal_value_t;
+    *new_signal = (hsa_signal_value_t) *prev_signal - 1;
+
+    dmaWriteVirt(signal_addr, sizeof(hsa_signal_value_t), nullptr, new_signal, 0);
+}
+
+void
+HSAPacketProcessor::sendCompletionSignal(hsa_signal_value_t signal)
+{
+    uint64_t signal_addr = (uint64_t) (((uint64_t *)signal) + 1);
+    DPRINTF(HSAPacketProcessor, "Triggering completion signal: %x!\n",
+            signal_addr);
+    /**
+     * HACK: The semantics of the HSA signal is to
+     * decrement the current signal value.
+     * I'm going to cheat here and read out
+     * the value from main memory using functional
+     * access, and then just DMA the decremented value.
+     * The reason for this is that the DMASequencer does
+     * not support atomic operations.
+     */
+    VPtr<uint64_t> prev_signal(signal_addr, sys->threads[0]);
+
+    hsa_signal_value_t *new_signal = new hsa_signal_value_t;
+    *new_signal = (hsa_signal_value_t) *prev_signal - 1;
+
+    dmaWriteVirt(signal_addr, sizeof(hsa_signal_value_t), nullptr, new_signal, 0);
+}
+
+} // namespace gem5

@@ -43,26 +43,30 @@
 
 #include <cassert>
 
-#include "arch/arm/miscregs.hh"
+#include "arch/arm/regs/misc.hh"
 #include "arch/arm/types.hh"
 #include "arch/generic/decode_cache.hh"
+#include "arch/generic/decoder.hh"
 #include "base/types.hh"
 #include "cpu/static_inst.hh"
+#include "debug/Decode.hh"
 #include "enums/DecoderFlavor.hh"
+#include "params/ArmDecoder.hh"
+
+namespace gem5
+{
 
 namespace ArmISA
 {
 
 class ISA;
-class Decoder
+class Decoder : public InstDecoder
 {
   protected:
     //The extended machine instruction being generated
     ExtMachInst emi;
-    MachInst data;
+    uint32_t data;
     bool bigThumb;
-    bool instDone;
-    bool outOfBytes;
     int offset;
     bool foundIt;
     ITSTATE itBits;
@@ -76,10 +80,11 @@ class Decoder
      */
     int sveLen;
 
-    Enums::DecoderFlavor decoderFlavor;
+    enums::DecoderFlavor decoderFlavor;
 
     /// A cache of decoded instruction objects.
-    static GenericISA::BasicDecodeCache defaultCache;
+    static GenericISA::BasicDecodeCache<Decoder, ExtMachInst> defaultCache;
+    friend class GenericISA::BasicDecodeCache<Decoder, ExtMachInst>;
 
     /**
      * Pre-decode an instruction from the current state of the
@@ -92,86 +97,6 @@ class Decoder
      * sanity check the results.
      */
     void consumeBytes(int numBytes);
-
-  public: // Decoder API
-    Decoder(ISA* isa = nullptr);
-
-    /** Reset the decoders internal state. */
-    void reset();
-
-    /**
-     * Can the decoder accept more data?
-     *
-     * A CPU model uses this method to determine if the decoder can
-     * accept more data. Note that an instruction can be ready (see
-     * instReady() even if this method returns true.
-     */
-    bool needMoreBytes() const { return outOfBytes; }
-
-    /**
-     * Is an instruction ready to be decoded?
-     *
-     * CPU models call this method to determine if decode() will
-     * return a new instruction on the next call. It typically only
-     * returns false if the decoder hasn't received enough data to
-     * decode a full instruction.
-     */
-    bool instReady() const { return instDone; }
-
-    /**
-     * Feed data to the decoder.
-     *
-     * A CPU model uses this interface to load instruction data into
-     * the decoder. Once enough data has been loaded (check with
-     * instReady()), a decoded instruction can be retrieved using
-     * decode(ArmISA::PCState).
-     *
-     * This method is intended to support both fixed-length and
-     * variable-length instructions. Instruction data is fetch in
-     * MachInst blocks (which correspond to the size of a typical
-     * insturction). The method might need to be called multiple times
-     * if the instruction spans multiple blocks, in that case
-     * needMoreBytes() will return true and instReady() will return
-     * false.
-     *
-     * The fetchPC parameter is used to indicate where in memory the
-     * instruction was fetched from. This is should be the same
-     * address as the pc. If fetching multiple blocks, it indicates
-     * where subsequent blocks are fetched from (pc + n *
-     * sizeof(MachInst)).
-     *
-     * @param pc Instruction pointer that we are decoding.
-     * @param fetchPC The address this chunk was fetched from.
-     * @param inst Raw instruction data.
-     */
-    void moreBytes(const PCState &pc, Addr fetchPC, MachInst inst);
-
-    /**
-     * Decode an instruction or fetch it from the code cache.
-     *
-     * This method decodes the currently pending pre-decoded
-     * instruction. Data must be fed to the decoder using moreBytes()
-     * until instReady() is true before calling this method.
-     *
-     * @param pc Instruction pointer that we are decoding.
-     * @return A pointer to a static instruction or NULL if the
-     * decoder isn't ready (see instReady()).
-     */
-    StaticInstPtr decode(ArmISA::PCState &pc);
-
-    /**
-     * Decode a pre-decoded machine instruction.
-     *
-     * @warn This method takes a pre-decoded instruction as its
-     * argument. It should typically not be called directly.
-     *
-     * @param mach_inst A pre-decoded instruction
-     * @retval A pointer to the corresponding StaticInst object.
-     */
-    StaticInstPtr decode(ExtMachInst mach_inst, Addr addr)
-    {
-        return defaultCache.decode(this, mach_inst, addr);
-    }
 
     /**
      * Decode a machine instruction without calling the cache.
@@ -188,26 +113,49 @@ class Decoder
     StaticInstPtr decodeInst(ExtMachInst mach_inst);
 
     /**
-     * Take over the state from an old decoder when switching CPUs.
+     * Decode a pre-decoded machine instruction.
      *
-     * @param old Decoder used in old CPU
+     * @warn This method takes a pre-decoded instruction as its
+     * argument. It should typically not be called directly.
+     *
+     * @param mach_inst A pre-decoded instruction
+     * @retval A pointer to the corresponding StaticInst object.
      */
-    void takeOverFrom(Decoder *old) {}
+    StaticInstPtr
+    decode(ExtMachInst mach_inst, Addr addr)
+    {
+        StaticInstPtr si = defaultCache.decode(this, mach_inst, addr);
+        DPRINTF(Decode, "Decode: Decoded %s instruction: %#x\n",
+                si->getName(), mach_inst);
+        return si;
+    }
 
+  public: // Decoder API
+    Decoder(const ArmDecoderParams &params);
+
+    /** Reset the decoders internal state. */
+    void reset() override;
+
+    void moreBytes(const PCStateBase &pc, Addr fetchPC) override;
+
+    StaticInstPtr decode(PCStateBase &pc) override;
 
   public: // ARM-specific decoder state manipulation
-    void setContext(FPSCR fpscr)
+    void
+    setContext(FPSCR fpscr)
     {
         fpscrLen = fpscr.len;
         fpscrStride = fpscr.stride;
     }
 
-    void setSveLen(uint8_t len)
+    void
+    setSveLen(uint8_t len)
     {
         sveLen = len;
     }
 };
 
 } // namespace ArmISA
+} // namespace gem5
 
 #endif // __ARCH_ARM_DECODER_HH__

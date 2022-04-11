@@ -39,34 +39,44 @@
 #define __BASE_STATS_GROUP_HH__
 
 #include <map>
-#include <vector>
 #include <string>
+#include <vector>
+
+#include "base/compiler.hh"
+#include "base/stats/units.hh"
+
+namespace gem5
+{
 
 /**
  * Convenience macro to add a stat to a statistics group.
  *
- * This macro is used to add a stat to a Stats::Group in the
+ * This macro is used to add a stat to a statistics::Group in the
  * initilization list in the Group's constructor. The macro
  * automatically assigns the stat to the current group and gives it
  * the same name as in the class. For example:
  *
  * \code
- * struct MyStats : public Stats::Group
+ * struct MyStats : public statistics::Group
  * {
- *     Stats::Scalar scalar0;
- *     Stats::Scalar scalar1;
+ *     statistics::Scalar scalar0;
+ *     statistics::Scalar scalar1;
  *
  *     Group()
  *         : ADD_STAT(scalar0, "Description of scalar0"),
- *           scalar1(this, "scalar1", "Description of scalar1")
+ *           scalar1(this, "scalar1", statistics::units::Unspecified::get(),
+ *                   "Description of scalar1")
  *     {
  *     }
  * };
  * \endcode
  */
-#define ADD_STAT(n, ...) n(this, # n, __VA_ARGS__)
 
-namespace Stats {
+#define ADD_STAT(n, ...) n(this, #n, __VA_ARGS__)
+
+GEM5_DEPRECATED_NAMESPACE(Stats, statistics);
+namespace statistics
+{
 
 class Info;
 
@@ -151,7 +161,7 @@ class Group
      *
      * @ingroup api_stats
      */
-    void addStat(Stats::Info *info);
+    void addStat(statistics::Info *info);
 
     /**
      * Get all child groups associated with this object.
@@ -194,7 +204,6 @@ class Group
      */
     const Info * resolveStat(std::string name) const;
 
-  private:
     /**
      * Merge the contents (stats & children) of a block to this block.
      *
@@ -205,13 +214,14 @@ class Group
 
   private:
     /** Parent pointer if merged into parent */
-    Group *const mergedParent;
+    Group *mergedParent;
 
     std::map<std::string, Group *> statGroups;
     std::vector<Group *> mergedStatGroups;
     std::vector<Info *> stats;
 };
 
-} // namespace Stats
+} // namespace statistics
+} // namespace gem5
 
 #endif // __BASE_STATS_GROUP_HH__

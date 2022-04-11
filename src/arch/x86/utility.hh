@@ -42,48 +42,11 @@
 #include "cpu/thread_context.hh"
 #include "sim/full_system.hh"
 
-namespace X86ISA
+namespace gem5
 {
 
-    inline PCState
-    buildRetPC(const PCState &curPC, const PCState &callPC)
-    {
-        PCState retPC = callPC;
-        retPC.uEnd();
-        return retPC;
-    }
-
-    uint64_t
-    getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp);
-
-    static inline bool
-    inUserMode(ThreadContext *tc)
-    {
-        if (!FullSystem) {
-            return true;
-        } else {
-            HandyM5Reg m5reg = tc->readMiscRegNoEffect(MISCREG_M5_REG);
-            return m5reg.cpl == 3;
-        }
-    }
-
-    void copyRegs(ThreadContext *src, ThreadContext *dest);
-
-    void copyMiscRegs(ThreadContext *src, ThreadContext *dest);
-
-    inline void
-    advancePC(PCState &pc, const StaticInstPtr &inst)
-    {
-        inst->advancePC(pc);
-    }
-
-    inline uint64_t
-    getExecutingAsid(ThreadContext *tc)
-    {
-        return 0;
-    }
-
-
+namespace X86ISA
+{
     /**
      * Reconstruct the rflags register from the internal gem5 register
      * state.
@@ -112,13 +75,6 @@ namespace X86ISA
      * @param val New rflags value to store in TC
      */
     void setRFlags(ThreadContext *tc, uint64_t val);
-
-    /**
-     * Extract the bit string representing a double value.
-     */
-    inline uint64_t getDoubleBits(double val) {
-        return *(uint64_t *)(&val);
-    }
 
     /**
      * Convert an x87 tag word to abridged tag format.
@@ -181,6 +137,8 @@ namespace X86ISA
      * @param value Double precision float to store.
      */
     void storeFloat80(void *mem, double value);
-}
+
+} // namespace X86ISA
+} // namespace gem5
 
 #endif // __ARCH_X86_UTILITY_HH__

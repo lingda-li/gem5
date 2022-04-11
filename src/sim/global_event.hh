@@ -34,7 +34,10 @@
 #include <vector>
 
 #include "base/barrier.hh"
-#include "sim/eventq_impl.hh"
+#include "sim/eventq.hh"
+
+namespace gem5
+{
 
 /**
  * @file sim/global_event.hh
@@ -233,5 +236,6 @@ class GlobalSyncEvent : public BaseGlobalEventTemplate<GlobalSyncEvent>
     Tick repeat;
 };
 
+} // namespace gem5
 
 #endif // __SIM_GLOBAL_EVENT_HH__

@@ -40,8 +40,10 @@
 
 #include "arch/x86/regs/int.hh"
 #include "arch/x86/regs/segment.hh"
-#include "arch/x86/registers.hh"
 #include "arch/x86/types.hh"
+
+namespace gem5
+{
 
 namespace X86ISA
 {
@@ -60,8 +62,8 @@ namespace X86ISA
         EmulEnv(RegIndex _reg, RegIndex _regm,
                 int _dataSize, int _addressSize, int _stackSize) :
             reg(_reg), regm(_regm), seg(SEGMENT_REG_DS),
-            scale(0), index(NUM_INTREGS),
-            base(NUM_INTREGS),
+            scale(0), index(INTREG_T0),
+            base(INTREG_T0),
             dataSize(_dataSize), addressSize(_addressSize),
             stackSize(_stackSize)
         {;}
@@ -69,6 +71,8 @@ namespace X86ISA
         void doModRM(const ExtMachInst & machInst);
         void setSeg(const ExtMachInst & machInst);
     };
-}
+
+} // namespace X86ISA
+} // namespace gem5
 
 #endif // __ARCH_X86_TYPES_HH__

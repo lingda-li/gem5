@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Inria
+ * Copyright (c) 2018-2020 Inria
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,13 +32,23 @@
 #include <cstdint>
 #include <memory>
 
+#include "base/compiler.hh"
 #include "base/cprintf.hh"
+
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
+namespace replacement_policy
+{
 
 /**
  * The replacement data needed by replacement policies. Each replacement policy
  * should have its own implementation of replacement data.
  */
 struct ReplacementData {};
+
+} // namespace replacement_policy
 
 /**
  * A replaceable entry is a basic entry in a 2d table-like structure that needs
@@ -71,7 +81,7 @@ class ReplaceableEntry
      * Replacement data associated to this entry.
      * It must be instantiated by the replacement policy before being used.
      */
-    std::shared_ptr<ReplacementData> replacementData;
+    std::shared_ptr<replacement_policy::ReplacementData> replacementData;
 
     /**
      * Set both the set and way. Should be called only once.
@@ -111,5 +121,7 @@ class ReplaceableEntry
         return csprintf("set: %#x way: %#x", getSet(), getWay());
     }
 };
+
+} // namespace gem5
 
 #endif // __MEM_CACHE_REPLACEMENT_POLICIES_REPLACEABLE_ENTRY_HH_

@@ -38,10 +38,15 @@
 #include <string>
 #include <unordered_map>
 
+#include "base/bitfield.hh"
 #include "base/intmath.hh"
 #include "base/types.hh"
 #include "mem/request.hh"
+#include "mem/translation_gen.hh"
 #include "sim/serialize.hh"
+
+namespace gem5
+{
 
 class ThreadContext;
 
@@ -62,7 +67,7 @@ class EmulationPageTable : public Serializable
     typedef PTable::iterator PTableItr;
     PTable pTable;
 
-    const Addr pageSize;
+    const Addr _pageSize;
     const Addr offsetMask;
 
     const uint64_t _pid;
@@ -72,10 +77,10 @@ class EmulationPageTable : public Serializable
 
     EmulationPageTable(
             const std::string &__name, uint64_t _pid, Addr _pageSize) :
-            pageSize(_pageSize), offsetMask(mask(floorLog2(_pageSize))),
+            _pageSize(_pageSize), offsetMask(mask(floorLog2(_pageSize))),
             _pid(_pid), _name(__name), shared(false)
     {
-        assert(isPowerOf2(pageSize));
+        assert(isPowerOf2(_pageSize));
     }
 
     uint64_t pid() const { return _pid; };
@@ -88,7 +93,8 @@ class EmulationPageTable : public Serializable
      * bit 2 - cacheable  | uncacheable
      * bit 3 - read-write | read-only
      */
-    enum MappingFlags : uint32_t {
+    enum MappingFlags : uint32_t
+    {
         Clobber     = 1,
         Uncacheable = 4,
         ReadOnly    = 8,
@@ -104,6 +110,9 @@ class EmulationPageTable : public Serializable
 
     Addr pageAlign(Addr a)  { return (a & ~offsetMask); }
     Addr pageOffset(Addr a) { return (a &  offsetMask); }
+    // Page size can technically vary based on the virtual address, but we'll
+    // ignore that for now.
+    Addr pageSize()   { return _pageSize; }
 
     /**
      * Maps a virtual memory region to a physical memory region.
@@ -145,7 +154,32 @@ class EmulationPageTable : public Serializable
      * @param vaddr The virtual address.
      * @return True if translation exists
      */
-    bool translate(Addr vaddr) { Addr dummy; return translate(vaddr, dummy); }
+    bool
+    translate(Addr vaddr)
+    {
+        Addr dummy;
+        return translate(vaddr, dummy);
+    }
+
+    class PageTableTranslationGen : public TranslationGen
+    {
+      private:
+        EmulationPageTable *pt;
+
+        void translate(Range &range) const override;
+
+      public:
+        PageTableTranslationGen(EmulationPageTable *_pt, Addr vaddr,
+                Addr size) : TranslationGen(vaddr, size), pt(_pt)
+        {}
+    };
+
+    TranslationGenPtr
+    translateRange(Addr vaddr, Addr size)
+    {
+        return TranslationGenPtr(
+                new PageTableTranslationGen(this, vaddr, size));
+    }
 
     /**
      * Perform a translation on the memory request, fills in paddr
@@ -154,10 +188,18 @@ class EmulationPageTable : public Serializable
      */
     Fault translate(const RequestPtr &req);
 
+    /**
+     * Dump all items in the pTable, to a concatenation of strings of the form
+     *    Addr:Entry;
+     */
+    const std::string externalize() const;
+
     void getMappings(std::vector<std::pair<Addr, Addr>> *addr_mappings);
 
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
 };
+
+} // namespace gem5
 
 #endif // __MEM_PAGE_TABLE_HH__

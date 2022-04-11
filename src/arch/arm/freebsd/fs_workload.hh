@@ -39,6 +39,9 @@
 #include "kern/freebsd/events.hh"
 #include "params/ArmFsFreebsd.hh"
 
+namespace gem5
+{
+
 namespace ArmISA
 {
 
@@ -46,12 +49,7 @@ class FsFreebsd : public ArmISA::FsWorkload
 {
   public:
     /** Boilerplate params code */
-    typedef ArmFsFreebsdParams Params;
-    const Params *
-    params() const
-    {
-        return dynamic_cast<const Params *>(&_params);
-    }
+    PARAMS(ArmFsFreebsd);
 
     /** When enabled, dump stats/task info on context switches for
      *  Streamline and per-thread cache occupancy studies, etc. */
@@ -67,7 +65,7 @@ class FsFreebsd : public ArmISA::FsWorkload
      * mappings between taskIds and OS process IDs */
     std::ostream* taskFile;
 
-    FsFreebsd(Params *p);
+    FsFreebsd(const Params &p);
     ~FsFreebsd();
 
     void initState() override;
@@ -103,5 +101,6 @@ class FsFreebsd : public ArmISA::FsWorkload
 };
 
 } // namespace ArmISA
+} // namespace gem5
 
 #endif // __ARCH_ARM_FREEBSD_FS_WORKLOAD_HH__

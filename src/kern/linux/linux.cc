@@ -31,12 +31,17 @@
 #include <cstdio>
 #include <string>
 
+#include "base/compiler.hh"
 #include "cpu/base.hh"
 #include "debug/SyscallVerbose.hh"
 #include "sim/mem_state.hh"
 #include "sim/process.hh"
+#include "sim/se_workload.hh"
 #include "sim/system.hh"
 #include "sim/vma.hh"
+
+namespace gem5
+{
 
 // The OS methods are called statically. Instantiate the random number
 // generator for access to /dev/urandom here.
@@ -73,7 +78,7 @@ Linux::openSpecialFile(std::string path, Process *process,
     if (matched) {
         FILE *f = tmpfile();
         int fd = fileno(f);
-        size_t ret M5_VAR_USED = fwrite(data.c_str(), 1, data.size(), f);
+        [[maybe_unused]] size_t ret = fwrite(data.c_str(), 1, data.size(), f);
         assert(ret == data.size());
         rewind(f);
         return fd;
@@ -90,8 +95,8 @@ std::string
 Linux::procMeminfo(Process *process, ThreadContext *tc)
 {
     return csprintf("MemTotal:%12d kB\nMemFree: %12d kB\n",
-            process->system->memSize() >> 10,
-            process->system->freeMemSize() >> 10);
+            process->seWorkload->memSize() >> 10,
+            process->seWorkload->freeMemSize() >> 10);
 }
 
 std::string
@@ -110,8 +115,7 @@ Linux::procSelfMaps(Process *process, ThreadContext *tc)
 std::string
 Linux::cpuOnline(Process *process, ThreadContext *tc)
 {
-    return csprintf("0-%d\n",
-                    tc->getSystemPtr()->numContexts() - 1);
+    return csprintf("0-%d\n", tc->getSystemPtr()->threads.size() - 1);
 }
 
 std::string
@@ -130,3 +134,5 @@ Linux::devRandom(Process *process, ThreadContext *tc)
     }
     return line.str();
 }
+
+} // namespace gem5

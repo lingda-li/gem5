@@ -41,34 +41,37 @@
 #include "arch/arm/decoder.hh"
 
 #include "arch/arm/isa.hh"
-#include "arch/arm/isa_traits.hh"
 #include "arch/arm/utility.hh"
 #include "base/trace.hh"
 #include "debug/Decoder.hh"
 #include "sim/full_system.hh"
 
+namespace gem5
+{
+
 namespace ArmISA
 {
 
-GenericISA::BasicDecodeCache Decoder::defaultCache;
+GenericISA::BasicDecodeCache<Decoder, ExtMachInst> Decoder::defaultCache;
 
-Decoder::Decoder(ISA* isa)
-    : data(0), fpscrLen(0), fpscrStride(0), decoderFlavor(isa->decoderFlavor())
+Decoder::Decoder(const ArmDecoderParams &params)
+    : InstDecoder(params, &data), data(0), fpscrLen(0), fpscrStride(0),
+      decoderFlavor(dynamic_cast<ISA *>(params.isa)->decoderFlavor())
 {
     reset();
 
     // Initialize SVE vector length
-    sveLen = (isa->getCurSveVecLenInBitsAtReset() >> 7) - 1;
+    sveLen = (dynamic_cast<ISA *>(params.isa)
+            ->getCurSveVecLenInBitsAtReset() >> 7) - 1;
 }
 
 void
 Decoder::reset()
 {
+    InstDecoder::reset();
     bigThumb = false;
     offset = 0;
     emi = 0;
-    instDone = false;
-    outOfBytes = true;
     foundIt = false;
 }
 
@@ -143,15 +146,16 @@ void
 Decoder::consumeBytes(int numBytes)
 {
     offset += numBytes;
-    assert(offset <= sizeof(MachInst) || emi.decoderFault);
-    if (offset == sizeof(MachInst))
+    assert(offset <= sizeof(data) || emi.decoderFault);
+    if (offset == sizeof(data))
         outOfBytes = true;
 }
 
 void
-Decoder::moreBytes(const PCState &pc, Addr fetchPC, MachInst inst)
+Decoder::moreBytes(const PCStateBase &_pc, Addr fetchPC)
 {
-    data = letoh(inst);
+    auto &pc = _pc.as<PCState>();
+    data = letoh(data);
     offset = (fetchPC >= pc.instAddr()) ? 0 : pc.instAddr() - fetchPC;
     emi.thumb = pc.thumb();
     emi.aarch64 = pc.aarch64();
@@ -168,10 +172,12 @@ Decoder::moreBytes(const PCState &pc, Addr fetchPC, MachInst inst)
 }
 
 StaticInstPtr
-Decoder::decode(ArmISA::PCState &pc)
+Decoder::decode(PCStateBase &_pc)
 {
     if (!instDone)
         return NULL;
+
+    auto &pc = _pc.as<PCState>();
 
     const int inst_size((!emi.thumb || emi.bigThumb) ? 4 : 2);
     ExtMachInst this_emi(emi);
@@ -181,7 +187,7 @@ Decoder::decode(ArmISA::PCState &pc)
         pc.nextItstate(itBits);
     this_emi.itstate = pc.itstate();
     this_emi.illegalExecution = pc.illegalExec() ? 1 : 0;
-
+    this_emi.debugStep = pc.debugStep() ? 1 : 0;
     pc.size(inst_size);
 
     emi = 0;
@@ -191,4 +197,5 @@ Decoder::decode(ArmISA::PCState &pc)
     return decode(this_emi, pc.instAddr());
 }
 
-}
+} // namespace ArmISA
+} // namespace gem5

@@ -35,7 +35,7 @@ component CortexA76x4
         // Clocks.
         clock1Hz : MasterClock();
         clockDiv : ClockDivider();
-        clockDivPeriph : ClockDivider(mul=0x01800000);
+        clockDivPeriph : ClockDivider();
     }
 
     connection
@@ -57,6 +57,9 @@ component CortexA76x4
         core.pmuirq => self.pmuirq;
         core.vcpumntirq => self.vcpumntirq;
 
+        // Core reset addrs.
+        self.rvbaraddr => core.rvbaraddr;
+
         // Clocks.
         clock1Hz.clk_out => clockDiv.clk_in;
         clock1Hz.clk_out => clockDivPeriph.clk_in;
@@ -77,6 +80,13 @@ component CortexA76x4
             clockDiv.rate.set64(mul, div);
         }
     }
+    slave port<ExportedClockRateControl> periph_clock_rate_s
+    {
+        behavior set_mul_div(uint64_t mul, uint64_t div)
+        {
+            clockDivPeriph.rate.set64(mul, div);
+        }
+    }
     slave port<GICv3Comms> redistributor[4];
 
     // External ports for CPU-to-GIC signals
@@ -89,4 +99,5 @@ component CortexA76x4
     master port<Signal> pmuirq[4];
     master port<Signal> vcpumntirq[4];
     master port<Signal> cntpnsirq[4];
+    slave port<Value_64> rvbaraddr[4];
 }

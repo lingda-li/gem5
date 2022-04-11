@@ -35,6 +35,9 @@
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 
+namespace gem5
+{
+
 Tick
 X86ISA::Speaker::read(PacketPtr pkt)
 {
@@ -84,8 +87,4 @@ X86ISA::Speaker::unserialize(CheckpointIn &cp)
     UNSERIALIZE_SCALAR(controlVal);
 }
 
-X86ISA::Speaker *
-PcSpeakerParams::create()
-{
-    return new X86ISA::Speaker(this);
-}
+} // namespace gem5

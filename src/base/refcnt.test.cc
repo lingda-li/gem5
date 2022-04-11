@@ -35,16 +35,17 @@
 
 #include "base/refcnt.hh"
 
-using namespace std;
+using namespace gem5;
 
 namespace {
 
 class TestRC;
-typedef list<TestRC *> LiveList;
+typedef std::list<TestRC *> LiveList;
 LiveList liveList;
 
 int
-liveListSize(){
+liveListSize()
+{
     return liveList.size();
 }
 

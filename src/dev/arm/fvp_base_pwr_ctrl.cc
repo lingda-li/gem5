@@ -47,7 +47,10 @@
 #include "params/FVPBasePwrCtrl.hh"
 #include "sim/system.hh"
 
-FVPBasePwrCtrl::FVPBasePwrCtrl(FVPBasePwrCtrlParams *const params)
+namespace gem5
+{
+
+FVPBasePwrCtrl::FVPBasePwrCtrl(const FVPBasePwrCtrlParams &params)
     : BasicPioDevice(params, 0x1000),
       regs(),
       system(*static_cast<ArmSystem *>(sys))
@@ -58,13 +61,13 @@ FVPBasePwrCtrl::FVPBasePwrCtrl(FVPBasePwrCtrlParams *const params)
 }
 
 void
-FVPBasePwrCtrl::init()
+FVPBasePwrCtrl::startup()
 {
     // All cores are ON by default (PwrStatus.{l0,l1} = 0b1)
-    corePwrStatus.resize(sys->numContexts(), 0x60000000);
-    for (const auto &tc : sys->threadContexts)
+    corePwrStatus.resize(sys->threads.size(), 0x60000000);
+    for (const auto &tc : sys->threads)
         poweredCoresPerCluster[tc->socketId()] += 1;
-    BasicPioDevice::init();
+    BasicPioDevice::startup();
 }
 
 void
@@ -151,7 +154,7 @@ FVPBasePwrCtrl::read(PacketPtr pkt)
     DPRINTF(FVPBasePwrCtrl, "FVPBasePwrCtrl::read: 0x%x<-0x%x(%i)\n", resp,
             addr, size);
 
-    pkt->setUintX(resp, LittleEndianByteOrder);
+    pkt->setUintX(resp, ByteOrder::little);
     pkt->makeResponse();
     return pioDelay;
 }
@@ -163,7 +166,7 @@ FVPBasePwrCtrl::write(PacketPtr pkt)
     const size_t size = pkt->getSize();
     panic_if(size != 4, "FVPBasePwrCtrl::write: Invalid size %i\n", size);
 
-    uint64_t data = pkt->getUintX(LittleEndianByteOrder);
+    uint64_t data = pkt->getUintX(ByteOrder::little);
 
     // Software may use the power controller to check for core presence
     // If core is not present, return an invalid MPID as notification
@@ -200,7 +203,7 @@ FVPBasePwrCtrl::write(PacketPtr pkt)
             regs.pcoffr = ~0;
         } else if (pwrs->l0) {
             // Power off all cores in the cluster
-            for (const auto &tco : sys->threadContexts) {
+            for (const auto &tco : sys->threads) {
                 if (tc->socketId() == tco->socketId()) {
                     PwrStatus *npwrs = getCorePwrStatus(tco);
                     // Set pending cluster power off
@@ -257,7 +260,7 @@ FVPBasePwrCtrl::getCorePwrStatus(ThreadContext *const tc)
 ThreadContext *
 FVPBasePwrCtrl::getThreadContextByMPID(uint32_t mpid) const
 {
-    for (auto &tc : sys->threadContexts) {
+    for (auto &tc : sys->threads) {
         if (mpid == ArmISA::getAffinity(&system, tc))
             return tc;
     }
@@ -274,13 +277,13 @@ FVPBasePwrCtrl::powerCoreOn(ThreadContext *const tc, PwrStatus *const pwrs)
     // Clear pending power-offs to the core
     pwrs->pp = 0;
     // Clear pending power-offs to the core's cluster
-    for (const auto &tco : sys->threadContexts) {
+    for (const auto &tco : sys->threads) {
         if (tc->socketId() == tco->socketId()) {
             PwrStatus *npwrs = getCorePwrStatus(tco);
             npwrs->pc = 0;
         }
     }
-    tc->getCpuPtr()->powerState->set(Enums::PwrState::ON);
+    tc->getCpuPtr()->powerState->set(enums::PwrState::ON);
 }
 
 void
@@ -295,7 +298,7 @@ FVPBasePwrCtrl::powerCoreOff(ThreadContext *const tc, PwrStatus *const pwrs)
     pwrs->pc = 0;
     // Clear power-on reason
     pwrs->wk = 0;
-    tc->getCpuPtr()->powerState->set(Enums::PwrState::OFF);
+    tc->getCpuPtr()->powerState->set(enums::PwrState::OFF);
 }
 
 void
@@ -307,12 +310,8 @@ FVPBasePwrCtrl::startCoreUp(ThreadContext *const tc)
     clearWakeRequest(tc);
 
     // InitCPU
-    Reset().invoke(tc);
+    ArmISA::Reset().invoke(tc);
     tc->activate();
 }
 
-FVPBasePwrCtrl *
-FVPBasePwrCtrlParams::create()
-{
-    return new FVPBasePwrCtrl(this);
-}
+} // namespace gem5

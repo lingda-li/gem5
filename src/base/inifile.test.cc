@@ -38,7 +38,7 @@
 
 #include "base/inifile.hh"
 
-using namespace std;
+using namespace gem5;
 
 namespace {
 

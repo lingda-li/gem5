@@ -39,10 +39,13 @@
 
 #include "params/GenericArmPciHost.hh"
 
-GenericArmPciHost::GenericArmPciHost(const GenericArmPciHostParams *p)
+namespace gem5
+{
+
+GenericArmPciHost::GenericArmPciHost(const GenericArmPciHostParams &p)
     : GenericPciHost(p),
-      intPolicy(p->int_policy), intBase(p->int_base),
-      intCount(p->int_count)
+      intPolicy(p.int_policy), intBase(p.int_base),
+      intCount(p.int_count)
 {
 }
 
@@ -55,13 +58,13 @@ GenericArmPciHost::mapPciInterrupt(const PciBusAddr &addr, PciIntPin pin) const
              addr.bus, addr.dev, addr.func);
 
     switch (intPolicy) {
-      case Enums::ARM_PCI_INT_STATIC:
+      case enums::ARM_PCI_INT_STATIC:
         return GenericPciHost::mapPciInterrupt(addr, pin);
 
-      case Enums::ARM_PCI_INT_DEV:
+      case enums::ARM_PCI_INT_DEV:
         return intBase + (addr.dev % intCount);
 
-      case Enums::ARM_PCI_INT_PIN:
+      case enums::ARM_PCI_INT_PIN:
         return intBase + ((static_cast<uint8_t>(pin) - 1) % intCount);
 
       default:
@@ -69,9 +72,4 @@ GenericArmPciHost::mapPciInterrupt(const PciBusAddr &addr, PciIntPin pin) const
     }
 }
 
-
-GenericArmPciHost *
-GenericArmPciHostParams::create()
-{
-    return new GenericArmPciHost(this);
-}
+} // namespace gem5

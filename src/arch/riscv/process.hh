@@ -37,66 +37,46 @@
 #include "sim/process.hh"
 #include "sim/syscall_abi.hh"
 
-namespace Loader
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(Loader, loader);
+namespace loader
 {
 class ObjectFile;
-} // namespace Loader
+} // namespace loader
 
 class System;
 
 class RiscvProcess : public Process
 {
   protected:
-    RiscvProcess(ProcessParams * params, ::Loader::ObjectFile *objFile);
+    RiscvProcess(const ProcessParams &params, loader::ObjectFile *objFile);
     template<class IntType>
     void argsInit(int pageSize);
 
   public:
     virtual bool mmapGrowsDown() const override { return false; }
-
-    //FIXME RISCV needs to handle 64 bit arguments in its 32 bit ISA.
-    struct SyscallABI : public GenericSyscallABI64
-    {
-        static const std::vector<int> ArgumentRegs;
-    };
-};
-
-namespace GuestABI
-{
-
-template <>
-struct Result<RiscvProcess::SyscallABI, SyscallReturn>
-{
-    static void
-    store(ThreadContext *tc, const SyscallReturn &ret)
-    {
-        if (ret.suppressed() || ret.needsRetry())
-            return;
-
-        if (ret.successful()) {
-            // no error
-            tc->setIntReg(RiscvISA::ReturnValueReg, ret.returnValue());
-        } else {
-            // got an error, return details
-            tc->setIntReg(RiscvISA::ReturnValueReg, ret.encodedValue());
-        }
-    }
-};
-
 };
 
 class RiscvProcess64 : public RiscvProcess
 {
+  public:
+    RiscvProcess64(const ProcessParams &params, loader::ObjectFile *objFile);
+
   protected:
-    RiscvProcess64(ProcessParams * params, ::Loader::ObjectFile *objFile);
     void initState() override;
 };
 
 class RiscvProcess32 : public RiscvProcess
 {
+  public:
+    RiscvProcess32(const ProcessParams &params, loader::ObjectFile *objFile);
+
   protected:
-    RiscvProcess32(ProcessParams * params, ::Loader::ObjectFile *objFile);
     void initState() override;
 };
+
+} // namespace gem5
 
 #endif // __RISCV_PROCESS_HH__

@@ -35,9 +35,6 @@ IMPORTANT: If you modify this file, it's likely that the Learning gem5 book
 
 """
 
-from __future__ import print_function
-from __future__ import absolute_import
-
 from m5.defines import buildEnv
 from m5.util import fatal
 
@@ -76,7 +73,6 @@ class TestCacheSystem(RubySystem):
 
         self.sequencers = [RubySequencer(version = i,
                               # I/D cache is combined and grab from ctrl
-                              icache = self.controllers[i].cacheMemory,
                               dcache = self.controllers[i].cacheMemory,
                               clk_domain = self.clk_domain,
                               ) for i in range(num_testers)]
@@ -94,16 +90,16 @@ class TestCacheSystem(RubySystem):
         # Set up a proxy port for the system_port. Used for load binaries and
         # other functional-only things.
         self.sys_port_proxy = RubyPortProxy()
-        system.system_port = self.sys_port_proxy.slave
+        system.system_port = self.sys_port_proxy.in_ports
 
         # Connect up the sequencers to the random tester
         for seq in self.sequencers:
             if seq.support_data_reqs and seq.support_inst_reqs:
-                tester.cpuInstDataPort = seq.slave
+                tester.cpuInstDataPort = seq.in_ports
             elif seq.support_data_reqs:
-                tester.cpuDataPort = seq.slave
+                tester.cpuDataPort = seq.in_ports
             elif seq.support_inst_reqs:
-                tester.cpuInstDataPort = seq.slave
+                tester.cpuInstDataPort = seq.in_ports
 
             # Do not automatically retry stalled Ruby requests
             seq.no_retry_on_stall = True

@@ -35,17 +35,21 @@
 #include "arch/riscv/utility.hh"
 #include "cpu/static_inst.hh"
 
+namespace gem5
+{
+
 namespace RiscvISA
 {
 
 std::string
 CompRegOp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
-    ss << mnemonic << ' ' << registerName(_destRegIdx[0]) << ", " <<
-        registerName(_srcRegIdx[0]);
+    ss << mnemonic << ' ' << registerName(destRegIdx(0)) << ", " <<
+        registerName(srcRegIdx(0));
     return ss.str();
 }
 
-}
+} // namespace RiscvISA
+} // namespace gem5

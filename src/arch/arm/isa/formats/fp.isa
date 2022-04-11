@@ -131,7 +131,7 @@ let {{
                     width = 1;
                     break;
                 }
-                M5_FALLTHROUGH;
+                [[fallthrough]];
               default:
                 return new Unknown(machInst);
             }
@@ -152,7 +152,7 @@ let {{
             if (singleAll) {
                 size = bits(machInst, 7, 6);
                 bool t = bits(machInst, 5);
-                align = size | TLB::AllowUnaligned;
+                align = size | MMU::AllowUnaligned;
                 if (width == 1) {
                     regs = t ? 2 : 1;
                     inc = 1;
@@ -185,7 +185,7 @@ let {{
                 }
             } else {
                 size = bits(machInst, 11, 10);
-                align = size | TLB::AllowUnaligned;
+                align = size | MMU::AllowUnaligned;
                 regs = width;
                 unsigned indexAlign = bits(machInst, 7, 4);
                 // If width is 1, inc is always 1. That's overridden later.
@@ -251,7 +251,7 @@ let {{
             align = bits(machInst, 5, 4);
             if (align == 0) {
                 // @align wasn't specified, so alignment can be turned off.
-                align = size | TLB::AllowUnaligned;
+                align = size | MMU::AllowUnaligned;
             } else {
                 align = align + 2;
             }
@@ -483,7 +483,7 @@ let {{
                             return new VbifD<uint64_t>(machInst, vd, vn, vm);
                         }
                       default:
-                        M5_UNREACHABLE;
+                        GEM5_UNREACHABLE;
                     }
                 } else {
                     switch (size) {
@@ -526,7 +526,7 @@ let {{
                                     machInst, vd, vn, vm);
                         }
                       default:
-                        M5_UNREACHABLE;
+                        GEM5_UNREACHABLE;
                     }
                 }
             }
@@ -652,7 +652,10 @@ let {{
             }
           case 0xb:
             if (o1) {
-                if (u || q) {
+                if (u) {
+                    return decodeNeonSThreeSReg<VqrdmlahD, VqrdmlahQ>(
+                            q, size, machInst, vd, vn, vm);
+                } else if (q) {
                     return new Unknown(machInst);
                 } else {
                     return decodeNeonUThreeUSReg<NVpaddD>(
@@ -669,7 +672,10 @@ let {{
             }
           case 0xc:
             if (o1) {
-                if (!u) {
+                if (u) {
+                    return decodeNeonSThreeSReg<VqrdmlshD, VqrdmlshQ>(
+                            q, size, machInst, vd, vn, vm);
+                } else {
                     if (bits(size, 1) == 0) {
                         if (q) {
                             return new NVfmaQFp<float>(machInst, vd, vn, vm);
@@ -696,7 +702,7 @@ let {{
                       case 0x3:
                         return new Unknown(machInst);
                       default:
-                        M5_UNREACHABLE;
+                        GEM5_UNREACHABLE;
                     }
                 } else {
                     switch (size) {
@@ -709,7 +715,7 @@ let {{
                       case 0x3:
                         return new SHA1SU0(machInst, vd, vn, vm);
                       default:
-                        M5_UNREACHABLE;
+                        GEM5_UNREACHABLE;
                     }
                 }
             }
@@ -1504,6 +1510,54 @@ let {{
                     return new Unknown(machInst);
                 }
             }
+          case 0xe:
+            if (u) {
+                switch (size) {
+                  case 1:
+                    return new VqrdmlahsQ<int16_t>(
+                            machInst, vd, vn, vm, index);
+                  case 2:
+                    return new VqrdmlahsQ<int32_t>(
+                            machInst, vd, vn, vm, index);
+                  default:
+                    return new Unknown(machInst);
+                }
+            } else {
+                switch (size) {
+                  case 1:
+                    return new VqrdmlahsD<int16_t>(
+                            machInst, vd, vn, vm, index);
+                  case 2:
+                    return new VqrdmlahsD<int32_t>(
+                            machInst, vd, vn, vm, index);
+                  default:
+                    return new Unknown(machInst);
+                }
+            }
+          case 0xf:
+            if (u) {
+                switch (size) {
+                  case 1:
+                    return new VqrdmlshsQ<int16_t>(
+                            machInst, vd, vn, vm, index);
+                  case 2:
+                    return new VqrdmlshsQ<int32_t>(
+                            machInst, vd, vn, vm, index);
+                  default:
+                    return new Unknown(machInst);
+                }
+            } else {
+                switch (size) {
+                  case 1:
+                    return new VqrdmlshsD<int16_t>(
+                            machInst, vd, vn, vm, index);
+                  case 2:
+                    return new VqrdmlshsD<int32_t>(
+                            machInst, vd, vn, vm, index);
+                  default:
+                    return new Unknown(machInst);
+                }
+            }
         }
         return new Unknown(machInst);
     }
@@ -2039,7 +2093,7 @@ let {{
                     return new VLdmStm(machInst, rn, vd, single,
                                        true, true, true, offset);
                   default:
-                    M5_UNREACHABLE;
+                    GEM5_UNREACHABLE;
                 }
             }
           case 0x2:
@@ -2059,7 +2113,7 @@ let {{
                                        false, true, true, offset);
                 }
             }
-            M5_FALLTHROUGH;
+            [[fallthrough]];
           case 0x3:
             const bool up = (bits(machInst, 23) == 1);
             const uint32_t imm = bits(machInst, 7, 0) << 2;

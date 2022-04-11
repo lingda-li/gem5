@@ -31,7 +31,7 @@ from slicc.symbols import Var
 
 class EnqueueStatementAST(StatementAST):
     def __init__(self, slicc, queue_name, type_ast, lexpr, statements):
-        super(EnqueueStatementAST, self).__init__(slicc)
+        super().__init__(slicc)
 
         self.queue_name = queue_name
         self.type_ast = type_ast
@@ -42,7 +42,7 @@ class EnqueueStatementAST(StatementAST):
         return "[EnqueueStatementAst: %s %s %s]" % \
                (self.queue_name, self.type_ast.ident, self.statements)
 
-    def generate(self, code, return_type):
+    def generate(self, code, return_type, **kwargs):
         code("{")
         code.indent()
         self.symtab.pushFrame()

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2017, 2020 ARM Limited
+ * Copyright (c) 2016-2017, 2020-2021 Arm Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -45,8 +45,11 @@
 #include "sim/power/thermal_model.hh"
 #include "sim/sim_object.hh"
 
-MathExprPowerModel::MathExprPowerModel(const Params *p)
-    : PowerModelState(p), dyn_expr(p->dyn), st_expr(p->st)
+namespace gem5
+{
+
+MathExprPowerModel::MathExprPowerModel(const Params &p)
+    : PowerModelState(p), dyn_expr(p.dyn), st_expr(p.st)
 {
 }
 
@@ -62,7 +65,7 @@ MathExprPowerModel::startup()
                 continue;
             }
 
-            auto *info = Stats::resolve(var);
+            auto *info = statistics::resolve(var);
             fatal_if(!info, "Failed to evaluate %s in expression:\n%s\n",
                      var, expr.toStr());
             statsMap[var] = info;
@@ -82,11 +85,11 @@ MathExprPowerModel::eval(const MathExpr &expr) const
 double
 MathExprPowerModel::getStatValue(const std::string &name) const
 {
-    using namespace Stats;
+    using namespace statistics;
 
     // Automatic variables:
     if (name == "temp") {
-        return _temp;
+        return _temp.toCelsius();
     } else if (name == "voltage") {
         return clocked_object->voltage();
     } else if (name=="clock_period") {
@@ -114,8 +117,4 @@ MathExprPowerModel::regStats()
     PowerModelState::regStats();
 }
 
-MathExprPowerModel*
-MathExprPowerModelParams::create()
-{
-    return new MathExprPowerModel(this);
-}
+} // namespace gem5

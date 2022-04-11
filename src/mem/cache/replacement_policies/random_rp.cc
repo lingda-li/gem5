@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Inria
+ * Copyright (c) 2018-2020 Inria
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,14 +34,20 @@
 #include "base/random.hh"
 #include "params/RandomRP.hh"
 
-RandomRP::RandomRP(const Params *p)
-    : BaseReplacementPolicy(p)
+namespace gem5
+{
+
+GEM5_DEPRECATED_NAMESPACE(ReplacementPolicy, replacement_policy);
+namespace replacement_policy
+{
+
+Random::Random(const Params &p)
+  : Base(p)
 {
 }
 
 void
-RandomRP::invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
-const
+Random::invalidate(const std::shared_ptr<ReplacementData>& replacement_data)
 {
     // Unprioritize replacement data victimization
     std::static_pointer_cast<RandomReplData>(
@@ -49,12 +55,12 @@ const
 }
 
 void
-RandomRP::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
+Random::touch(const std::shared_ptr<ReplacementData>& replacement_data) const
 {
 }
 
 void
-RandomRP::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
+Random::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
 {
     // Unprioritize replacement data victimization
     std::static_pointer_cast<RandomReplData>(
@@ -62,7 +68,7 @@ RandomRP::reset(const std::shared_ptr<ReplacementData>& replacement_data) const
 }
 
 ReplaceableEntry*
-RandomRP::getVictim(const ReplacementCandidates& candidates) const
+Random::getVictim(const ReplacementCandidates& candidates) const
 {
     // There must be at least one replacement candidate
     assert(candidates.size() > 0);
@@ -85,13 +91,10 @@ RandomRP::getVictim(const ReplacementCandidates& candidates) const
 }
 
 std::shared_ptr<ReplacementData>
-RandomRP::instantiateEntry()
+Random::instantiateEntry()
 {
     return std::shared_ptr<ReplacementData>(new RandomReplData());
 }
 
-RandomRP*
-RandomRPParams::create()
-{
-    return new RandomRP(this);
-}
+} // namespace replacement_policy
+} // namespace gem5

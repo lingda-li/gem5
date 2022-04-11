@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 ARM Limited
+ * Copyright (c) 2012-2014, 2020 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -44,22 +44,30 @@
 #ifndef __CPU_MINOR_CPU_HH__
 #define __CPU_MINOR_CPU_HH__
 
+#include "base/compiler.hh"
+#include "base/random.hh"
+#include "cpu/base.hh"
 #include "cpu/minor/activity.hh"
 #include "cpu/minor/stats.hh"
-#include "cpu/base.hh"
 #include "cpu/simple_thread.hh"
 #include "enums/ThreadPolicy.hh"
 #include "params/MinorCPU.hh"
 
-namespace Minor
+namespace gem5
 {
+
+GEM5_DEPRECATED_NAMESPACE(Minor, minor);
+namespace minor
+{
+
 /** Forward declared to break the cyclic inclusion dependencies between
  *  pipeline and cpu */
 class Pipeline;
 
 /** Minor will use the SimpleThread state for now */
 typedef SimpleThread MinorThread;
-};
+
+} // namespace minor
 
 /**
  *  MinorCPU is an in-order CPU model with four fixed pipeline stages:
@@ -71,31 +79,31 @@ typedef SimpleThread MinorThread;
  *
  *  This pipeline is carried in the MinorCPU::pipeline object.
  *  The exec_context interface is not carried by MinorCPU but by
- *      Minor::ExecContext objects
- *  created by Minor::Execute.
+ *      minor::ExecContext objects
+ *  created by minor::Execute.
  */
 class MinorCPU : public BaseCPU
 {
   protected:
     /** pipeline is a container for the clockable pipeline stage objects.
      *  Elements of pipeline call TheISA to implement the model. */
-    Minor::Pipeline *pipeline;
+    minor::Pipeline *pipeline;
 
   public:
     /** Activity recording for pipeline.  This belongs to Pipeline but
      *  stages will access it through the CPU as the MinorCPU object
      *  actually mediates idling behaviour */
-    Minor::MinorActivityRecorder *activityRecorder;
+    minor::MinorActivityRecorder *activityRecorder;
 
     /** These are thread state-representing objects for this CPU.  If
      *  you need a ThreadContext for *any* reason, use
      *  threads[threadId]->getTC() */
-    std::vector<Minor::MinorThread *> threads;
+    std::vector<minor::MinorThread *> threads;
 
   public:
     /** Provide a non-protected base class for Minor's Ports as derived
      *  classes are created by Fetch1 and Execute */
-    class MinorCPUPort : public MasterPort
+    class MinorCPUPort : public RequestPort
     {
       public:
         /** The enclosing cpu */
@@ -103,13 +111,13 @@ class MinorCPU : public BaseCPU
 
       public:
         MinorCPUPort(const std::string& name_, MinorCPU &cpu_)
-            : MasterPort(name_, &cpu_), cpu(cpu_)
+            : RequestPort(name_, &cpu_), cpu(cpu_)
         { }
 
     };
 
     /** Thread Scheduling Policy (RoundRobin, Random, etc) */
-    Enums::ThreadPolicy threadPolicy;
+    enums::ThreadPolicy threadPolicy;
   protected:
      /** Return a reference to the data port. */
     Port &getDataPort() override;
@@ -118,7 +126,7 @@ class MinorCPU : public BaseCPU
     Port &getInstPort() override;
 
   public:
-    MinorCPU(MinorCPUParams *params);
+    MinorCPU(const MinorCPUParams &params);
 
     ~MinorCPU();
 
@@ -129,7 +137,7 @@ class MinorCPU : public BaseCPU
     void wakeup(ThreadID tid) override;
 
     /** Processor-specific statistics */
-    Minor::MinorStats stats;
+    minor::MinorStats stats;
 
     /** Stats interface from SimObject (by way of BaseCPU) */
     void regStats() override;
@@ -177,15 +185,27 @@ class MinorCPU : public BaseCPU
         for (ThreadID i = 0; i < numThreads; i++) {
             prio_list.push_back(i);
         }
-        std::random_shuffle(prio_list.begin(), prio_list.end());
+
+        std::shuffle(prio_list.begin(), prio_list.end(),
+                     random_mt.gen);
+
         return prio_list;
     }
+
+    /** The tick method in the MinorCPU is simply updating the cycle
+     * counters as the ticking of the pipeline stages is already
+     * handled by the Pipeline object.
+     */
+    void tick() { updateCycleCounters(BaseCPU::CPU_STATE_ON); }
 
     /** Interface for stages to signal that they have become active after
      *  a callback or eventq event where the pipeline itself may have
      *  already been idled.  The stage argument should be from the
      *  enumeration Pipeline::StageId */
     void wakeupOnEvent(unsigned int stage_id);
+    EventFunctionWrapper *fetchEventWrapper;
 };
+
+} // namespace gem5
 
 #endif /* __CPU_MINOR_CPU_HH__ */

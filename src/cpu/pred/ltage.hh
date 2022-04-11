@@ -46,8 +46,8 @@
  * one that predicted when the prediction is incorrect.
  */
 
-#ifndef __CPU_PRED_LTAGE
-#define __CPU_PRED_LTAGE
+#ifndef __CPU_PRED_LTAGE_HH__
+#define __CPU_PRED_LTAGE_HH__
 
 
 #include <vector>
@@ -57,26 +57,32 @@
 #include "cpu/pred/tage.hh"
 #include "params/LTAGE.hh"
 
+namespace gem5
+{
+
+namespace branch_prediction
+{
+
 class LTAGE : public TAGE
 {
   public:
-    LTAGE(const LTAGEParams *params);
+    LTAGE(const LTAGEParams &params);
 
     // Base class methods.
     void squash(ThreadID tid, void *bp_history) override;
     void update(ThreadID tid, Addr branch_addr, bool taken, void *bp_history,
                 bool squashed, const StaticInstPtr & inst,
-                Addr corrTarget = MaxAddr) override;
+                Addr corrTarget) override;
 
     void init() override;
-    virtual void regStats() override;
 
   protected:
     /** The loop predictor object */
     LoopPredictor *loopPredictor;
 
     // more provider types
-    enum {
+    enum
+    {
         LOOP = TAGEBase::LAST_TAGE_PROVIDER_TYPE + 1,
         LAST_LTAGE_PROVIDER_TYPE = LOOP
     };
@@ -109,4 +115,7 @@ class LTAGE : public TAGE
         ThreadID tid, Addr branch_pc, bool cond_branch, void* &b) override;
 };
 
-#endif // __CPU_PRED_LTAGE
+} // namespace branch_prediction
+} // namespace gem5
+
+#endif // __CPU_PRED_LTAGE_HH__

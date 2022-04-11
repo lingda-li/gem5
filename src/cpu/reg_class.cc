@@ -39,6 +39,16 @@
  */
 
 #include "cpu/reg_class.hh"
+#include "base/cprintf.hh"
+
+namespace gem5
+{
+
+std::string
+DefaultRegClassOps::regName(const RegId &id) const
+{
+    return csprintf("r%d", id.index());
+}
 
 const char *RegId::regClassStrings[] = {
     "IntRegClass",
@@ -50,3 +60,4 @@ const char *RegId::regClassStrings[] = {
     "MiscRegClass"
 };
 
+} // namespace gem5

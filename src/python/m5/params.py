@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2014, 2017-2019 ARM Limited
+# Copyright (c) 2012-2014, 2017-2019, 2021 Arm Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -54,12 +54,6 @@
 #
 #####################################################################
 
-from __future__ import print_function
-from six import add_metaclass
-import six
-if six.PY3:
-    long = int
-
 import copy
 import datetime
 import re
@@ -87,7 +81,7 @@ allParams = {}
 
 class MetaParamValue(type):
     def __new__(mcls, name, bases, dct):
-        cls = super(MetaParamValue, mcls).__new__(mcls, name, bases, dct)
+        cls = super().__new__(mcls, name, bases, dct)
         if name in allParams:
             warn("%s already exists in allParams. This may be caused by the " \
                  "Python 2.7 compatibility layer." % (name, ))
@@ -97,8 +91,7 @@ class MetaParamValue(type):
 
 # Dummy base class to identify types that are legitimate for SimObject
 # parameters.
-@add_metaclass(MetaParamValue)
-class ParamValue(object):
+class ParamValue(object, metaclass=MetaParamValue):
     cmd_line_settable = False
 
     # Generate the code needed as a prerequisite for declaring a C++
@@ -236,8 +229,7 @@ class ParamDesc(object):
 # that the value is a vector (list) of the specified type instead of a
 # single value.
 
-@add_metaclass(MetaParamValue)
-class VectorParamValue(list):
+class VectorParamValue(list, metaclass=MetaParamValue):
     def __setattr__(self, attr, value):
         raise AttributeError("Not allowed to set %s on '%s'" % \
                              (attr, type(self).__name__))
@@ -309,7 +301,7 @@ class SimObjectVector(VectorParamValue):
             warn("SimObject %s already has a parent" % value.get_name() +\
                  " that is being overwritten by a SimObjectVector")
         value.set_parent(val.get_parent(), val._name)
-        super(SimObjectVector, self).__setitem__(key, value)
+        super().__setitem__(key, value)
 
     # Enumerate the params of each member of the SimObject vector. Creates
     # strings that will allow indexing into the vector by the python code and
@@ -355,7 +347,7 @@ class VectorParamDesc(ParamDesc):
     # how to set this vector parameter in the absence of a default
     # value.
     def example_str(self):
-        s = super(VectorParamDesc, self).example_str()
+        s = super().example_str()
         help_str = "[" + s + "," + s + ", ...]"
         return help_str
 
@@ -469,9 +461,6 @@ class NumericParamValue(ParamValue):
     def __float__(self):
         return float(self.value)
 
-    def __long__(self):
-        return long(self.value)
-
     def __int__(self):
         return int(self.value)
 
@@ -540,11 +529,6 @@ class NumericParamValue(ParamValue):
     def __lt__(self, other):
         return self.value < NumericParamValue.unwrap(other)
 
-    # Python 2.7 pre __future__.division operators
-    # TODO: Remove these when after "import division from __future__"
-    __div__ =  __truediv__
-    __idiv__ = __itruediv__
-
     def config_value(self):
         return self.value
 
@@ -564,7 +548,7 @@ class NumericParamValue(ParamValue):
 # Metaclass for bounds-checked integer parameters.  See CheckedInt.
 class CheckedIntType(MetaParamValue):
     def __init__(cls, name, bases, dict):
-        super(CheckedIntType, cls).__init__(name, bases, dict)
+        super().__init__(name, bases, dict)
 
         # CheckedInt is an abstract base class, so we actually don't
         # want to do any processing on it... the rest of this code is
@@ -588,8 +572,7 @@ class CheckedIntType(MetaParamValue):
 # class is subclassed to generate parameter classes with specific
 # bounds.  Initialization of the min and max bounds is done in the
 # metaclass CheckedIntType.__init__.
-@add_metaclass(CheckedIntType)
-class CheckedInt(NumericParamValue):
+class CheckedInt(NumericParamValue, metaclass=CheckedIntType):
     cmd_line_settable = True
 
     def _check(self):
@@ -600,8 +583,8 @@ class CheckedInt(NumericParamValue):
     def __init__(self, value):
         if isinstance(value, str):
             self.value = convert.toInteger(value)
-        elif isinstance(value, (int, long, float, NumericParamValue)):
-            self.value = long(value)
+        elif isinstance(value, (int, float, NumericParamValue)):
+            self.value = int(value)
         else:
             raise TypeError("Can't convert object of type %s to CheckedInt" \
                   % type(value).__name__)
@@ -620,7 +603,7 @@ class CheckedInt(NumericParamValue):
         code('#include "base/types.hh"')
 
     def getValue(self):
-        return long(self.value)
+        return int(self.value)
 
 class Int(CheckedInt):      cxx_type = 'int';      size = 32; unsigned = False
 class Unsigned(CheckedInt): cxx_type = 'unsigned'; size = 32; unsigned = True
@@ -669,7 +652,7 @@ class Float(ParamValue, float):
     cmd_line_settable = True
 
     def __init__(self, value):
-        if isinstance(value, (int, long, float, NumericParamValue, Float, str)):
+        if isinstance(value, (int, float, NumericParamValue, Float, str)):
             self.value = float(value)
         else:
             raise TypeError("Can't convert object of type %s to Float" \
@@ -695,7 +678,7 @@ class Float(ParamValue, float):
 
 class MemorySize(CheckedInt):
     cxx_type = 'uint64_t'
-    ex_str = '512MB'
+    ex_str = '512MiB'
     size = 64
     unsigned = True
     def __init__(self, value):
@@ -707,7 +690,7 @@ class MemorySize(CheckedInt):
 
 class MemorySize32(CheckedInt):
     cxx_type = 'uint32_t'
-    ex_str = '512MB'
+    ex_str = '512MiB'
     size = 32
     unsigned = True
     def __init__(self, value):
@@ -727,7 +710,7 @@ class Addr(CheckedInt):
         else:
             try:
                 # Often addresses are referred to with sizes. Ex: A device
-                # base address is at "512MB".  Use toMemorySize() to convert
+                # base address is at "512MiB".  Use toMemorySize() to convert
                 # these into addresses. If the address is not specified with a
                 # "size", an exception will occur and numeric translation will
                 # proceed below.
@@ -735,7 +718,7 @@ class Addr(CheckedInt):
             except (TypeError, ValueError):
                 # Convert number to string and use long() to do automatic
                 # base conversion (requires base=0 for auto-conversion)
-                self.value = long(str(value), base=0)
+                self.value = int(str(value), base=0)
 
         self._check()
     def __add__(self, other):
@@ -747,8 +730,8 @@ class Addr(CheckedInt):
         try:
             val = convert.toMemorySize(value)
         except TypeError:
-            val = long(value)
-        return "0x%x" % long(val)
+            val = int(value)
+        return "0x%x" % int(val)
 
 class AddrRange(ParamValue):
     cxx_type = 'AddrRange'
@@ -775,7 +758,7 @@ class AddrRange(ParamValue):
                 self.intlvMatch = int(kwargs.pop('intlvMatch'))
 
             if 'masks' in kwargs:
-                self.masks = [ long(x) for x in list(kwargs.pop('masks')) ]
+                self.masks = [ int(x) for x in list(kwargs.pop('masks')) ]
                 self.intlvBits = len(self.masks)
             else:
                 if 'intlvBits' in kwargs:
@@ -828,7 +811,7 @@ class AddrRange(ParamValue):
 
     def size(self):
         # Divide the size by the size of the interleaving slice
-        return (long(self.end) - long(self.start)) >> self.intlvBits
+        return (int(self.end) - int(self.start)) >> self.intlvBits
 
     @classmethod
     def cxx_predecls(cls, code):
@@ -878,8 +861,14 @@ class AddrRange(ParamValue):
         # Go from the Python class to the wrapped C++ class
         from _m5.range import AddrRange
 
-        return AddrRange(long(self.start), long(self.end),
+        return AddrRange(int(self.start), int(self.end),
                          self.masks, int(self.intlvMatch))
+
+    def exclude(self, ranges):
+        pybind_exclude = list([ r.getValue() for r in ranges ])
+        pybind_include = self.getValue().exclude(pybind_exclude)
+
+        return list([ AddrRange(r.start(), r.end()) for r in pybind_include ])
 
 # Boolean parameter type.  Python doesn't let you subclass bool, since
 # it doesn't want to let you create multiple instances of True and
@@ -951,7 +940,7 @@ def NextEthernetAddr():
     return value
 
 class EthernetAddr(ParamValue):
-    cxx_type = 'Net::EthAddr'
+    cxx_type = 'networking::EthAddr'
     ex_str = "00:90:00:00:00:01"
     cmd_line_settable = True
 
@@ -998,13 +987,13 @@ class EthernetAddr(ParamValue):
 
     @classmethod
     def cxx_ini_parse(self, code, src, dest, ret):
-        code('%s = Net::EthAddr(%s);' % (dest, src))
+        code('%s = networking::EthAddr(%s);' % (dest, src))
         code('%s true;' % ret)
 
 # When initializing an IpAddress, pass in an existing IpAddress, a string of
 # the form "a.b.c.d", or an integer representing an IP.
 class IpAddress(ParamValue):
-    cxx_type = 'Net::IpAddress'
+    cxx_type = 'networking::IpAddress'
     ex_str = "127.0.0.1"
     cmd_line_settable = True
 
@@ -1019,7 +1008,7 @@ class IpAddress(ParamValue):
             try:
                 self.ip = convert.toIpAddress(value)
             except TypeError:
-                self.ip = long(value)
+                self.ip = int(value)
         self.verifyIp()
 
     def __call__(self, value):
@@ -1056,7 +1045,7 @@ class IpAddress(ParamValue):
 # the form "a.b.c.d/n" or "a.b.c.d/e.f.g.h", or an ip and netmask as
 # positional or keyword arguments.
 class IpNetmask(IpAddress):
-    cxx_type = 'Net::IpNetmask'
+    cxx_type = 'networking::IpNetmask'
     ex_str = "127.0.0.0/24"
     cmd_line_settable = True
 
@@ -1105,7 +1094,7 @@ class IpNetmask(IpAddress):
         return value
 
     def __str__(self):
-        return "%s/%d" % (super(IpNetmask, self).__str__(), self.netmask)
+        return "%s/%d" % (super().__str__(), self.netmask)
 
     def __eq__(self, other):
         if isinstance(other, IpNetmask):
@@ -1130,7 +1119,7 @@ class IpNetmask(IpAddress):
 # When initializing an IpWithPort, pass in an existing IpWithPort, a string of
 # the form "a.b.c.d:p", or an ip and port as positional or keyword arguments.
 class IpWithPort(IpAddress):
-    cxx_type = 'Net::IpWithPort'
+    cxx_type = 'networking::IpWithPort'
     ex_str = "127.0.0.1:80"
     cmd_line_settable = True
 
@@ -1179,7 +1168,7 @@ class IpWithPort(IpAddress):
         return value
 
     def __str__(self):
-        return "%s:%d" % (super(IpWithPort, self).__str__(), self.port)
+        return "%s:%d" % (super().__str__(), self.port)
 
     def __eq__(self, other):
         if isinstance(other, IpWithPort):
@@ -1221,7 +1210,7 @@ def parse_time(value):
     if isinstance(value, struct_time):
         return value
 
-    if isinstance(value, (int, long)):
+    if isinstance(value, int):
         return gmtime(value)
 
     if isinstance(value, (datetime, date)):
@@ -1298,7 +1287,7 @@ allEnums = {}
 class MetaEnum(MetaParamValue):
     def __new__(mcls, name, bases, dict):
 
-        cls = super(MetaEnum, mcls).__new__(mcls, name, bases, dict)
+        cls = super().__new__(mcls, name, bases, dict)
         allEnums[name] = cls
         return cls
 
@@ -1325,9 +1314,9 @@ class MetaEnum(MetaParamValue):
         if cls.is_class:
             cls.cxx_type = '%s' % name
         else:
-            cls.cxx_type = 'Enums::%s' % name
+            cls.cxx_type = 'enums::%s' % name
 
-        super(MetaEnum, cls).__init__(name, bases, init_dict)
+        super().__init__(name, bases, init_dict)
 
     # Generate C++ class declaration for this enum type.
     # Note that we wrap the enum in a class/struct to act as a namespace,
@@ -1342,15 +1331,19 @@ class MetaEnum(MetaParamValue):
 #ifndef $idem_macro
 #define $idem_macro
 
+namespace gem5
+{
 ''')
         if cls.is_class:
             code('''\
-enum class $name {
+enum class $name
+{
 ''')
         else:
             code('''\
 $wrapper $wrapper_name {
-    enum $name {
+    enum $name
+    {
 ''')
             code.indent(1)
         code.indent(1)
@@ -1371,7 +1364,10 @@ extern const char *${name}Strings[static_cast<int>(${name}::Num_${name})];
 
         if not cls.is_class:
             code.dedent(1)
-            code('};')
+            code('}; // $wrapper_name')
+
+        code()
+        code('} // namespace gem5')
 
         code()
         code('#endif // $idem_macro')
@@ -1381,7 +1377,14 @@ extern const char *${name}Strings[static_cast<int>(${name}::Num_${name})];
         file_name = cls.__name__
         name = cls.__name__ if cls.enum_name is None else cls.enum_name
 
+        code('#include "base/compiler.hh"')
         code('#include "enums/$file_name.hh"')
+
+        code()
+        code('namespace gem5')
+        code('{')
+        code()
+
         if cls.wrapper_is_struct:
             code('const char *${wrapper_name}::${name}Strings'
                 '[Num_${name}] =')
@@ -1391,7 +1394,9 @@ extern const char *${name}Strings[static_cast<int>(${name}::Num_${name})];
 const char *${name}Strings[static_cast<int>(${name}::Num_${name})] =
 ''')
             else:
-                code('namespace Enums {')
+                code('''GEM5_DEPRECATED_NAMESPACE(Enums, enums);
+namespace enums
+{''')
                 code.indent(1)
                 code('const char *${name}Strings[Num_${name}] =')
 
@@ -1404,7 +1409,9 @@ const char *${name}Strings[static_cast<int>(${name}::Num_${name})] =
 
         if not cls.wrapper_is_struct and not cls.is_class:
             code.dedent(1)
-            code('} // namespace $wrapper_name')
+            code('} // namespace enums')
+
+        code('} // namespace gem5')
 
 
     def pybind_def(cls, code):
@@ -1419,10 +1426,13 @@ const char *${name}Strings[static_cast<int>(${name}::Num_${name})] =
 
 namespace py = pybind11;
 
-static void
-module_init(py::module &m_internal)
+namespace gem5
 {
-    py::module m = m_internal.def_submodule("enum_${name}");
+
+static void
+module_init(py::module_ &m_internal)
+{
+    py::module_ m = m_internal.def_submodule("enum_${name}");
 
 ''')
         if cls.is_class:
@@ -1444,16 +1454,17 @@ module_init(py::module &m_internal)
         code.dedent()
         code()
         code('static EmbeddedPyBind embed_enum("enum_${name}", module_init);')
+        code()
+        code('} // namespace gem5')
 
 
 # Base class for enum types.
-@add_metaclass(MetaEnum)
-class Enum(ParamValue):
+class Enum(ParamValue, metaclass=MetaEnum):
     vals = []
     cmd_line_settable = True
 
     # The name of the wrapping namespace or struct
-    wrapper_name = 'Enums'
+    wrapper_name = 'enums'
 
     # If true, the enum is wrapped in a struct rather than a namespace
     wrapper_is_struct = False
@@ -1484,7 +1495,7 @@ class Enum(ParamValue):
             code('} else if (%s == "%s") {' % (src, elem_name))
             code.indent()
             name = cls.__name__ if cls.enum_name is None else cls.enum_name
-            code('%s = %s::%s;' % (dest, name if cls.is_class else 'Enums',
+            code('%s = %s::%s;' % (dest, name if cls.is_class else 'enums',
                                    elem_name))
             code('%s true;' % ret)
             code.dedent()
@@ -1501,7 +1512,6 @@ class Enum(ParamValue):
         return self.value
 
 # This param will generate a scoped c++ enum and its python bindings.
-@add_metaclass(MetaEnum)
 class ScopedEnum(Enum):
     vals = []
     cmd_line_settable = True
@@ -1517,6 +1527,14 @@ class ScopedEnum(Enum):
 
     # If not None, use this as the enum name rather than this class name
     enum_name = None
+
+class ByteOrder(ScopedEnum):
+    """Enum representing component's byte order (endianness)"""
+
+    vals = [
+        'big',
+        'little',
+    ]
 
 # how big does a rounding error need to be before we warn about it?
 frequency_tolerance = 0.001  # 0.1%
@@ -1535,7 +1553,7 @@ class TickParamValue(NumericParamValue):
         return value
 
     def getValue(self):
-        return long(self.value)
+        return int(self.value)
 
     @classmethod
     def cxx_ini_predecls(cls, code):
@@ -1580,7 +1598,7 @@ class Latency(TickParamValue):
             value = self.value
         else:
             value = ticks.fromSeconds(self.value)
-        return long(value)
+        return int(value)
 
     def config_value(self):
         return self.getValue()
@@ -1623,7 +1641,7 @@ class Frequency(TickParamValue):
             value = self.value
         else:
             value = ticks.fromSeconds(1.0 / self.value)
-        return long(value)
+        return int(value)
 
     def config_value(self):
         return self.getValue()
@@ -1676,33 +1694,73 @@ class Voltage(Float):
 
     def __new__(cls, value):
         value = convert.toVoltage(value)
-        return super(cls, Voltage).__new__(cls, value)
+        return super().__new__(cls, value)
 
     def __init__(self, value):
         value = convert.toVoltage(value)
-        super(Voltage, self).__init__(value)
+        super().__init__(value)
 
 class Current(Float):
     ex_str = "1mA"
 
     def __new__(cls, value):
         value = convert.toCurrent(value)
-        return super(cls, Current).__new__(cls, value)
+        return super().__new__(cls, value)
 
     def __init__(self, value):
         value = convert.toCurrent(value)
-        super(Current, self).__init__(value)
+        super().__init__(value)
 
 class Energy(Float):
     ex_str = "1pJ"
 
     def __new__(cls, value):
         value = convert.toEnergy(value)
-        return super(cls, Energy).__new__(cls, value)
+        return super().__new__(cls, value)
 
     def __init__(self, value):
         value = convert.toEnergy(value)
-        super(Energy, self).__init__(value)
+        super().__init__(value)
+
+class Temperature(ParamValue):
+    cxx_type = 'Temperature'
+    cmd_line_settable = True
+    ex_str = "1C"
+
+    def __init__(self, value):
+        self.value = convert.toTemperature(value)
+
+    def __call__(self, value):
+        self.__init__(value)
+        return value
+
+    def __str__(self):
+        return str(self.value)
+
+    def getValue(self):
+        from _m5.core import Temperature
+        return Temperature.from_kelvin(self.value)
+
+    def config_value(self):
+        return self.value
+
+    @classmethod
+    def cxx_predecls(cls, code):
+        code('#include "base/temperature.hh"')
+
+    @classmethod
+    def cxx_ini_predecls(cls, code):
+        # Assume that base/str.hh will be included anyway
+        # code('#include "base/str.hh"')
+        pass
+
+    @classmethod
+    def cxx_ini_parse(self, code, src, dest, ret):
+        code('double _temp;')
+        code('bool _ret = to_number(%s, _temp);' % src)
+        code('if (_ret)')
+        code('    %s = Temperature(_temp);' % dest)
+        code('%s _ret;' % ret)
 
 class NetworkBandwidth(float,ParamValue):
     cxx_type = 'float'
@@ -1712,7 +1770,7 @@ class NetworkBandwidth(float,ParamValue):
     def __new__(cls, value):
         # convert to bits per second
         val = convert.toNetworkBandwidth(value)
-        return super(cls, NetworkBandwidth).__new__(cls, val)
+        return super().__new__(cls, val)
 
     def __str__(self):
         return str(self.val)
@@ -1745,13 +1803,13 @@ class NetworkBandwidth(float,ParamValue):
 
 class MemoryBandwidth(float,ParamValue):
     cxx_type = 'float'
-    ex_str = "1GB/s"
+    ex_str = "1GiB/s"
     cmd_line_settable = True
 
     def __new__(cls, value):
         # convert to bytes per second
         val = convert.toMemoryBandwidth(value)
-        return super(cls, MemoryBandwidth).__new__(cls, val)
+        return super().__new__(cls, val)
 
     def __call__(self, value):
         val = convert.toMemoryBandwidth(value)
@@ -1789,8 +1847,7 @@ class MemoryBandwidth(float,ParamValue):
 # make_param_value() above that lets these be assigned where a
 # SimObject is required.
 # only one copy of a particular node
-@add_metaclass(Singleton)
-class NullSimObject(object):
+class NullSimObject(object, metaclass=Singleton):
     _name = 'Null'
 
     def __call__(cls):
@@ -2118,18 +2175,17 @@ class Port(object):
     def cxx_decl(self, code):
         code('unsigned int port_${{self.name}}_connection_count;')
 
-Port.compat('GEM5 REQUESTER', 'GEM5 RESPONDER')
+Port.compat('GEM5 REQUESTOR', 'GEM5 RESPONDER')
 
 class RequestPort(Port):
     # RequestPort("description")
     def __init__(self, desc):
-        super(RequestPort, self).__init__(
-                'GEM5 REQUESTER', desc, is_source=True)
+        super().__init__('GEM5 REQUESTOR', desc, is_source=True)
 
 class ResponsePort(Port):
     # ResponsePort("description")
     def __init__(self, desc):
-        super(ResponsePort, self).__init__('GEM5 RESPONDER', desc)
+        super().__init__('GEM5 RESPONDER', desc)
 
 # VectorPort description object.  Like Port, but represents a vector
 # of connections (e.g., as on a XBar).
@@ -2140,13 +2196,12 @@ class VectorPort(Port):
 class VectorRequestPort(VectorPort):
     # VectorRequestPort("description")
     def __init__(self, desc):
-        super(VectorRequestPort, self).__init__(
-                'GEM5 REQUESTER', desc, is_source=True)
+        super().__init__('GEM5 REQUESTOR', desc, is_source=True)
 
 class VectorResponsePort(VectorPort):
     # VectorResponsePort("description")
     def __init__(self, desc):
-        super(VectorResponsePort, self).__init__('GEM5 RESPONDER', desc)
+        super().__init__('GEM5 RESPONDER', desc)
 
 # Old names, maintained for compatibility.
 MasterPort = RequestPort
@@ -2157,10 +2212,73 @@ VectorSlavePort = VectorResponsePort
 # 'Fake' ParamDesc for Port references to assign to the _pdesc slot of
 # proxy objects (via set_param_desc()) so that proxy error messages
 # make sense.
-@add_metaclass(Singleton)
-class PortParamDesc(object):
+class PortParamDesc(object, metaclass=Singleton):
     ptype_str = 'Port'
     ptype = Port
+
+class DeprecatedParam(object):
+    """A special type for deprecated parameter variable names.
+
+    There are times when we need to change the name of parameter, but this
+    breaks the external-facing python API used in configuration files. Using
+    this "type" for a parameter will warn users that they are using the old
+    name, but allow for backwards compatibility.
+
+    Usage example:
+    In the following example, the `time` parameter is changed to `delay`.
+
+    ```
+    class SomeDevice(SimObject):
+        delay = Param.Latency('1ns', 'The time to wait before something')
+        time = DeprecatedParam(delay, '`time` is now called `delay`')
+    ```
+    """
+
+    def __init__(self, new_param, message=''):
+        """new_param: the new parameter variable that users should be using
+        instead of this parameter variable.
+        message: an optional message to print when warning the user
+        """
+        self.message = message
+        self.newParam = new_param
+        # Note: We won't know the string variable names until later in the
+        # SimObject initialization process. Note: we expect that the setters
+        # will be called when the SimObject type (class) is initialized so
+        # these variables should be filled in before the instance of the
+        # SimObject with this parameter is constructed
+        self._oldName = ''
+        self._newName = ''
+
+    @property
+    def oldName(self):
+        assert(self._oldName != '') # should already be set
+        return self._oldName
+
+    @oldName.setter
+    def oldName(self, name):
+        assert(self._oldName == '') # Cannot "re-set" this value
+        self._oldName = name
+
+    @property
+    def newName(self):
+        assert(self._newName != '') # should already be set
+        return self._newName
+
+    @newName.setter
+    def newName(self, name):
+        assert(self._newName == '') # Cannot "re-set" this value
+        self._newName = name
+
+    def printWarning(self, instance_name, simobj_name):
+        """Issue a warning that this variable name should not be used.
+
+        instance_name: str, the name of the instance used in python
+        simobj_name: str, the name of the SimObject type
+        """
+        if not self.message:
+            self.message = "See {} for more information".format(simobj_name)
+        warn('{}.{} is deprecated. {}'.format(
+            instance_name, self._oldName, self.message))
 
 baseEnums = allEnums.copy()
 baseParams = allParams.copy()
@@ -2180,6 +2298,7 @@ __all__ = ['Param', 'VectorParam',
            'IpAddress', 'IpNetmask', 'IpWithPort',
            'MemorySize', 'MemorySize32',
            'Latency', 'Frequency', 'Clock', 'Voltage', 'Current', 'Energy',
+           'Temperature',
            'NetworkBandwidth', 'MemoryBandwidth',
            'AddrRange',
            'MaxAddr', 'MaxTick', 'AllMemory',
@@ -2187,4 +2306,6 @@ __all__ = ['Param', 'VectorParam',
            'NextEthernetAddr', 'NULL',
            'Port', 'RequestPort', 'ResponsePort', 'MasterPort', 'SlavePort',
            'VectorPort', 'VectorRequestPort', 'VectorResponsePort',
-           'VectorMasterPort', 'VectorSlavePort']
+           'VectorMasterPort', 'VectorSlavePort',
+           'DeprecatedParam',
+           ]

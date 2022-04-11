@@ -37,11 +37,22 @@
 
 #include "turnaround_policy_ideal.hh"
 
+#include <cstdint>
+
+#include "base/trace.hh"
 #include "params/QoSTurnaroundPolicyIdeal.hh"
 
-namespace QoS {
+namespace gem5
+{
 
-TurnaroundPolicyIdeal::TurnaroundPolicyIdeal(const Params* p)
+namespace memory
+{
+
+GEM5_DEPRECATED_NAMESPACE(QoS, qos);
+namespace qos
+{
+
+TurnaroundPolicyIdeal::TurnaroundPolicyIdeal(const Params &p)
   : TurnaroundPolicy(p)
 {}
 
@@ -95,10 +106,6 @@ TurnaroundPolicyIdeal::selectBusState()
     return bus_state;
 }
 
-} // namespace QoS
-
-QoS::TurnaroundPolicyIdeal *
-QoSTurnaroundPolicyIdealParams::create()
-{
-    return new QoS::TurnaroundPolicyIdeal(this);
-}
+} // namespace qos
+} // namespace memory
+} // namespace gem5

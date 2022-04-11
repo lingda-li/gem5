@@ -52,7 +52,9 @@
 #include "base/output.hh"
 #include "kern/linux/events.hh"
 #include "params/ArmFsLinux.hh"
-#include "sim/core.hh"
+
+namespace gem5
+{
 
 namespace ArmISA
 {
@@ -84,12 +86,7 @@ class FsLinux : public ArmISA::FsWorkload
 
   public:
     /** Boilerplate params code */
-    typedef ArmFsLinuxParams Params;
-    const Params *
-    params() const
-    {
-        return dynamic_cast<const Params *>(&_params);
-    }
+    PARAMS(ArmFsLinux);
 
     /** When enabled, dump stats/task info on context switches for
      *  Streamline and per-thread cache occupancy studies, etc. */
@@ -105,7 +102,7 @@ class FsLinux : public ArmISA::FsWorkload
      * mappings between taskIds and OS process IDs */
     OutputStream *taskFile = nullptr;
 
-    FsLinux(Params *p);
+    FsLinux(const Params &p);
     ~FsLinux();
 
     void initState() override;
@@ -169,6 +166,6 @@ class DumpStats64 : public DumpStats
 };
 
 } // namespace ArmISA
+} // namespace gem5
 
 #endif // __ARCH_ARM_LINUX_FS_WORKLOAD_HH__
-

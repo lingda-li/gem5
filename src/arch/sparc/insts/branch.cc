@@ -33,6 +33,9 @@
 // Branch instructions
 //
 
+namespace gem5
+{
+
 namespace SparcISA
 {
 
@@ -41,12 +44,12 @@ template class BranchNBits<22>;
 template class BranchNBits<30>;
 
 std::string
-Branch::generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
+Branch::generateDisassembly(Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream response;
 
     printMnemonic(response, mnemonic);
-    printRegArray(response, _srcRegIdx, _numSrcRegs);
+    printRegArray(response, &srcRegIdx(0), _numSrcRegs);
     if (_numDestRegs && _numSrcRegs)
             response << ", ";
     printDestReg(response, 0);
@@ -56,12 +59,12 @@ Branch::generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
 
 std::string
 BranchImm13::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream response;
 
     printMnemonic(response, mnemonic);
-    printRegArray(response, _srcRegIdx, _numSrcRegs);
+    printRegArray(response, &srcRegIdx(0), _numSrcRegs);
     if (_numSrcRegs > 0)
         response << ", ";
     ccprintf(response, "0x%x", imm);
@@ -74,21 +77,20 @@ BranchImm13::generateDisassembly(
 
 std::string
 BranchDisp::generateDisassembly(
-        Addr pc, const Loader::SymbolTable *symtab) const
+        Addr pc, const loader::SymbolTable *symtab) const
 {
     std::stringstream response;
-    std::string symbol;
-    Addr symbol_addr;
 
     Addr target = disp + pc;
 
     printMnemonic(response, mnemonic);
-    ccprintf(response, "0x%x", target);
+    ccprintf(response, "%#x", target);
 
-    if (symtab && symtab->findNearestSymbol(target, symbol, symbol_addr)) {
-        ccprintf(response, " <%s", symbol);
-        if (symbol_addr != target)
-            ccprintf(response, "+%d>", target - symbol_addr);
+    loader::SymbolTable::const_iterator it;
+    if (symtab && (it = symtab->findNearest(target)) != symtab->end()) {
+        ccprintf(response, " <%s", it->name);
+        if (it->address != target)
+            ccprintf(response, "+%d>", target - it->address);
         else
             ccprintf(response, ">");
     }
@@ -96,4 +98,5 @@ BranchDisp::generateDisassembly(
     return response.str();
 }
 
-}
+} // namespace SparcISA
+} // namespace gem5

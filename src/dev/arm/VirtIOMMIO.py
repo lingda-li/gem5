@@ -46,6 +46,7 @@ from m5.objects.VirtIO import VirtIODeviceBase, VirtIODummyDevice
 class MmioVirtIO(BasicPioDevice):
     type = 'MmioVirtIO'
     cxx_header = 'dev/arm/vio_mmio.hh'
+    cxx_class = 'gem5::MmioVirtIO'
 
     pio_size = Param.Addr(4096, "IO range")
     interrupt = Param.ArmInterruptPin("Interrupt to use for this device")
@@ -54,8 +55,6 @@ class MmioVirtIO(BasicPioDevice):
 
     def generateDeviceTree(self, state):
         node = self.generateBasicPioDeviceNode(state, 'virtio', self.pio_addr,
-                                               int(self.pio_size), [
-                                                   int(self.interrupt.num),
-                                               ])
+            int(self.pio_size), [ self.interrupt ])
         node.appendCompatible(["virtio,mmio"])
         yield node

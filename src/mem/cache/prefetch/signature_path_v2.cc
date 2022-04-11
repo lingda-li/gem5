@@ -34,14 +34,19 @@
 #include "mem/cache/prefetch/associative_set_impl.hh"
 #include "params/SignaturePathPrefetcherV2.hh"
 
-namespace Prefetcher {
+namespace gem5
+{
 
-SignaturePathV2::SignaturePathV2(const SignaturePathPrefetcherV2Params *p)
+GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
+namespace prefetch
+{
+
+SignaturePathV2::SignaturePathV2(const SignaturePathPrefetcherV2Params &p)
     : SignaturePath(p),
-      globalHistoryRegister(p->global_history_register_entries,
-                            p->global_history_register_entries,
-                            p->global_history_register_indexing_policy,
-                            p->global_history_register_replacement_policy,
+      globalHistoryRegister(p.global_history_register_entries,
+                            p.global_history_register_entries,
+                            p.global_history_register_indexing_policy,
+                            p.global_history_register_replacement_policy,
                             GlobalHistoryEntry())
 {
 }
@@ -128,10 +133,5 @@ SignaturePathV2::handlePageCrossingLookahead(signature_t signature,
     gh_entry->confidence = path_confidence;
 }
 
-} // namespace Prefetcher
-
-Prefetcher::SignaturePathV2*
-SignaturePathPrefetcherV2Params::create()
-{
-    return new Prefetcher::SignaturePathV2(this);
-}
+} // namespace prefetch
+} // namespace gem5

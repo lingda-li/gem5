@@ -1,8 +1,6 @@
 # Copyright (c) 2015-2018 Advanced Micro Devices, Inc.
 # All rights reserved.
 #
-# For use for simulation and test purposes only
-#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 #
@@ -28,24 +26,17 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Eric Van Tassell
-#          Anthony Gutierrez
 
 from m5.SimObject import SimObject
 from m5.params import *
 from m5.proxy import *
-from m5.objects.Device import DmaDevice
+from m5.objects.Device import DmaVirtDevice
 
-class HSADevice(DmaDevice):
-    type = 'HSADevice'
-    abstract = True
-    cxx_header = "dev/hsa/hsa_device.hh"
-    hsapp = Param.HSAPacketProcessor("PP attached to this device")
-
-class HSAPacketProcessor(DmaDevice):
+class HSAPacketProcessor(DmaVirtDevice):
     type = 'HSAPacketProcessor'
     cxx_header = 'dev/hsa/hsa_packet_processor.hh'
+    cxx_class = 'gem5::HSAPacketProcessor'
+
     pioAddr = Param.Addr("doorbell physical address")
     numHWQueues = Param.Int("Number of HW queues")
     # See:
