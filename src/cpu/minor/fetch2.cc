@@ -94,7 +94,7 @@ Fetch2::Fetch2(const std::string &name,
     }
 }
 
-const ForwardLineData *
+ForwardLineData *
 Fetch2::getInput(ThreadID tid)
 {
     /* Get a line from the inputBuffer to work with */
@@ -270,7 +270,7 @@ Fetch2::evaluate()
 
         thread.blocked = !nextStageReserve[tid].canReserve();
 
-        const ForwardLineData *line_in = getInput(tid);
+        ForwardLineData *line_in = getInput(tid);
 
         while (line_in &&
             thread.expectedStreamSeqNum == line_in->id.streamSeqNum &&
@@ -299,7 +299,7 @@ Fetch2::evaluate()
     if (tid != InvalidThreadID) {
         Fetch2ThreadInfo &fetch_info = fetchInfo[tid];
 
-        const ForwardLineData *line_in = getInput(tid);
+        ForwardLineData *line_in = getInput(tid);
 
         unsigned int output_index = 0;
 
@@ -411,6 +411,16 @@ Fetch2::evaluate()
 
                     set(dyn_inst->pc, fetch_info.pc);
                     DPRINTF(Fetch, "decoder inst %s\n", *dyn_inst);
+
+                    dyn_inst->fetchTick = curTick();
+                    dyn_inst->fetchdepth = line_in->depth;
+                    line_in->depth = -1;
+                    for (int i = 0; i < 4; i++) {
+                      dyn_inst->iwalkDepth[i] = line_in->walkDepth[i];
+                      dyn_inst->iwalkAddr[i] = line_in->walkAddr[i];
+                      line_in->walkDepth[i] = -1;
+                      line_in->walkAddr[i] = 0;
+                    }
 
                     // Collect some basic inst class stats
                     if (decoded_inst->isLoad())

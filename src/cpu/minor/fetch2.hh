@@ -176,7 +176,7 @@ class Fetch2 : public Named
   protected:
     /** Get a piece of data to work on from the inputBuffer, or 0 if there
      *  is no data. */
-    const ForwardLineData *getInput(ThreadID tid);
+    ForwardLineData *getInput(ThreadID tid);
 
     /** Pop an element off the input buffer, if there are any */
     void popInput(ThreadID tid);

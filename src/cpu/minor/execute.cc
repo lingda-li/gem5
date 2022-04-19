@@ -196,6 +196,11 @@ Execute::Execute(const std::string &name_,
             ReportTraitsAdaptor<QueuedInst> >(
             name_ + ".inFUMemInsts" + tid_str, "insts", total_slots);
     }
+
+    // Open file trace.txt in write mode.
+    tptr = fopen("trace.txt", "w");
+    if (tptr == NULL)
+        printf("Could not open trace file.\n");
 }
 
 const ForwardInstData *
@@ -398,6 +403,10 @@ Execute::handleMemResponse(MinorDynInstPtr inst,
             if (response->needsToBeSentToStoreBuffer())
                 lsq.sendStoreToStoreBuffer(response);
         }
+
+        inst->cachedepth = packet->req->getAccessDepth();
+        for (int i = 0; i < 4; i++)
+          inst->dWritebacks[i] = packet->req->writebacks[i];
     } else {
         fatal("There should only ever be reads, "
             "writes or faults at this point\n");
@@ -818,6 +827,8 @@ Execute::issue(ThreadID thread_id)
             thread.inputIndex++;
             DPRINTF(MinorExecute, "Stepping to next inst inputIndex: %d\n",
                 thread.inputIndex);
+
+            inst->issueTick = curTick() - inst->fetchTick;
         }
 
         /* Got to the end of a line */
@@ -887,6 +898,21 @@ Execute::doInstCommitAccounting(MinorDynInstPtr inst)
     cpu.stats.numOps++;
     cpu.stats.committedInstType[inst->id.threadId]
                                [inst->staticInst->opClass()]++;
+
+    inst->commitTick = curTick() - inst->fetchTick;
+    if (inst->triedToPredict) {
+      ThreadContext *threadc = cpu.getContext(inst->id.threadId);
+      const std::unique_ptr<PCStateBase> pc_before(inst->pc->clone());
+      std::unique_ptr<PCStateBase> target(threadc->pcState().clone());
+      bool must_branch = *pc_before != *target;
+      if (!must_branch && inst->predictedTaken)
+        inst->mispred = true;
+      else if (must_branch && !inst->predictedTaken)
+        inst->mispred = true;
+      else if (must_branch && inst->predictedTaken && *target != *inst->predictedTarget)
+        inst->mispred = true;
+    }
+    inst->dumpInst(tptr);
 
     /* Set the CP SeqNum to the numOps commit number */
     if (inst->traceData)

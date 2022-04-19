@@ -206,6 +206,12 @@ class ForwardLineData /* : public ReportIF, public BubbleIF */
     /** Explicit line width, don't rely on data.size */
     unsigned int lineWidth = 0;
 
+    // Last fetch depth.
+    int depth = 0;
+    // Last itlb table walking depth.
+    int walkDepth[4] = {-1, -1, -1, -1};
+    Addr walkAddr[4] = {0, 0, 0, 0};
+
   public:
     /** This line has a fault.  The bubble flag will be false and seqNums
      *  will be valid but no data will */

@@ -237,6 +237,29 @@ class MinorDynInst : public RefCounted
      *  up */
     std::vector<RegId> flatDestRegIdx;
 
+    bool mispred = false;
+
+    /** Tick records. */
+    Tick fetchTick = -1;      // instruction fetch is completed.
+    int32_t decodeTick = -1;  // instruction enters decode phase
+    int32_t renameTick = -1;  // instruction enters rename phase
+    int32_t dispatchTick = -1;
+    int32_t issueTick = -1;
+    int32_t completeTick = -1;
+    int32_t commitTick = -1;
+    int32_t storeTick = -1;
+    Tick out_rob_tick;
+
+    // For instruction tracing.
+    int cachedepth = -1;
+    int fetchdepth = -1;
+    int iwalkDepth[4] = {-1, -1, -1, -1};
+    int dwalkDepth[4] = {-1, -1, -1, -1};
+    Addr iwalkAddr[4] = {0, 0, 0, 0};
+    Addr dwalkAddr[4] = {0, 0, 0, 0};
+    int iWritebacks[4] = {0, 0, 0, 0};
+    int dWritebacks[4] = {0, 0, 0, 0};
+
   public:
     MinorDynInst(StaticInstPtr si, InstId id_=InstId(), Fault fault_=NoFault) :
         staticInst(si), id(id_), fault(fault_), translationFault(NoFault),
@@ -282,6 +305,9 @@ class MinorDynInst : public RefCounted
     bool readMemAccPredicate() const { return memAccPredicate; }
 
     void setMemAccPredicate(bool val) { memAccPredicate = val; }
+
+    // Dump an instruction.
+    void dumpInst(FILE *tptr);
 
     ~MinorDynInst();
 };

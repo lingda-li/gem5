@@ -296,6 +296,14 @@ LSQ::SingleDataRequest::finish(const Fault &fault_, const RequestPtr &request_,
     }
     port.tryToSendToTransfers(this);
 
+    if (depths) {
+      assert(addrs);
+      for (int i = 0; i < 4; i++) {
+        inst->dwalkDepth[i] = depths[i];
+        inst->dwalkAddr[i] = addrs[i];
+      }
+    }
+
     /* Let's try and wake up the processor for the next cycle */
     port.cpu.wakeupOnEvent(Pipeline::ExecuteStageId);
 }
@@ -390,6 +398,14 @@ LSQ::SplitDataRequest::finish(const Fault &fault_, const RequestPtr &request_,
         /* Avoid calling translateTiming from within ::finish */
         assert(!translationEvent.scheduled());
         port.cpu.schedule(translationEvent, curTick());
+    }
+
+    if (depths) {
+      assert(addrs);
+      for (int i = 0; i < 4; i++) {
+        inst->dwalkDepth[i] = depths[i];
+        inst->dwalkAddr[i] = addrs[i];
+      }
     }
 }
 

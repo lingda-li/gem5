@@ -131,6 +131,9 @@ class Execute : public Named
     /** The execution functional units */
     std::vector<FUPipeline *> funcUnits;
 
+    /** Trace file. */
+    FILE *tptr;
+
   public: /* Public for Pipeline to be able to pass it to Decode */
     std::vector<InputBuffer<ForwardInstData>> inputBuffer;
 

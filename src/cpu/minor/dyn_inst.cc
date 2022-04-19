@@ -227,6 +227,55 @@ MinorDynInst::minorTraceInst(const Named &named_object,
     }
 }
 
+void MinorDynInst::dumpInst(FILE *tptr) {
+  fprintf(tptr, "%d ", staticInst->isStore() || staticInst->isStoreConditional() || staticInst->isAtomic());
+  fprintf(tptr, "%lu %d %d", fetchTick, commitTick, commitTick);
+  fprintf(tptr, " %d %d %d %d", decodeTick, decodeTick, issueTick,
+          issueTick);
+  //fprintf(tptr, "0 0 0  ");
+  fprintf(tptr, " %d %lu", storeTick, curTick() - fetchTick);
+  fprintf(tptr, " %d %d %d %d %d %d %d %d ", staticInst->opClass(), staticInst->isMicroop(),
+          staticInst->isCondCtrl(), staticInst->isUncondCtrl(), staticInst->isDirectCtrl(),
+          staticInst->isSquashAfter(), staticInst->isSerializeAfter(),
+          staticInst->isSerializeBefore());
+  fprintf(tptr, "%d %d %d %d %d %d ", staticInst->isAtomic(),
+          staticInst->isStoreConditional(), staticInst->isReadBarrier(),
+          staticInst->isWriteBarrier(), staticInst->isQuiesce(), staticInst->isNonSpeculative());
+
+  fprintf(tptr, " %d %lu %lu %d", traceData->getMemValid(),
+          traceData->getMemValid() ? traceData->getAddr() : 0,
+          traceData->getMemValid() ? traceData->getSize() : 0, cachedepth);
+  for (int i = 1; i < 4; i++)
+    fprintf(tptr, " %d", dwalkDepth[i]);
+  for (int i = 1; i < 4; i++)
+    fprintf(tptr, " %lu", dwalkAddr[i]);
+  assert(dWritebacks[3] == 0);
+  for (int i = 0; i < 3; i++)
+    fprintf(tptr, " %d", dWritebacks[i]);
+
+  fprintf(tptr, "  %lu %d %d %d", this->pc->instAddr(),
+          this->pc->branching(), mispred, fetchdepth);
+  assert(iwalkDepth[0] == -1 && dwalkDepth[0] == -1);
+  for (int i = 1; i < 4; i++)
+    fprintf(tptr, " %d", iwalkDepth[i]);
+  for (int i = 1; i < 4; i++)
+    fprintf(tptr, " %lu", iwalkAddr[i]);
+  assert(iWritebacks[0] == 0 && iWritebacks[3] == 0);
+  for (int i = 1; i < 3; i++)
+    fprintf(tptr, " %d", iWritebacks[i]);
+
+  fprintf(tptr, "  %d %d ", this->staticInst->numSrcRegs(),
+          this->staticInst->numDestRegs());
+  for (int i = 0; i < this->staticInst->numSrcRegs(); i++)
+    fprintf(tptr, " %d %hu", this->staticInst->srcRegIdx(i).classValue(),
+            this->staticInst->srcRegIdx(i).index());
+  fprintf(tptr, " ");
+  for (int i = 0; i < this->staticInst->numDestRegs(); i++)
+    fprintf(tptr, " %d %hu", this->staticInst->destRegIdx(i).classValue(),
+            this->staticInst->destRegIdx(i).index());
+  fprintf(tptr, "\n");
+}
+
 MinorDynInst::~MinorDynInst()
 {
     if (traceData)

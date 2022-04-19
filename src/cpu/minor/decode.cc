@@ -188,6 +188,16 @@ Decode::evaluate()
 
                     output_inst =
                         new MinorDynInst(static_micro_inst, inst->id);
+
+                    // Copy fetch info.
+                    output_inst->fetchTick = inst->fetchTick;
+                    // FIXME: should copy or not?
+                    output_inst->fetchdepth = inst->fetchdepth;
+                    for (int i = 0; i < 4; i++) {
+                      output_inst->iwalkDepth[i] = inst->iwalkDepth[i];
+                      output_inst->iwalkAddr[i] = inst->iwalkAddr[i];
+                    }
+
                     set(output_inst->pc, decode_info.microopPC);
                     output_inst->fault = NoFault;
 
@@ -238,6 +248,7 @@ Decode::evaluate()
 #if TRACING_ON
                 dynInstAddTracing(output_inst, parent_static_inst, cpu);
 #endif
+                output_inst->decodeTick = curTick() - output_inst->fetchTick;
 
                 /* Step to next sequence number */
                 decode_info.execSeqNum++;

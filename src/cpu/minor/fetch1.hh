@@ -226,6 +226,10 @@ class Fetch1 : public Named
     /** Maximum number of fetches allowed in flight (in queues or memory) */
     unsigned int fetchLimit;
 
+    // Last itlb table walking depth.
+    int walkDepth[4] = {-1, -1, -1, -1};
+    Addr walkAddr[4] = {0, 0, 0, 0};
+
   protected:
     /** Cycle-by-cycle state */
 
@@ -370,7 +374,8 @@ class Fetch1 : public Named
     void popAndDiscard(FetchQueue &queue);
 
     /** Handle pushing a TLB response onto the right queue */
-    void handleTLBResponse(FetchRequestPtr response);
+    void handleTLBResponse(FetchRequestPtr response,
+                           int *depths, Addr *addrs);
 
     /** Returns the total number of queue occupancy, in-ITLB and
      *  in-memory system fetches */
