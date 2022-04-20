@@ -191,11 +191,13 @@ Decode::evaluate()
 
                     // Copy fetch info.
                     output_inst->fetchTick = inst->fetchTick;
-                    // FIXME: should copy or not?
-                    output_inst->fetchdepth = inst->fetchdepth;
-                    for (int i = 0; i < 4; i++) {
-                      output_inst->iwalkDepth[i] = inst->iwalkDepth[i];
-                      output_inst->iwalkAddr[i] = inst->iwalkAddr[i];
+                    // Only copy for the first microop.
+                    if (static_micro_inst->isFirstMicroop()) {
+                      output_inst->fetchdepth = inst->fetchdepth;
+                      for (int i = 0; i < 4; i++) {
+                        output_inst->iwalkDepth[i] = inst->iwalkDepth[i];
+                        output_inst->iwalkAddr[i] = inst->iwalkAddr[i];
+                      }
                     }
 
                     set(output_inst->pc, decode_info.microopPC);

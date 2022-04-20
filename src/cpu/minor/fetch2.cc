@@ -196,7 +196,9 @@ Fetch2::predictBranch(MinorDynInstPtr inst, BranchData &branch)
     assert(!inst->predictedTaken);
 
     /* Skip non-control/sys call instructions */
-    if (inst->staticInst->isControl() || inst->staticInst->isSyscall()){
+    //if (inst->staticInst->isControl() || inst->staticInst->isSyscall()){
+    // Not predicting for sys call now.
+    if (inst->staticInst->isControl()) {
         std::unique_ptr<PCStateBase> inst_pc(inst->pc->clone());
 
         /* Tried to predict */

@@ -228,12 +228,17 @@ MinorDynInst::minorTraceInst(const Named &named_object,
 }
 
 void MinorDynInst::dumpInst(FILE *tptr) {
-  fprintf(tptr, "%d ", staticInst->isStore() || staticInst->isStoreConditional() || staticInst->isAtomic());
+  if (staticInst->isStore() || staticInst->isStoreConditional() || staticInst->isAtomic())
+    fprintf(tptr, "0 ");
+  else
+    fprintf(tptr, "-1 ");
   fprintf(tptr, "%lu %d %d", fetchTick, commitTick, commitTick);
   fprintf(tptr, " %d %d %d %d", decodeTick, decodeTick, issueTick,
           issueTick);
-  //fprintf(tptr, "0 0 0  ");
-  fprintf(tptr, " %d %lu", storeTick, curTick() - fetchTick);
+  if (staticInst->isStore() || staticInst->isStoreConditional() || staticInst->isAtomic())
+    fprintf(tptr, " %d %d", commitTick, commitTick);
+  else
+    fprintf(tptr, " 0 0");
   fprintf(tptr, " %d %d %d %d %d %d %d %d ", staticInst->opClass(), staticInst->isMicroop(),
           staticInst->isCondCtrl(), staticInst->isUncondCtrl(), staticInst->isDirectCtrl(),
           staticInst->isSquashAfter(), staticInst->isSerializeAfter(),
@@ -242,9 +247,8 @@ void MinorDynInst::dumpInst(FILE *tptr) {
           staticInst->isStoreConditional(), staticInst->isReadBarrier(),
           staticInst->isWriteBarrier(), staticInst->isQuiesce(), staticInst->isNonSpeculative());
 
-  fprintf(tptr, " %d %lu %lu %d", traceData->getMemValid(),
-          traceData->getMemValid() ? traceData->getAddr() : 0,
-          traceData->getMemValid() ? traceData->getSize() : 0, cachedepth);
+  fprintf(tptr, " %d %lu %lu %d", mem_valid,
+          mem_valid ? addr : 0, mem_valid ? size : 0, cachedepth);
   for (int i = 1; i < 4; i++)
     fprintf(tptr, " %d", dwalkDepth[i]);
   for (int i = 1; i < 4; i++)
@@ -254,7 +258,7 @@ void MinorDynInst::dumpInst(FILE *tptr) {
     fprintf(tptr, " %d", dWritebacks[i]);
 
   fprintf(tptr, "  %lu %d %d %d", this->pc->instAddr(),
-          this->pc->branching(), mispred, fetchdepth);
+          taken, mispred, fetchdepth);
   assert(iwalkDepth[0] == -1 && dwalkDepth[0] == -1);
   for (int i = 1; i < 4; i++)
     fprintf(tptr, " %d", iwalkDepth[i]);

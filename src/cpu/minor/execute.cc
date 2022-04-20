@@ -38,6 +38,7 @@
 #include "cpu/minor/execute.hh"
 
 #include <functional>
+#include <iostream>
 
 #include "cpu/minor/cpu.hh"
 #include "cpu/minor/exec_context.hh"
@@ -281,6 +282,7 @@ Execute::tryToBranch(MinorDynInstPtr inst, Fault fault, BranchData &branch)
                 *inst);
 
             reason = BranchData::CorrectlyPredictedBranch;
+            std::cout << "ha\n";
         } else {
             /* Branch prediction got the wrong target */
             DPRINTF(Branch, "Predicted a branch from 0x%x to 0x%x"
@@ -900,16 +902,17 @@ Execute::doInstCommitAccounting(MinorDynInstPtr inst)
                                [inst->staticInst->opClass()]++;
 
     inst->commitTick = curTick() - inst->fetchTick;
+    ThreadContext *threadc = cpu.getContext(inst->id.threadId);
+    std::unique_ptr<PCStateBase> target(threadc->pcState().clone());
+    bool must_branch = target->branching();
+    inst->taken = must_branch;
     if (inst->triedToPredict) {
-      ThreadContext *threadc = cpu.getContext(inst->id.threadId);
-      const std::unique_ptr<PCStateBase> pc_before(inst->pc->clone());
-      std::unique_ptr<PCStateBase> target(threadc->pcState().clone());
-      bool must_branch = *pc_before != *target;
       if (!must_branch && inst->predictedTaken)
         inst->mispred = true;
       else if (must_branch && !inst->predictedTaken)
         inst->mispred = true;
-      else if (must_branch && inst->predictedTaken && *target != *inst->predictedTarget)
+      else if (must_branch && inst->predictedTaken &&
+               target->npc() != inst->predictedTarget->instAddr())
         inst->mispred = true;
     }
     inst->dumpInst(tptr);

@@ -237,7 +237,12 @@ class MinorDynInst : public RefCounted
      *  up */
     std::vector<RegId> flatDestRegIdx;
 
+    bool taken = false;
     bool mispred = false;
+    bool mem_valid = false;
+    Addr addr; ///< The address that was accessed
+    Addr size; ///< The size of the memory request
+    unsigned flags; ///< The flags that were assigned to the request.
 
     /** Tick records. */
     Tick fetchTick = -1;      // instruction fetch is completed.
@@ -305,6 +310,11 @@ class MinorDynInst : public RefCounted
     bool readMemAccPredicate() const { return memAccPredicate; }
 
     void setMemAccPredicate(bool val) { memAccPredicate = val; }
+
+    void setMem(Addr a, Addr s, unsigned f)
+    {
+        addr = a; size = s; flags = f; mem_valid = true;
+    }
 
     // Dump an instruction.
     void dumpInst(FILE *tptr);
