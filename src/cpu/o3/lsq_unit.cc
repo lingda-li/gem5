@@ -1161,7 +1161,7 @@ LSQUnit::completeStore(typename StoreQueue::iterator store_idx)
 #endif
     if (store_idx == storeQueue.begin()) {
         do {
-            storeQueue.front().instruction()->dumpInst(tptr, true);
+            storeQueue.front().instruction()->dumpInst(tptr, false, true);
             storeQueue.front().clear();
             storeQueue.pop_front();
         } while (storeQueue.front().completed() &&

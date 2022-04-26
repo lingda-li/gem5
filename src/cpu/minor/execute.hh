@@ -279,7 +279,7 @@ class Execute : public Named
 
     /** Do the stats handling and instruction count and PC event events
      *  related to the new instruction/op counts */
-    void doInstCommitAccounting(MinorDynInstPtr inst);
+    void doInstCommitAccounting(MinorDynInstPtr inst, Fault fault);
 
     /** Check all threads for possible interrupts. If interrupt is taken,
      *  returns the tid of the thread.  interrupted is set if any thread

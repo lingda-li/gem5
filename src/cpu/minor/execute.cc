@@ -38,7 +38,6 @@
 #include "cpu/minor/execute.hh"
 
 #include <functional>
-#include <iostream>
 
 #include "cpu/minor/cpu.hh"
 #include "cpu/minor/exec_context.hh"
@@ -282,7 +281,6 @@ Execute::tryToBranch(MinorDynInstPtr inst, Fault fault, BranchData &branch)
                 *inst);
 
             reason = BranchData::CorrectlyPredictedBranch;
-            std::cout << "ha\n";
         } else {
             /* Branch prediction got the wrong target */
             DPRINTF(Branch, "Predicted a branch from 0x%x to 0x%x"
@@ -421,7 +419,7 @@ Execute::handleMemResponse(MinorDynInstPtr inst,
             context.readPredicate() : false));
     }
 
-    doInstCommitAccounting(inst);
+    doInstCommitAccounting(inst, fault);
 
     /* Generate output to account for branches */
     tryToBranch(inst, fault, branch);
@@ -878,7 +876,7 @@ Execute::tryPCEvents(ThreadID thread_id)
 }
 
 void
-Execute::doInstCommitAccounting(MinorDynInstPtr inst)
+Execute::doInstCommitAccounting(MinorDynInstPtr inst, Fault fault)
 {
     assert(!inst->isFault());
 
@@ -915,7 +913,7 @@ Execute::doInstCommitAccounting(MinorDynInstPtr inst)
                target->npc() != inst->predictedTarget->instAddr())
         inst->mispred = true;
     }
-    inst->dumpInst(tptr);
+    inst->dumpInst(tptr, fault != NoFault);
 
     /* Set the CP SeqNum to the numOps commit number */
     if (inst->traceData)
@@ -1034,7 +1032,7 @@ Execute::commitInst(MinorDynInstPtr inst, bool early_memory_issue,
             fault->invoke(thread, inst->staticInst);
         }
 
-        doInstCommitAccounting(inst);
+        doInstCommitAccounting(inst, fault);
         tryToBranch(inst, fault, branch);
     }
 

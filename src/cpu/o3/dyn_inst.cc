@@ -446,7 +446,7 @@ DynInst::initiateMemAMO(Addr addr, unsigned size, Request::Flags flags,
             std::move(amo_op), std::vector<bool>(size, true));
 }
 
-void DynInst::dumpInst(FILE *tptr, bool FromSQ) {
+void DynInst::dumpInst(FILE *tptr, bool isFault, bool FromSQ) {
   assert(FromSQ || this->sqIdx == -1 || this->isAtomic() ||
          this->isStoreConditional() || cachedepth == -1);
   assert(!FromSQ || this->sqIdx != -1);
@@ -459,7 +459,7 @@ void DynInst::dumpInst(FILE *tptr, bool FromSQ) {
   else
     assert(!this->isStore() && !this->isAtomic());
 
-  fprintf(tptr, "%ld ", this->sqIdx);
+  fprintf(tptr, "%d %ld ", isFault, this->sqIdx);
   fprintf(tptr, "%lu %lu %d", fetchTick, this->out_rob_tick - fetchTick,
           commitTick);
   fprintf(tptr, " %d %d %d %d", decodeTick, renameTick, dispatchTick,
@@ -467,7 +467,7 @@ void DynInst::dumpInst(FILE *tptr, bool FromSQ) {
   //fprintf(tptr, "0 0 0  ");
   if (FromSQ)
     fprintf(tptr, " %d %lu", storeTick, curTick() - fetchTick);
-  else if (this->sqIdx != -1) {
+  if (!FromSQ && this->sqIdx != -1 && !isFault) {
     fprintf(tptr, "\n");
     return;
   }

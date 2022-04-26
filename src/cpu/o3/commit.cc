@@ -1295,6 +1295,9 @@ Commit::commitHead(const DynInstPtr &head_inst, unsigned inst_num)
 
         // Generate trap squash event.
         generateTrapEvent(tid, inst_fault);
+
+        head_inst->commitTick = curTick() - head_inst->fetchTick;
+        head_inst->dumpInst(tptr, true);
         return false;
     }
 
@@ -1336,7 +1339,7 @@ Commit::commitHead(const DynInstPtr &head_inst, unsigned inst_num)
     //}
     head_inst->commitTick = curTick() - head_inst->fetchTick;
 #endif
-    head_inst->dumpInst(tptr);
+    head_inst->dumpInst(tptr, false);
 #ifdef PHASE_DUMP
     numPhaseInsts++;
 #endif

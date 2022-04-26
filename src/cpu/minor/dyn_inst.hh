@@ -317,7 +317,7 @@ class MinorDynInst : public RefCounted
     }
 
     // Dump an instruction.
-    void dumpInst(FILE *tptr);
+    void dumpInst(FILE *tptr, bool isFault);
 
     ~MinorDynInst();
 };

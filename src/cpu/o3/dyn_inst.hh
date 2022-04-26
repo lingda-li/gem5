@@ -1045,7 +1045,7 @@ class DynInst : public ExecContext, public RefCounted
     int dWritebacks[4] = {0, 0, 0, 0};
 
     // Dump an instruction.
-    void dumpInst(FILE *tptr, bool FromSQ = false);
+    void dumpInst(FILE *tptr, bool isFault, bool FromSQ = false);
 
     /* Values used by LoadToUse stat */
     Tick firstIssue = -1;

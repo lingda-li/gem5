@@ -227,7 +227,8 @@ MinorDynInst::minorTraceInst(const Named &named_object,
     }
 }
 
-void MinorDynInst::dumpInst(FILE *tptr) {
+void MinorDynInst::dumpInst(FILE *tptr, bool isFault) {
+  fprintf(tptr, "%d ", isFault);
   if (staticInst->isStore() || staticInst->isStoreConditional() || staticInst->isAtomic())
     fprintf(tptr, "0 ");
   else
