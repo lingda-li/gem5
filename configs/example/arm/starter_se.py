@@ -53,6 +53,7 @@ from common.cores.arm import HPI
 from common.cores.arm.O3_ARM_v7a import *
 import common.cores.arm.O3_PostK as PostK
 import common.cores.arm.ex5_big as ex5_big
+import common.cores.arm.ex5_LITTLE as ex5_LITTLE
 
 import devices
 
@@ -77,6 +78,8 @@ cpu_types = {
             devices.L1I, devices.L1D, devices.L2),
     "ex5" : (ObjectList.cpu_list.get("ex5_big"),
             ex5_big.L1I, ex5_big.L1D, ex5_big.L2),
+    "ex5l" : (ObjectList.cpu_list.get("ex5_LITTLE"),
+            ex5_LITTLE.L1I, ex5_LITTLE.L1D, ex5_LITTLE.L2),
     "pk" : (ObjectList.cpu_list.get("O3_ARM_PostK_3"),
             PostK.O3_ARM_PostK_ICache, PostK.O3_ARM_PostK_DCache,
             PostK.O3_ARM_PostK_L2)
