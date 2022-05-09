@@ -56,6 +56,7 @@ import common.cores.arm.ex5_big as ex5_big
 import common.cores.arm.ex5_LITTLE as ex5_LITTLE
 
 import devices
+from cfg_generater import generate_configs
 
 
 
@@ -181,7 +182,14 @@ def get_processes(cmd):
 def create(args):
     ''' Create and configure the system object. '''
 
+    if args.random > 0:
+        args, branchPred = generate_configs(args, args.random - 1)
+
     system = SimpleSeSystem(args)
+
+    if args.random > 0:
+        for i in range(args.num_cores):
+            system.cpu_cluster.cpus[i].branchPred = branchPred()
 
     # Tell components about the expected physical memory ranges. This
     # is, for example, used by the MemConfig helper to determine where
@@ -238,6 +246,8 @@ def main():
     parser.add_argument("--checkpoint-at-end", action="store_true",
                         help="take a checkpoint at end of run")
     parser.add_argument("--restore", type=str, default=None)
+    parser.add_argument("--random", "-r", type=int, default=0,
+                        help="Random number for configurations")
 
     args = parser.parse_args()
 

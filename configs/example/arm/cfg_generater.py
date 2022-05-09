@@ -14,7 +14,7 @@ from common.cores.arm.HPI import HPI_BP
 
 mem_types = [
 "DDR3_1600_8x8",
-"HMC_2500_1x32",
+#"HMC_2500_1x32",
 "DDR3_2133_8x8",
 "DDR4_2400_16x4",
 "DDR4_2400_8x8",
@@ -33,10 +33,9 @@ mem_types = [
 "LPDDR5_6400_1x16_8B_BL32"
 ]
 
-MYCPU = O3CPU
-
 def generate_configs(args, r):
   random.seed(r)
+  args = args
   args.cpu_freq = str(r % 5 + 1) + "GHz"
   # Memory configurations.
   args.mem_type = mem_types[r % len(mem_types)]
@@ -73,7 +72,7 @@ def generate_configs(args, r):
     cache.data_latency = l
     cache.response_latency = l // 2 + 1
     cache.assoc = assoc
-    cache.size = str(assoc) + 'kB'
+    cache.size = str(sets * assoc) + 'kB'
 
     # MSHR etc.
     p = r % 4
@@ -93,44 +92,201 @@ def generate_configs(args, r):
     # 4, 8, 12, 16, 20
     cache.tgts_per_mshr = 4 + 4 * (r % 5)
 
-    # CPU.
-    if r % 5 == 0:
-      # In-order CPU.
-      MYCPU = MinorCPU
-    else:
-      # Out-of-order CPU.
-      MYCPU = O3CPU
-      #MYCPU.fuPool = Param.FUPool(DefaultFUPool(), "Functional Unit pool")
-      num = [1, 2, 4, 6, 8]
-      # Int: 1, 2, 4, 6, 8
-      MYCPU.fuPool.FUList[0].count = num[random.randrange(5)]
-      # IntMultDiv: 1 ~ 4
-      MYCPU.fuPool.FUList[1].count = random.randrange(1, 5)
-      # FP: 1, 2, 4, 6, 8
-      MYCPU.fuPool.FUList[2].count = num[random.randrange(5)]
-      # FPMultDiv: 1 ~ 4
-      MYCPU.fuPool.FUList[3].count = random.randrange(1, 5)
-      if random.randrange(2) == 0:
-        # Read: 1, 2, 4, 6, 8
-        MYCPU.fuPool.FUList[4].count = num[random.randrange(5)]
-        # Write: 1, 2, 3, 4
-        MYCPU.fuPool.FUList[7].count = num[random.randrange(5)]
-        MYCPU.fuPool.FUList[8].count = 0
-      else:
-        MYCPU.fuPool.FUList[4].count = 0
-        MYCPU.fuPool.FUList[7].count = 0
-        # ReadWrite: 1, 2, 4, 6, 8
-        MYCPU.fuPool.FUList[8].count = num[random.randrange(5)]
-      # SIMD: 1, 2, 4, 6, 8
-      MYCPU.fuPool.FUList[5].count = num[random.randrange(5)]
-      # Pred SIMD: 1, 2, 3, 4
-      MYCPU.fuPool.FUList[6].count = random.randrange(1, 5)
-      branchPreds = [O3_ARM_v7a_BP(), O3_ARM_PostK_BP(), O3_ARM_S_BP(),
-        ex5_big_BP(), HPI_BP(), LocalBP(), TournamentBP(), BiModeBP(),
-        TAGE(), LTAGE_TAGE(), TAGE_SC_L_TAGE(), TAGE_SC_L_TAGE_8KB(),
-        LTAGE(), TAGE_SC_L(), MultiperspectivePerceptron(),
-        MultiperspectivePerceptron8KB(), MPP_TAGE()
-      ]
-      MYCPU.branchPred = branchPreds[random.randrange(len(branchPreds))]
+  # CPU.
+  if args.cpu == "minor":
+    # In-order CPU.
+    base_width = random.randrange(1, 4)
+    # 1 ~ 2
+    MinorCPU.fetch1FetchLimit = random.randrange(1, 3)
+    ## 0
+    #MinorCPU.fetch1LineSnapWidth
+    ## 0
+    #MinorCPU.fetch1LineWidth
+    # 1 ~ 3
+    MinorCPU.fetch1ToFetch2ForwardDelay = random.randrange(1, 4)
+    # 1 ~ 2
+    MinorCPU.fetch1ToFetch2BackwardDelay = random.randrange(1, 3)
+    # 1 ~ 3
+    MinorCPU.fetch2InputBufferSize = base_width
+    # 1 ~ 2
+    MinorCPU.fetch2ToDecodeForwardDelay = random.randrange(1, 3)
+    # 1 ~ 3
+    MinorCPU.decodeInputBufferSize = base_width
+    # 1 ~ 3
+    MinorCPU.decodeToExecuteForwardDelay = random.randrange(1, 4)
+    # 1 ~ 3
+    MinorCPU.decodeInputWidth = base_width
+    # 1 ~ 3
+    MinorCPU.executeInputWidth = base_width
+    # 1 ~ 3
+    MinorCPU.executeIssueLimit = base_width
+    # 1 ~ 2
+    MinorCPU.executeMemoryIssueLimit = random.randrange(1, 3)
+    # 1 ~ 3
+    MinorCPU.executeCommitLimit = base_width
+    # 1 ~ 2
+    MinorCPU.executeMemoryCommitLimit = min(random.randrange(1, 3), base_width)
+    # 5 ~ 10
+    MinorCPU.executeInputBufferSize = random.randrange(1, 3) * 5
+    # 1 ~ 4
+    MinorCPU.executeMaxAccessesInMemory = random.randrange(1, 5)
+    # 1 ~ 2
+    MinorCPU.executeLSQMaxStoreBufferStoresPerCycle = random.randrange(1, 3)
+    # 1 ~ 2
+    MinorCPU.executeLSQRequestsQueueSize = MinorCPU.executeMemoryCommitLimit
+    # 1 ~ 4
+    MinorCPU.executeLSQTransfersQueueSize = MinorCPU.executeMaxAccessesInMemory
+    # 4, 8, 12
+    MinorCPU.executeLSQStoreBufferSize = random.randrange(1, 4) * 4
+    # 1 ~ 2
+    MinorCPU.executeBranchDelay = random.randrange(1, 3)
 
-  return args
+    # Functional units.
+    MinorCPU.executeFuncUnits.funcUnits = []
+    # Int: 1 ~ 3
+    for i in range(random.randrange(1, 4)):
+      MinorCPU.executeFuncUnits.funcUnits.append(MinorDefaultIntFU())
+    # IntMult: 1 ~ 2
+    for i in range(random.randrange(1, 3)):
+      MinorCPU.executeFuncUnits.funcUnits.append(MinorDefaultIntMulFU())
+    # IntDiv: 1
+    MinorCPU.executeFuncUnits.funcUnits.append(MinorDefaultIntDivFU())
+    # FP & SIMD: 1 ~ 3
+    for i in range(random.randrange(1, 4)):
+      MinorCPU.executeFuncUnits.funcUnits.append(MinorDefaultFloatSimdFU())
+    # Pred: 1
+    MinorCPU.executeFuncUnits.funcUnits.append(MinorDefaultPredFU())
+    # Mem: 1 ~ 2
+    for i in range(random.randrange(1, 3)):
+      MinorCPU.executeFuncUnits.funcUnits.append(MinorDefaultMemFU())
+    # Misc: 1
+    MinorCPU.executeFuncUnits.funcUnits.append(MinorDefaultMiscFU())
+  elif args.cpu == "o3":
+    # Out-of-order CPU.
+    # Functional units.
+    num = [1, 2, 4, 6, 8]
+    # Int: 1, 2, 4, 6, 8
+    O3CPU.fuPool.FUList[0].count = num[random.randrange(5)]
+    # IntMultDiv: 1 ~ 4
+    O3CPU.fuPool.FUList[1].count = random.randrange(1, 5)
+    # FP: 1, 2, 4, 6, 8
+    O3CPU.fuPool.FUList[2].count = num[random.randrange(5)]
+    # FPMultDiv: 1 ~ 4
+    O3CPU.fuPool.FUList[3].count = random.randrange(1, 5)
+    if random.randrange(2) == 0:
+      # Read: 1, 2, 4, 6, 8
+      O3CPU.fuPool.FUList[4].count = num[random.randrange(5)]
+      # Write: 1, 2, 3, 4
+      O3CPU.fuPool.FUList[7].count = num[random.randrange(5)]
+      O3CPU.fuPool.FUList[8].count = 0
+    else:
+      O3CPU.fuPool.FUList[4].count = 0
+      O3CPU.fuPool.FUList[7].count = 0
+      # ReadWrite: 1, 2, 4, 6, 8
+      O3CPU.fuPool.FUList[8].count = num[random.randrange(5)]
+    # SIMD: 1, 2, 4, 6, 8
+    O3CPU.fuPool.FUList[5].count = num[random.randrange(5)]
+    # Pred SIMD: 1, 2, 3, 4
+    O3CPU.fuPool.FUList[6].count = random.randrange(1, 5)
+
+    # Buffers.
+    #O3CPU.numRobs
+    sizes = [32, 64, 96, 128, 160, 192]
+    base_size = sizes[random.randrange(len(sizes))]
+    # 32, 64, 96, 128, 192, 256
+    O3CPU.numPhysIntRegs = max(min(base_size, sizes[random.randrange(len(sizes))]), 48)
+    # ~ 256
+    O3CPU.numPhysFloatRegs = max(min(base_size, sizes[random.randrange(len(sizes))]), 48)
+    # ~ 256
+    O3CPU.numPhysVecRegs = max(min(base_size, sizes[random.randrange(len(sizes))]), 48)
+    # ~ 32
+    sizes = [18, 24, 28, 32]
+    O3CPU.numPhysVecPredRegs = sizes[random.randrange(len(sizes))]
+    # ~ 256. May not need to set.
+    #O3CPU.numPhysCCRegs
+    # 8 ~ 64
+    sizes = [8, 16, 32, 48, 64]
+    O3CPU.numIQEntries = sizes[random.randrange(len(sizes))]
+    # 32 ~ 192
+    O3CPU.numROBEntries = base_size
+    # 8, 16, 24, 32
+    sizes = [8, 16, 24, 32]
+    O3CPU.LQEntries = sizes[random.randrange(len(sizes))]
+    # ~ 32
+    O3CPU.SQEntries = sizes[random.randrange(len(sizes))]
+    # 16 ~ 32
+    O3CPU.fetchQueueSize = 16 * random.randrange(1, 3)
+    print("Sizes", base_size, O3CPU.numIQEntries, O3CPU.numPhysIntRegs, O3CPU.numPhysFloatRegs, O3CPU.numPhysVecRegs, O3CPU.branchPred)
+
+    # Widths.
+    front_width = random.randrange(1, 9)
+    # 1 ~ 8
+    O3CPU.fetchWidth = front_width
+    # 1 ~ 8
+    O3CPU.decodeWidth = min(front_width + (random.randrange(0, 3) // 2), 8)
+    # 1 ~ 8
+    O3CPU.renameWidth = min(front_width + (random.randrange(0, 3) // 2), 8)
+    back_width = random.randrange(1, 9)
+    # 1 ~ 8
+    O3CPU.dispatchWidth = back_width
+    # 1 ~ 8
+    O3CPU.issueWidth = min(back_width + random.randrange(0, 3), 8)
+    # 1 ~ 8
+    O3CPU.wbWidth = O3CPU.issueWidth
+    # 1 ~ 8
+    O3CPU.commitWidth = min(back_width + random.randrange(0, 3), 8)
+    # 1 ~ 20
+    O3CPU.squashWidth = O3CPU.commitWidth + random.randrange(0, 4) * 4
+
+    # Latencies.
+    back_lat = 1
+    # 1 ~ 2
+    O3CPU.decodeToFetchDelay = back_lat
+    # 1 ~ 2
+    O3CPU.renameToFetchDelay = back_lat
+    # 1 ~ 2
+    O3CPU.iewToFetchDelay = back_lat
+    # 1 ~ 2
+    O3CPU.commitToFetchDelay = back_lat
+    # 1 ~ 2
+    O3CPU.renameToDecodeDelay = back_lat
+    # 1 ~ 2
+    O3CPU.iewToDecodeDelay = back_lat
+    # 1 ~ 2
+    O3CPU.commitToDecodeDelay = back_lat
+    # 1 ~ 3
+    O3CPU.fetchToDecodeDelay = random.randrange(1, 4)
+    # 1 ~ 2
+    O3CPU.iewToRenameDelay = back_lat
+    # 1 ~ 2
+    O3CPU.commitToRenameDelay = back_lat
+    # 1 ~ 3
+    O3CPU.decodeToRenameDelay = random.randrange(1, 4)
+    # 1 ~ 2
+    O3CPU.commitToIEWDelay = back_lat
+    # 1 ~ 3
+    O3CPU.renameToIEWDelay = random.randrange(1, 4)
+    # 1 ~ 2
+    O3CPU.issueToExecuteDelay = random.randrange(1, 3)
+    # 1 ~ 2
+    O3CPU.iewToCommitDelay = random.randrange(1, 3)
+    # 1 ~ 2
+    #O3CPU.renameToROBDelay = random.randrange(1, 3)
+    O3CPU.renameToROBDelay = 1
+    # 10 ~ 30
+    O3CPU.trapLatency = random.randrange(2, 7) * 5
+    # 1 ~ 2
+    O3CPU.fetchTrapLatency = back_lat
+  else:
+    raise RuntimeError("Unsupported CPU type.")
+
+  # Branch prediction.
+  branchPreds = [O3_ARM_v7a_BP, O3_ARM_PostK_BP, O3_ARM_S_BP,
+    ex5_big_BP, HPI_BP, LocalBP, TournamentBP, BiModeBP,
+    TAGE, LTAGE_TAGE, TAGE_SC_L_TAGE, TAGE_SC_L_TAGE_8KB,
+    LTAGE, TAGE_SC_L, MultiperspectivePerceptron,
+    MultiperspectivePerceptron8KB, MPP_TAGE
+  ]
+  branchPred = branchPreds[random.randrange(len(branchPreds))]
+
+  return args, branchPred
