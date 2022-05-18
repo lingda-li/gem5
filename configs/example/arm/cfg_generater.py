@@ -36,9 +36,12 @@ mem_types = [
 def generate_configs(args, r):
   random.seed(r)
   args = args
-  args.cpu_freq = str(r % 5 + 1) + "GHz"
+  #args.cpu_freq = str(r % 5 + 1) + "GHz"
+  freqs = ["1GHz", "2GHz", "2.5GHz", "3.3333GHz", "5GHz"]
+  args.cpu_freq = freqs[r % 5]
   # Memory configurations.
   args.mem_type = mem_types[r % len(mem_types)]
+  print("Mem", args.mem_type)
   if r % 4 == 0:
     args.mem_channels = 1
   elif r % 4 == 1:
@@ -140,6 +143,7 @@ def generate_configs(args, r):
     MinorCPU.executeLSQStoreBufferSize = random.randrange(1, 4) * 4
     # 1 ~ 2
     MinorCPU.executeBranchDelay = random.randrange(1, 3)
+    print("InOrder", base_width)
 
     # Functional units.
     MinorCPU.executeFuncUnits.funcUnits = []
@@ -200,7 +204,7 @@ def generate_configs(args, r):
     # ~ 256
     O3CPU.numPhysVecRegs = max(min(base_size, sizes[random.randrange(len(sizes))]), 48)
     # ~ 32
-    sizes = [18, 24, 28, 32]
+    sizes = [24, 28, 32]
     O3CPU.numPhysVecPredRegs = sizes[random.randrange(len(sizes))]
     # ~ 256. May not need to set.
     #O3CPU.numPhysCCRegs
@@ -216,7 +220,7 @@ def generate_configs(args, r):
     O3CPU.SQEntries = sizes[random.randrange(len(sizes))]
     # 16 ~ 32
     O3CPU.fetchQueueSize = 16 * random.randrange(1, 3)
-    print("Sizes", base_size, O3CPU.numIQEntries, O3CPU.numPhysIntRegs, O3CPU.numPhysFloatRegs, O3CPU.numPhysVecRegs, O3CPU.branchPred)
+    print("O3", base_size, O3CPU.numIQEntries, O3CPU.numPhysIntRegs, O3CPU.numPhysFloatRegs, O3CPU.numPhysVecRegs)
 
     # Widths.
     front_width = random.randrange(1, 9)
@@ -237,6 +241,7 @@ def generate_configs(args, r):
     O3CPU.commitWidth = min(back_width + random.randrange(0, 3), 8)
     # 1 ~ 20
     O3CPU.squashWidth = O3CPU.commitWidth + random.randrange(0, 4) * 4
+    print("Width", front_width, back_width)
 
     # Latencies.
     back_lat = 1
@@ -283,10 +288,11 @@ def generate_configs(args, r):
   # Branch prediction.
   branchPreds = [O3_ARM_v7a_BP, O3_ARM_PostK_BP, O3_ARM_S_BP,
     ex5_big_BP, HPI_BP, LocalBP, TournamentBP, BiModeBP,
-    TAGE, LTAGE_TAGE, TAGE_SC_L_TAGE, TAGE_SC_L_TAGE_8KB,
-    LTAGE, TAGE_SC_L, MultiperspectivePerceptron,
-    MultiperspectivePerceptron8KB, MPP_TAGE
+    TAGE, LTAGE, TAGE_SC_L_64KB, TAGE_SC_L_8KB,
+    MultiperspectivePerceptron8KB, MultiperspectivePerceptron64KB,
+    MultiperspectivePerceptronTAGE64KB, MultiperspectivePerceptronTAGE8KB
   ]
   branchPred = branchPreds[random.randrange(len(branchPreds))]
+  print("branchPred", branchPred)
 
   return args, branchPred

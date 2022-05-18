@@ -79,6 +79,8 @@ Decode::Decode(CPU *_cpu, const O3CPUParams &params)
 
     // @todo: Make into a parameter
     skidBufferMax = (fetchToDecodeDelay + 1) *  params.fetchWidth;
+    // FIXME: temporary fix.
+    skidBufferMax *= 2;
     for (int tid = 0; tid < MaxThreads; tid++) {
         stalls[tid] = {false};
         decodeStatus[tid] = Idle;
