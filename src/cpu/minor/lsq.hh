@@ -489,6 +489,9 @@ class LSQ : public Named
         /** Maximum number of stores that can be issued per cycle */
         const unsigned int storeLimitPerCycle;
 
+        // Current store buffer index.
+        size_t idx = 0;
+
       public:
         /** Queue of store requests on their way to memory */
         std::deque<LSQRequestPtr> slots;
@@ -508,6 +511,9 @@ class LSQ : public Named
 
         /** Delete the given request and free the slot it occupied */
         void deleteRequest(LSQRequestPtr request);
+
+        // Delete completed stores from head.
+        void deleteHeadRequest();
 
         /** Insert a request at the back of the queue */
         void insert(LSQRequestPtr request);
@@ -629,6 +635,9 @@ class LSQ : public Named
 
     /** Address Mask for a cache block (e.g. ~(cache_block_size-1)) */
     Addr cacheBlockMask;
+
+    /** Trace file. */
+    FILE *tptr;
 
   protected:
     /** Try and issue a memory access for a translated request at the

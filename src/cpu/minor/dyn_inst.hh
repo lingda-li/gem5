@@ -237,6 +237,7 @@ class MinorDynInst : public RefCounted
      *  up */
     std::vector<RegId> flatDestRegIdx;
 
+    bool dumped = false;
     bool taken = false;
     bool mispred = false;
     bool mem_valid = false;
@@ -256,6 +257,7 @@ class MinorDynInst : public RefCounted
     Tick out_rob_tick;
 
     // For instruction tracing.
+    ssize_t sqIdx = -1;
     int cachedepth = -1;
     int fetchdepth = -1;
     int iwalkDepth[4] = {-1, -1, -1, -1};
@@ -317,7 +319,7 @@ class MinorDynInst : public RefCounted
     }
 
     // Dump an instruction.
-    void dumpInst(FILE *tptr, bool isFault);
+    void dumpInst(FILE *tptr, bool isFault, bool FromSQ = false);
 
     ~MinorDynInst();
 };

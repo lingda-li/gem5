@@ -346,6 +346,10 @@ Execute::handleMemResponse(MinorDynInstPtr inst,
     bool is_atomic = inst->staticInst->isAtomic();
     bool is_prefetch = inst->staticInst->isDataPrefetch();
 
+    // Give an index for stores that do not go to store buffer.
+    if (is_store)
+      inst->sqIdx = 0;
+
     /* If true, the trace's predicate value will be taken from the exec
      *  context predicate, otherwise, it will be set to false */
     bool use_context_predicate = true;
@@ -392,6 +396,12 @@ Execute::handleMemResponse(MinorDynInstPtr inst,
         fault = inst->staticInst->completeAcc(packet, &context,
             inst->traceData);
 
+        if (!response->needsToBeSentToStoreBuffer()) {
+          inst->cachedepth = packet->req->getAccessDepth();
+          for (int i = 0; i < 4; i++)
+            inst->dWritebacks[i] = packet->req->writebacks[i];
+        }
+
         if (fault != NoFault) {
             /* Invoke fault created by instruction completion */
             DPRINTF(MinorMem, "Fault in memory completeAcc: %s\n",
@@ -403,10 +413,6 @@ Execute::handleMemResponse(MinorDynInstPtr inst,
             if (response->needsToBeSentToStoreBuffer())
                 lsq.sendStoreToStoreBuffer(response);
         }
-
-        inst->cachedepth = packet->req->getAccessDepth();
-        for (int i = 0; i < 4; i++)
-          inst->dWritebacks[i] = packet->req->writebacks[i];
     } else {
         fatal("There should only ever be reads, "
             "writes or faults at this point\n");

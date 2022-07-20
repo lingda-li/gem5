@@ -758,6 +758,18 @@ LSQ::StoreBuffer::deleteRequest(LSQRequestPtr request)
 }
 
 void
+LSQ::StoreBuffer::deleteHeadRequest()
+{
+    while (!slots.empty() &&
+        slots.front()->isComplete() && !slots.front()->isBarrier())
+    {
+        // Retire stores in order.
+        slots.front()->inst->dumpInst(lsq.tptr, false, true);
+        deleteRequest(slots.front());
+    }
+}
+
+void
 LSQ::StoreBuffer::insert(LSQRequestPtr request)
 {
     if (!canInsert()) {
@@ -773,6 +785,11 @@ LSQ::StoreBuffer::insert(LSQRequestPtr request)
         request->setState(LSQRequest::StoreInStoreBuffer);
 
     slots.push_back(request);
+    if (!request->isBarrier() ||
+        request->inst->staticInst->isStoreConditional() ||
+        request->inst->staticInst->isAtomic())
+      idx++;
+    request->inst->sqIdx = idx;
 
     /* Let's try and wake up the processor for the next cycle to step
      *  the store buffer */
@@ -866,20 +883,43 @@ LSQ::StoreBuffer::step()
         numUnissuedAccesses);
 
     if (numUnissuedAccesses != 0 && lsq.state == LSQ::MemoryRunning) {
-        /* Clear all the leading barriers */
+        ///* Clear all the leading barriers */
+        //while (!slots.empty() &&
+        //    slots.front()->isComplete() && slots.front()->isBarrier())
+        //{
+        //    LSQRequestPtr barrier = slots.front();
+
+        //    DPRINTF(MinorMem, "Clearing barrier for inst: %s\n",
+        //        *(barrier->inst));
+
+        //    numUnissuedAccesses--;
+        //    lsq.clearMemBarrier(barrier->inst);
+        //    slots.pop_front();
+
+        //    delete barrier;
+        //}
         while (!slots.empty() &&
-            slots.front()->isComplete() && slots.front()->isBarrier())
+            slots.front()->isComplete())
         {
-            LSQRequestPtr barrier = slots.front();
+            if (slots.front()->isBarrier()) {
+              LSQRequestPtr barrier = slots.front();
 
-            DPRINTF(MinorMem, "Clearing barrier for inst: %s\n",
-                *(barrier->inst));
+              DPRINTF(MinorMem, "Clearing barrier for inst: %s\n",
+                  *(barrier->inst));
+              if (barrier->inst->staticInst->isStoreConditional() ||
+                  barrier->inst->staticInst->isAtomic())
+                barrier->inst->dumpInst(lsq.tptr, false, true);
 
-            numUnissuedAccesses--;
-            lsq.clearMemBarrier(barrier->inst);
-            slots.pop_front();
+              numUnissuedAccesses--;
+              lsq.clearMemBarrier(barrier->inst);
+              slots.pop_front();
 
-            delete barrier;
+              delete barrier;
+            } else {
+              // Retire stores in order.
+              slots.front()->inst->dumpInst(lsq.tptr, false, true);
+              deleteRequest(slots.front());
+            }
         }
 
         auto i = slots.begin();
@@ -908,6 +948,8 @@ LSQ::StoreBuffer::step()
             if (request->isBarrier() && request->isComplete()) {
                 /* Give up at barriers */
                 issued = false;
+            } else if (request->isComplete()) {
+              // Do nothing for finished stores.
             } else if (!(request->state == LSQRequest::StoreBufferIssuing &&
                 request->sentAllPackets()))
             {
@@ -1333,6 +1375,10 @@ LSQ::recvTimingResp(PacketPtr response)
     switch (request->state) {
       case LSQRequest::RequestIssuing:
       case LSQRequest::RequestNeedsRetry:
+        if (request->inst->staticInst->isStore() ||
+            request->inst->staticInst->isAtomic())
+          request->inst->storeTick = curTick() - request->inst->fetchTick;
+
         /* Response to a request from the transfers queue */
         request->retireResponse(response);
 
@@ -1348,8 +1394,15 @@ LSQ::recvTimingResp(PacketPtr response)
         /* Remove completed requests unless they are barriers (which will
          *  need to be removed in order */
         if (request->isComplete()) {
+            request->inst->cachedepth = request->request->getAccessDepth();
+            for (int i = 0; i < 4; i++)
+              request->inst->dWritebacks[i] = request->request->writebacks[i];
+            request->inst->storeTick = curTick() - request->inst->fetchTick;
             if (!request->isBarrier()) {
-                storeBuffer.deleteRequest(request);
+                // Retire finished stores.
+                storeBuffer.deleteHeadRequest();
+                //request->inst->dumpInst(tptr, false, true);
+                //storeBuffer.deleteRequest(request);
             } else {
                 DPRINTF(MinorMem, "Completed transfer for barrier: %s"
                     " leaving the request as it is also a barrier\n",
@@ -1474,6 +1527,11 @@ LSQ::LSQ(std::string name_, std::string dcache_port_name_,
     if ((lineWidth & (lineWidth - 1)) != 0) {
         fatal("%s: lineWidth: %d must be a power of 2\n", name(), lineWidth);
     }
+
+    // Open file sq.trace.txt in write mode.
+    tptr = fopen("sq.trace.txt", "w");
+    if (tptr == NULL)
+        printf("Could not open trace file.\n");
 }
 
 LSQ::~LSQ()
