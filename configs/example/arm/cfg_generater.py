@@ -106,7 +106,8 @@ def generate_configs(args, r):
     ## 0
     #MinorCPU.fetch1LineWidth
     # 1 ~ 3
-    MinorCPU.fetch1ToFetch2ForwardDelay = random.randrange(1, 4)
+    #MinorCPU.fetch1ToFetch2ForwardDelay = random.randrange(1, 4)
+    MinorCPU.fetch1ToFetch2ForwardDelay = 1
     # 1 ~ 2
     MinorCPU.fetch1ToFetch2BackwardDelay = random.randrange(1, 3)
     # 1 ~ 3
