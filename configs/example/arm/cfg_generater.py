@@ -222,6 +222,10 @@ def generate_configs(args, r):
     # 16 ~ 32
     O3CPU.fetchQueueSize = 16 * random.randrange(1, 3)
     print("O3", base_size, O3CPU.numIQEntries, O3CPU.numPhysIntRegs, O3CPU.numPhysFloatRegs, O3CPU.numPhysVecRegs)
+    if r == 55 or r >= 60:
+      O3CPU.forwardComSize = 20
+    elif r == 41 or r == 48 or r == 51 or r >= 54:
+      O3CPU.forwardComSize = 10
 
     # Widths.
     front_width = random.randrange(1, 9)
