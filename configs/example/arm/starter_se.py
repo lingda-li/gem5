@@ -182,6 +182,17 @@ def get_processes(cmd):
 def create(args):
     ''' Create and configure the system object. '''
 
+    if args.l1d_size != "":
+        devices.L1D.size = args.l1d_size
+    if args.l1i_size != "":
+        devices.L1I.size = args.l1i_size
+    if args.l2_size != "":
+        if args.l2_size == "0":
+            cpu_types[args.cpu] = (cpu_types[args.cpu][0],
+                                   cpu_types[args.cpu][1],
+                                   cpu_types[args.cpu][2], None)
+        else:
+            devices.L2.size = args.l2_size
     if args.random > 0:
         args, branchPred = generate_configs(args, args.random - 1)
 
@@ -237,6 +248,9 @@ def main():
     parser.add_argument("--mem-size", action="store", type=str,
                         default="2GB",
                         help="Specify the physical memory size")
+    parser.add_argument("--l1d_size", type=str, default="")
+    parser.add_argument("--l1i_size", type=str, default="")
+    parser.add_argument("--l2_size", type=str, default="")
     parser.add_argument("--maxinsts", type=int, default=0, help="Total " \
                         "number of instructions to simulate")
     parser.add_argument("--simpoint-profile", action="store_true",
