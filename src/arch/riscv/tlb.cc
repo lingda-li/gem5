@@ -404,7 +404,7 @@ TLB::translate(const RequestPtr &req, ThreadContext *tc,
 
 Fault
 TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc,
-                     BaseMMU::Mode mode)
+                     BaseMMU::Mode mode, int *depths, Addr *addrs)
 {
     bool delayed;
     return translate(req, tc, nullptr, mode, delayed);
