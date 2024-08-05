@@ -45,7 +45,7 @@
 #include <cstring>
 #include <utility>
 
-#include "arch/arm/table_walker.hh"
+//#include "arch/arm/table_walker.hh"
 #include "base/logging.hh"
 #include "base/trace.hh"
 #include "debug/DMA.hh"
@@ -98,10 +98,10 @@ DmaPort::handleResp(DmaReqState *state, Addr addr, Addr size, Tick delay,
     // If we have reached the total number of bytes for this DMA request,
     // then signal the completion and delete the sate.
     if (state->totBytes == state->numBytes) {
-        if (gem5::ArmISA::TableWalker *walker_device =
-                dynamic_cast<gem5::ArmISA::TableWalker *>(device))
-          if (pkt)
-            walker_device->LastDepth = pkt->req->getAccessDepth();
+        //if (gem5::ArmISA::TableWalker *walker_device =
+        //        dynamic_cast<gem5::ArmISA::TableWalker *>(device))
+        //  if (pkt)
+        //    walker_device->LastDepth = pkt->req->getAccessDepth();
         assert(pendingCount != 0);
         pendingCount--;
         if (state->completionEvent) {
