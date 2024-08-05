@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2017 Jason Lowe-Power
 # All rights reserved.
 #
@@ -25,14 +24,15 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from m5.objects.ClockedObject import ClockedObject
 from m5.params import *
 from m5.proxy import *
-from m5.objects.ClockedObject import ClockedObject
+
 
 class SimpleCache(ClockedObject):
-    type = 'SimpleCache'
+    type = "SimpleCache"
     cxx_header = "learning_gem5/part2/simple_cache.hh"
-    cxx_class = 'gem5::SimpleCache'
+    cxx_class = "gem5::SimpleCache"
 
     # Vector port example. Both the instruction and data ports connect to this
     # port which is automatically split out into two ports.
@@ -41,6 +41,6 @@ class SimpleCache(ClockedObject):
 
     latency = Param.Cycles(1, "Cycles taken on a hit or to resolve a miss")
 
-    size = Param.MemorySize('16kB', "The size of the cache")
+    size = Param.MemorySize("16kB", "The size of the cache")
 
     system = Param.System(Parent.any, "The system this cache is part of")

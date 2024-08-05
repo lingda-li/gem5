@@ -40,18 +40,18 @@ scons build/X86/gem5.opt
 ```
 """
 
-from gem5.utils.requires import requires
+from gem5.coherence_protocol import CoherenceProtocol
 from gem5.components.boards.x86_board import X86Board
 from gem5.components.memory.single_channel import SingleChannelDDR3_1600
+from gem5.components.processors.cpu_types import CPUTypes
 from gem5.components.processors.simple_switchable_processor import (
     SimpleSwitchableProcessor,
 )
-from gem5.components.processors.cpu_types import CPUTypes
 from gem5.isas import ISA
-from gem5.coherence_protocol import CoherenceProtocol
-from gem5.resources.resource import Resource
-from gem5.simulate.simulator import Simulator
+from gem5.resources.resource import obtain_resource
 from gem5.simulate.exit_event import ExitEvent
+from gem5.simulate.simulator import Simulator
+from gem5.utils.requires import requires
 
 # This runs a check to ensure the gem5 binary is compiled to X86 and to the
 # MESI Two Level coherence protocol.
@@ -61,8 +61,7 @@ requires(
     kvm_required=True,
 )
 
-from gem5.components.cachehierarchies.ruby.\
-    mesi_two_level_cache_hierarchy import (
+from gem5.components.cachehierarchies.ruby.mesi_two_level_cache_hierarchy import (
     MESITwoLevelCacheHierarchy,
 )
 
@@ -89,6 +88,7 @@ memory = SingleChannelDDR3_1600(size="3GB")
 processor = SimpleSwitchableProcessor(
     starting_core_type=CPUTypes.KVM,
     switch_core_type=CPUTypes.TIMING,
+    isa=ISA.X86,
     num_cores=2,
 )
 
@@ -110,20 +110,16 @@ board = X86Board(
 # then, again, call `m5 exit` to terminate the simulation. After simulation
 # has ended you may inspect `m5out/system.pc.com_1.device` to see the echo
 # output.
-command = "m5 exit;" \
-        + "echo 'This is running on Timing CPU cores.';" \
-        + "sleep 1;" \
-        + "m5 exit;"
-
-board.set_kernel_disk_workload(
-    # The x86 linux kernel will be automatically downloaded to the if not
-    # already present.
-    kernel=Resource("x86-linux-kernel-5.4.49"),
-    # The x86 ubuntu image will be automatically downloaded to the if not
-    # already present.
-    disk_image=Resource("x86-ubuntu-18.04-img"),
-    readfile_contents=command,
+command = (
+    "m5 exit;"
+    + "echo 'This is running on Timing CPU cores.';"
+    + "sleep 1;"
+    + "m5 exit;"
 )
+
+workload = obtain_resource("x86-ubuntu-18.04-boot", resource_version="2.0.0")
+workload.set_parameter("readfile_contents", command)
+board.set_workload(workload)
 
 simulator = Simulator(
     board=board,
@@ -132,7 +128,7 @@ simulator = Simulator(
         # exit event. Instead of exiting the simulator, we just want to
         # switch the processor. The 2nd m5 exit after will revert to using
         # default behavior where the simulator run will exit.
-        ExitEvent.EXIT : (func() for func in [processor.switch]),
+        ExitEvent.EXIT: (func() for func in [processor.switch])
     },
 )
 simulator.run()

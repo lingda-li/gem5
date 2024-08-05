@@ -50,7 +50,6 @@ namespace gem5
 
 struct SignaturePathPrefetcherV2Params;
 
-GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
 namespace prefetch
 {
 
@@ -67,7 +66,7 @@ class SignaturePathV2 : public SignaturePath
                                delta(0) {}
     };
     /** Global History Register */
-    AssociativeSet<GlobalHistoryEntry> globalHistoryRegister;
+    AssociativeCache<GlobalHistoryEntry> globalHistoryRegister;
 
     double calculateLookaheadConfidence(PatternEntry const &sig,
             PatternStrideEntry const &lookahead) const override;

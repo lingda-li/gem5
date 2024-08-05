@@ -28,6 +28,6 @@
 
 Import('*')
 
-if 'AtomicSimpleCPU' in env['CPU_MODELS']:
+if env['CONF']['BUILD_ISA']:
     SimObject('SimPoint.py', sim_objects=['SimPoint'])
     Source('simpoint.cc')

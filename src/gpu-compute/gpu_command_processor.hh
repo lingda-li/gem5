@@ -46,6 +46,7 @@
 #include <cstdint>
 #include <functional>
 
+#include "arch/amdgpu/vega/gpu_registers.hh"
 #include "base/logging.hh"
 #include "base/trace.hh"
 #include "base/types.hh"
@@ -57,6 +58,7 @@
 #include "gpu-compute/gpu_compute_driver.hh"
 #include "gpu-compute/hsa_queue_entry.hh"
 #include "params/GPUCommandProcessor.hh"
+#include "sim/full_system.hh"
 
 namespace gem5
 {
@@ -76,7 +78,9 @@ class GPUCommandProcessor : public DmaVirtDevice
     GPUCommandProcessor(const Params &p);
 
     HSAPacketProcessor& hsaPacketProc();
+    RequestorID vramRequestorId();
 
+    void setGPUDevice(AMDGPUDevice *gpu_device);
     void setShader(Shader *shader);
     Shader* shader();
     GPUComputeDriver* driver();
@@ -95,6 +99,8 @@ class GPUCommandProcessor : public DmaVirtDevice
                          Addr host_pkt_addr);
     void attachDriver(GPUComputeDriver *driver);
 
+    void dispatchKernelObject(AMDKernelCode *akc, void *raw_pkt,
+                              uint32_t queue_id, Addr host_pkt_addr);
     void dispatchPkt(HSAQueueEntry *task);
     void signalWakeupEvent(uint32_t event_id);
 
@@ -103,9 +109,17 @@ class GPUCommandProcessor : public DmaVirtDevice
     AddrRangeList getAddrRanges() const override;
     System *system();
 
+    void sendCompletionSignal(Addr signal_handle);
     void updateHsaSignal(Addr signal_handle, uint64_t signal_value,
                          HsaSignalCallbackFunction function =
                             [] (const uint64_t &) { });
+    void updateHsaSignalAsync(Addr signal_handle, int64_t diff);
+    void updateHsaSignalData(Addr value_addr, int64_t diff,
+                             uint64_t *prev_value);
+    void updateHsaSignalDone(uint64_t *signal_value);
+    void updateHsaMailboxData(Addr signal_handle, uint64_t *mailbox_value);
+    void updateHsaEventData(Addr signal_handle, uint64_t *event_value);
+    void updateHsaEventTs(Addr signal_handle, amd_event_t *event_value);
 
     uint64_t functionalReadHsaSignal(Addr signal_handle);
 
@@ -128,12 +142,27 @@ class GPUCommandProcessor : public DmaVirtDevice
     Shader *_shader;
     GPUDispatcher &dispatcher;
     GPUComputeDriver *_driver;
+    AMDGPUDevice *gpuDevice;
+    VegaISA::Walker *walker;
 
     // Typedefing dmaRead and dmaWrite function pointer
     typedef void (DmaDevice::*DmaFnPtr)(Addr, int, Event*, uint8_t*, Tick);
     void initABI(HSAQueueEntry *task);
+    void sanityCheckAKC(AMDKernelCode *akc);
     HSAPacketProcessor *hsaPP;
     TranslationGenPtr translate(Addr vaddr, Addr size) override;
+
+    // Running counter of dispatched tasks
+    int dynamic_task_id = 0;
+
+    // Running counter of dispatched user (non-blit) kernels
+    int non_blit_kernel_id = 0;
+
+    // Skip all user (non-blit) kernels until reaching this kernel
+    int target_non_blit_kernel_id = 0;
+
+    // Keep track of start times for task dispatches.
+    std::unordered_map<Addr, Tick> dispatchStartTime;
 
     /**
      * Perform a DMA read of the read_dispatch_id_field_base_byte_offset
@@ -194,7 +223,7 @@ class GPUCommandProcessor : public DmaVirtDevice
          *  the signal is reset we should check that the runtime was
          *  successful and then proceed to launch the kernel.
          */
-        if (task->privMemPerItem() >
+        if ((task->privMemPerItem() * VegaISA::NumVecElemPerVecReg) >
             task->amdQueue.compute_tmpring_size_wavesize * 1024) {
             // TODO: Raising this signal will potentially nuke scratch
             // space for in-flight kernels that were launched from this
@@ -264,7 +293,15 @@ class GPUCommandProcessor : public DmaVirtDevice
             auto cb = new DmaVirtCallback<uint64_t>(
                 [ = ] (const uint64_t &dma_buffer)
                 { WaitScratchDmaEvent(task, dma_buffer); } );
-            dmaReadVirt(value_addr, sizeof(Addr), cb, &cb->dmaBuffer);
+
+            /**
+             * Delay for a large amount of ticks to give the CPU time to
+             * setup the scratch space. The delay should be non-zero to since
+             * this method calls back itself and can cause an infinite loop
+             * in the event queue if the allocation is not completed by the
+             * first time this is called.
+             */
+            dmaReadVirt(value_addr, sizeof(Addr), cb, &cb->dmaBuffer, 1e9);
         }
     }
 };

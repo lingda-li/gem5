@@ -35,25 +35,29 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from m5.SimObject import SimObject
+from m5.objects.BaseTLB import BaseTLB
 from m5.params import *
 from m5.proxy import *
-from m5.objects.BaseTLB import BaseTLB
+from m5.SimObject import SimObject
+
 
 class ArmLookupLevel(Enum):
-    vals = [ "L0", "L1", "L2", "L3" ]
+    vals = ["L0", "L1", "L2", "L3"]
+
 
 class ArmTLB(BaseTLB):
-    type = 'ArmTLB'
-    cxx_class = 'gem5::ArmISA::TLB'
+    type = "ArmTLB"
+    cxx_class = "gem5::ArmISA::TLB"
     cxx_header = "arch/arm/tlb.hh"
     sys = Param.System(Parent.any, "system object parameter")
     size = Param.Int(64, "TLB size")
     is_stage2 = Param.Bool(False, "Is this a stage 2 TLB?")
 
-    partial_levels = VectorParam.ArmLookupLevel([],
+    partial_levels = VectorParam.ArmLookupLevel(
+        [],
         "List of intermediate lookup levels allowed to be cached in the TLB "
-        "(=holding intermediate PAs obtained during a table walk")
+        "(=holding intermediate PAs obtained during a table walk",
+    )
 
 
 class ArmStage2TLB(ArmTLB):

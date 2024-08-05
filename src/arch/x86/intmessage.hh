@@ -52,7 +52,6 @@ namespace X86ISA
         Bitfield<21> trigger;
     EndBitUnion(TriggerIntMessage)
 
-    GEM5_DEPRECATED_NAMESPACE(DeliveryMode, delivery_mode);
     namespace delivery_mode
     {
         enum IntDeliveryMode
@@ -86,6 +85,17 @@ namespace X86ISA
     {
         Addr addr = x86InterruptAddress(id, TriggerIntOffset);
         return buildIntPacket(addr, message);
+    }
+
+    static inline PacketPtr
+    buildIntAcknowledgePacket()
+    {
+        RequestPtr req = std::make_shared<Request>(
+                PhysAddrIntA, 1, Request::UNCACHEABLE,
+                Request::intRequestorId);
+        PacketPtr pkt = new Packet(req, MemCmd::ReadReq);
+        pkt->allocate();
+        return pkt;
     }
 
 } // namespace X86ISA

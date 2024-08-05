@@ -86,6 +86,9 @@ class MessageBuffer : public SimObject
     // TRUE if head of queue timestamp <= SystemTime
     bool isReady(Tick current_time) const;
 
+    // earliest tick the head of queue will be ready, or MaxTick if empty
+    Tick readyTime() const;
+
     void
     delayHead(Tick current_time, Tick delta)
     {
@@ -120,7 +123,8 @@ class MessageBuffer : public SimObject
 
     const MsgPtr &peekMsgPtr() const { return m_prio_heap.front(); }
 
-    void enqueue(MsgPtr message, Tick curTime, Tick delta);
+    void enqueue(MsgPtr message, Tick curTime, Tick delta,
+                bool bypassStrictFIFO = false);
 
     // Defer enqueueing a message to a later cycle by putting it aside and not
     // enqueueing it in this cycle
@@ -155,6 +159,9 @@ class MessageBuffer : public SimObject
     void setIncomingLink(int link_id) { m_input_link_id = link_id; }
     void setVnet(int net) { m_vnet_id = net; }
 
+    int getIncomingLink() const { return m_input_link_id; }
+    int getVnet() const { return m_vnet_id; }
+
     Port &
     getPort(const std::string &, PortID idx=InvalidPortID) override
     {
@@ -183,6 +190,8 @@ class MessageBuffer : public SimObject
     {
         return functionalAccess(pkt, true, &mask) == 1;
     }
+
+    int routingPriority() const { return m_routing_priority; }
 
   private:
     void reanalyzeList(std::list<MsgPtr> &, Tick);
@@ -240,6 +249,14 @@ class MessageBuffer : public SimObject
      */
     const unsigned int m_max_size;
 
+    /**
+     * When != 0, isReady returns false once m_max_dequeue_rate
+     * messages have been dequeued in the same cycle.
+     */
+    const unsigned int m_max_dequeue_rate;
+
+    unsigned int m_dequeues_this_cy;
+
     Tick m_time_last_time_size_checked;
     unsigned int m_size_last_time_size_checked;
 
@@ -255,18 +272,25 @@ class MessageBuffer : public SimObject
 
     uint64_t m_msg_counter;
     int m_priority_rank;
+
+    bool m_last_message_strict_fifo_bypassed;
+
     const bool m_strict_fifo;
     const MessageRandomization m_randomization;
     const bool m_allow_zero_latency;
+
+    const int m_routing_priority;
 
     int m_input_link_id;
     int m_vnet_id;
 
     // Count the # of times I didn't have N slots available
     statistics::Scalar m_not_avail_count;
+    statistics::Scalar m_msg_count;
     statistics::Average m_buf_msgs;
-    statistics::Average m_stall_time;
+    statistics::Scalar m_stall_time;
     statistics::Scalar m_stall_count;
+    statistics::Formula m_avg_stall_time;
     statistics::Formula m_occupancy;
 };
 

@@ -31,6 +31,7 @@
 
 #include "gpu-compute/fetch_unit.hh"
 
+#include "arch/amdgpu/common/gpu_translation_state.hh"
 #include "arch/amdgpu/common/tlb.hh"
 #include "base/bitfield.hh"
 #include "debug/GPUFetch.hh"
@@ -205,6 +206,15 @@ FetchUnit::initiateFetch(Wavefront *wavefront)
 
         computeUnit.sqcTLBPort.sendFunctional(pkt);
 
+        /**
+         * For full system, if this is a device request we need to set the
+         * requestor ID of the packet to the GPU memory manager so it is routed
+         * through Ruby as a memory request and not a PIO request.
+         */
+        if (!pkt->req->systemReq()) {
+            pkt->req->requestorId(computeUnit.vramRequestorId());
+        }
+
         GpuTranslationState *sender_state =
              safe_cast<GpuTranslationState*>(pkt->senderState);
 
@@ -249,6 +259,15 @@ FetchUnit::fetch(PacketPtr pkt, Wavefront *wavefront)
     }
 
     /**
+     * For full system, if this is a device request we need to set the
+     * requestor ID of the packet to the GPU memory manager so it is routed
+     * through Ruby as a memory request and not a PIO request.
+     */
+    if (!pkt->req->systemReq()) {
+        pkt->req->requestorId(computeUnit.vramRequestorId());
+    }
+
+    /**
      * we should have reserved an entry in the fetch buffer
      * for this cache line. here we get the pointer to the
      * entry used to buffer this request's line data.
@@ -262,7 +281,11 @@ FetchUnit::fetch(PacketPtr pkt, Wavefront *wavefront)
     if (timingSim) {
         // translation is done. Send the appropriate timing memory request.
 
-        if (!computeUnit.sqcPort.sendTimingReq(pkt)) {
+        if (pkt->req->systemReq()) {
+            SystemHubEvent *resp_event = new SystemHubEvent(pkt, this);
+            assert(computeUnit.shader->systemHub);
+            computeUnit.shader->systemHub->sendRequest(pkt, resp_event);
+        } else if (!computeUnit.sqcPort.sendTimingReq(pkt)) {
             computeUnit.sqcPort.retries.push_back(std::make_pair(pkt,
                                                                    wavefront));
 
@@ -297,7 +320,7 @@ FetchUnit::processFetchReturn(PacketPtr pkt)
         assert(!fetchBuf.at(wavefront->wfSlotId).hasFetchDataToProcess());
         wavefront->dropFetch = false;
     } else {
-        fetchBuf.at(wavefront->wfSlotId).fetchDone(pkt->req->getVaddr());
+        fetchBuf.at(wavefront->wfSlotId).fetchDone(pkt);
     }
 
     wavefront->pendingFetch = false;
@@ -446,8 +469,23 @@ FetchUnit::FetchBufDesc::reserveBuf(Addr vaddr)
 }
 
 void
-FetchUnit::FetchBufDesc::fetchDone(Addr vaddr)
+FetchUnit::FetchBufDesc::fetchDone(PacketPtr pkt)
 {
+    // If the return command is MemSyncResp, then it belongs to
+    // an SQC invalidation request. This request calls
+    // incLGKMInstsIssued() function in its execution path.
+    // Since there is no valid memory return response associated with
+    // this instruction, decLGKMInstsIssued() is not executed. Do this
+    // here to decrement the counter and invalidate all buffers
+    if (pkt->cmd == MemCmd::MemSyncResp) {
+        wavefront->decLGKMInstsIssued();
+        flushBuf();
+        restartFromBranch = false;
+        return;
+    }
+
+    Addr vaddr = pkt->req->getVaddr();
+
     assert(bufferedPCs.find(vaddr) == bufferedPCs.end());
     DPRINTF(GPUFetch, "WF[%d][%d]: Id%d done fetching for addr %#x\n",
             wavefront->simdId, wavefront->wfSlotId,
@@ -500,7 +538,7 @@ FetchUnit::FetchBufDesc::checkWaveReleaseBuf()
             wavefront->wfSlotId, wavefront->wfDynId, cur_wave_pc,
             wavefront->pc());
 
-#ifdef DEBUG
+#ifdef GEM5_DEBUG
     int idx = 0;
     for (const auto &buf_pc : bufferedPCs) {
         DPRINTF(GPUFetch, "PC[%d] = %#x\n", idx, buf_pc.first);
@@ -640,6 +678,13 @@ FetchUnit::FetchBufDesc::fetchBytesRemaining() const
 
     assert(bytes_remaining <= bufferedBytes());
     return bytes_remaining;
+}
+
+void
+FetchUnit::SystemHubEvent::process()
+{
+    reqPkt->makeResponse();
+    fetchUnit->computeUnit.handleSQCReturn(reqPkt);
 }
 
 } // namespace gem5

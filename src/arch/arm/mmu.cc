@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013, 2016-2021 Arm Limited
+ * Copyright (c) 2010-2013, 2016-2024 Arm Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -41,6 +41,7 @@
 #include "arch/arm/mmu.hh"
 
 #include "arch/arm/isa.hh"
+#include "arch/arm/mpam.hh"
 #include "arch/arm/reg_abi.hh"
 #include "arch/arm/stage2_lookup.hh"
 #include "arch/arm/table_walker.hh"
@@ -178,11 +179,9 @@ MMU::translateFunctional(ThreadContext *tc, Addr va, Addr &pa)
     lookup_data.asn = state.asid;
     lookup_data.ignoreAsn = false;
     lookup_data.vmid = state.vmid;
-    lookup_data.hyp = state.isHyp;
     lookup_data.secure = state.isSecure;
     lookup_data.functional = true;
-    lookup_data.targetEL = state.aarch64 ? state.aarch64EL : EL1;
-    lookup_data.inHost = false;
+    lookup_data.targetRegime = state.currRegime;
     lookup_data.mode = BaseMMU::Read;
 
     TlbEntry *e = tlb->multiLookup(lookup_data);
@@ -197,6 +196,30 @@ void
 MMU::invalidateMiscReg()
 {
     s1State.miscRegValid = false;
+    s1State.computeAddrTop.flush();
+    s2State.computeAddrTop.flush();
+}
+
+Fault
+MMU::testAndFinalize(const RequestPtr &req,
+                     ThreadContext *tc, Mode mode,
+                     TlbEntry* te, CachedState &state) const
+{
+    // If we don't have a valid tlb entry it means virtual memory
+    // is not enabled
+    auto domain = te ? te-> domain : TlbEntry::DomainType::NoAccess;
+
+    mpam::tagRequest(tc, req, mode == Execute);
+
+    // Check for a tester generated address fault
+    Fault fault = testTranslation(req, mode, domain, state);
+    if (fault != NoFault) {
+        return fault;
+    } else {
+        // Now that we checked no fault has been generated in the
+        // translation process, we can finalize the physical address
+        return finalizePhysical(req, tc, mode);
+    }
 }
 
 Fault
@@ -237,11 +260,12 @@ MMU::translateSe(const RequestPtr &req, ThreadContext *tc, Mode mode,
     updateMiscReg(tc, NormalTran, state.isStage2);
     Addr vaddr_tainted = req->getVaddr();
     Addr vaddr = 0;
-    if (state.aarch64)
-        vaddr = purifyTaggedAddr(vaddr_tainted, tc, state.aarch64EL,
-                                 (TCR)state.ttbcr, mode==Execute);
-    else
+    if (state.aarch64) {
+        vaddr = purifyTaggedAddr(vaddr_tainted, tc, state.exceptionLevel,
+            static_cast<TCR>(state.ttbcr), mode==Execute, state);
+    } else {
         vaddr = vaddr_tainted;
+    }
     Request::Flags flags = req->getFlags();
 
     bool is_fetch = (mode == Execute);
@@ -260,14 +284,17 @@ MMU::translateSe(const RequestPtr &req, ThreadContext *tc, Mode mode,
         }
     }
 
-    Addr paddr;
     Process *p = tc->getProcessPtr();
-
-    if (!p->pTable->translate(vaddr, paddr))
+    if (const auto pte = p->pTable->lookup(vaddr); !pte) {
         return std::make_shared<GenericPageTableFault>(vaddr_tainted);
-    req->setPaddr(paddr);
+    } else {
+        req->setPaddr(pte->paddr + p->pTable->pageOffset(vaddr));
 
-    return finalizePhysical(req, tc, mode);
+        if (pte->flags & EmulationPageTable::Uncacheable)
+            req->setFlags(Request::UNCACHEABLE);
+
+        return finalizePhysical(req, tc, mode);
+    }
 }
 
 Fault
@@ -474,13 +501,13 @@ MMU::checkPermissions64(TlbEntry *te, const RequestPtr &req, Mode mode,
     // * It is a data cache invalidate (dc ivac) which requires write
     //   permissions to the VA, or
     // * It is executed from EL0
-    if (req->isCacheClean() && state.aarch64EL != EL0 && !state.isStage2) {
+    if (req->isCacheClean() && state.exceptionLevel != EL0 && !state.isStage2) {
         return NoFault;
     }
 
     Addr vaddr_tainted = req->getVaddr();
-    Addr vaddr = purifyTaggedAddr(vaddr_tainted, tc, state.aarch64EL,
-        (TCR)state.ttbcr, mode==Execute);
+    Addr vaddr = purifyTaggedAddr(vaddr_tainted, tc, state.exceptionLevel,
+        static_cast<TCR>(state.ttbcr), mode==Execute, state);
 
     Request::Flags flags = req->getFlags();
     bool is_fetch  = (mode == Execute);
@@ -576,7 +603,7 @@ std::pair<bool, bool>
 MMU::s2PermBits64(TlbEntry *te, const RequestPtr &req, Mode mode,
                   ThreadContext *tc, CachedState &state, bool r, bool w, bool x)
 {
-    assert(ArmSystem::haveEL(tc, EL2) && state.aarch64EL != EL2);
+    assert(ArmSystem::haveEL(tc, EL2) && state.exceptionLevel != EL2);
 
     // In stage 2 we use the hypervisor access permission bits.
     // The following permissions are described in ARM DDI 0487A.f
@@ -616,7 +643,7 @@ std::pair<bool, bool>
 MMU::s1PermBits64(TlbEntry *te, const RequestPtr &req, Mode mode,
                   ThreadContext *tc, CachedState &state, bool r, bool w, bool x)
 {
-    bool grant = false, grant_read = true;
+    bool grant = false, grant_read = true, grant_write = true, grant_exec = true;
 
     const uint8_t ap  = te->ap & 0b11;  // 2-bit access protection field
     const bool is_priv = state.isPriv && !(req->getFlags() & UserMode);
@@ -624,11 +651,6 @@ MMU::s1PermBits64(TlbEntry *te, const RequestPtr &req, Mode mode,
     bool wxn = state.sctlr.wxn;
     uint8_t xn =  te->xn;
     uint8_t pxn = te->pxn;
-
-    if (ArmSystem::haveEL(tc, EL3) && state.isSecure &&
-        te->ns && state.scr.sif) {
-        xn = true;
-    }
 
     DPRINTF(TLBVerbose, "Checking S1 permissions: ap:%d, xn:%d, pxn:%d, r:%d, "
                         "w:%d, x:%d, is_priv: %d, wxn: %d\n", ap, xn,
@@ -638,100 +660,78 @@ MMU::s1PermBits64(TlbEntry *te, const RequestPtr &req, Mode mode,
         return std::make_pair(false, false);
     }
 
-    ExceptionLevel regime = !is_priv ? EL0 : state.aarch64EL;
-    switch (regime) {
-      case EL0:
-        {
-            grant_read = ap & 0x1;
-            uint8_t perm = (ap << 2)  | (xn << 1) | pxn;
-            switch (perm) {
-              case 0:
-              case 1:
-              case 8:
-              case 9:
-                grant = x;
-                break;
-              case 4:
-              case 5:
-                grant = r || w || (x && !wxn);
-                break;
-              case 6:
-              case 7:
-                grant = r || w;
-                break;
-              case 12:
-              case 13:
-                grant = r || x;
-                break;
-              case 14:
-              case 15:
-                grant = r;
-                break;
-              default:
-                grant = false;
-            }
+    TranslationRegime regime = !is_priv ? TranslationRegime::EL10 : state.currRegime;
+    if (hasUnprivRegime(regime)) {
+        bool pr = false;
+        bool pw = false;
+        bool ur = false;
+        bool uw = false;
+        // Apply leaf permissions
+        switch (ap) {
+          case 0b00: // Privileged access
+            pr = 1; pw = 1; ur = 0; uw = 0;
+            break;
+          case 0b01: // No effect
+            pr = 1; pw = 1; ur = 1; uw = 1;
+            break;
+          case 0b10: // Read-only, privileged access
+            pr = 1; pw = 0; ur = 0; uw = 0;
+            break;
+          case 0b11: // Read-only
+            pr = 1; pw = 0; ur = 1; uw = 0;
+            break;
         }
-        break;
-      case EL1:
-        {
-            uint8_t perm = (ap << 2)  | (xn << 1) | pxn;
-            switch (perm) {
-              case 0:
-              case 2:
-                grant = r || w || (x && !wxn);
-                break;
-              case 1:
-              case 3:
-              case 4:
-              case 5:
-              case 6:
-              case 7:
-                // regions that are writeable at EL0 should not be
-                // executable at EL1
-                grant = r || w;
-                break;
-              case 8:
-              case 10:
-              case 12:
-              case 14:
-                grant = r || x;
-                break;
-              case 9:
-              case 11:
-              case 13:
-              case 15:
-                grant = r;
-                break;
-              default:
-                grant = false;
-            }
+
+        // Locations writable by unprivileged cannot be executed by privileged
+        const bool px = !(pxn || uw);
+        const bool ux = !xn;
+
+        grant_read = is_priv ? pr : ur;
+        grant_write = is_priv ? pw : uw;
+        grant_exec = is_priv ? px : ux;
+    } else {
+        switch (bits(ap, 1)) {
+          case 0b0: // No effect
+            grant_read = 1; grant_write = 1;
+            break;
+          case 0b1: // Read-Only
+            grant_read = 1; grant_write = 0;
+            break;
         }
-        break;
-      case EL2:
-      case EL3:
-        {
-            uint8_t perm = (ap & 0x2) | xn;
-            switch (perm) {
-              case 0:
-                grant = r || w || (x && !wxn);
-                break;
-              case 1:
-                grant = r || w;
-                break;
-              case 2:
-                grant = r || x;
-                break;
-              case 3:
-                grant = r;
-                break;
-              default:
-                grant = false;
-            }
-        }
-        break;
+        grant_exec = !xn;
+    }
+
+    // Do not allow execution from writable location
+    // if wxn is set
+    grant_exec = grant_exec && !(wxn && grant_write);
+
+    if (ArmSystem::haveEL(tc, EL3) && state.isSecure && te->ns) {
+        grant_exec = grant_exec && !state.scr.sif;
+    }
+
+    if (x) {
+        grant = grant_exec;
+    } else if (req->isAtomic()) {
+        grant = grant_read && grant_write;
+    } else if (w) {
+        grant = grant_write;
+    } else {
+        grant = grant_read;
     }
 
     return std::make_pair(grant, grant_read);
+}
+
+bool
+MMU::hasUnprivRegime(TranslationRegime regime)
+{
+    switch (regime) {
+      case TranslationRegime::EL10:
+      case TranslationRegime::EL20:
+        return true;
+      default:
+        return false;
+    }
 }
 
 bool
@@ -739,7 +739,7 @@ MMU::faultPAN(ThreadContext *tc, uint8_t ap, const RequestPtr &req, Mode mode,
               const bool is_priv, CachedState &state)
 {
     bool exception = false;
-    switch (state.aarch64EL) {
+    switch (state.exceptionLevel) {
       case EL0:
         break;
       case EL1:
@@ -771,8 +771,7 @@ MMU::checkPAN(ThreadContext *tc, uint8_t ap, const RequestPtr &req, Mode mode,
     // gem5)
     // 4) Instructions to be treated as unprivileged, unless
     // HCR_EL2.{E2H, TGE} == {1, 0}
-    const AA64MMFR1 mmfr1 = tc->readMiscReg(MISCREG_ID_AA64MMFR1_EL1);
-    if (mmfr1.pan && state.cpsr.pan && (ap & 0x1) &&
+    if (HaveExt(tc, ArmExtension::FEAT_PAN) && state.cpsr.pan && (ap & 0x1) &&
         mode != BaseMMU::Execute) {
 
         if (req->isCacheMaintenance() &&
@@ -789,6 +788,19 @@ MMU::checkPAN(ThreadContext *tc, uint8_t ap, const RequestPtr &req, Mode mode,
     return false;
 }
 
+Addr
+MMU::purifyTaggedAddr(Addr vaddr_tainted, ThreadContext *tc,
+                      ExceptionLevel el,
+                      TCR tcr, bool is_inst, CachedState& state)
+{
+    const bool selbit = bits(vaddr_tainted, 55);
+
+    // Call the memoized version of computeAddrTop
+    const auto topbit = state.computeAddrTop(tc, selbit, is_inst, tcr, el);
+
+    return maskTaggedAddr(vaddr_tainted, tc, el, topbit);
+}
+
 Fault
 MMU::translateMmuOff(ThreadContext *tc, const RequestPtr &req, Mode mode,
         ArmTranslationType tran_type, Addr vaddr, bool long_desc_format,
@@ -801,7 +813,8 @@ MMU::translateMmuOff(ThreadContext *tc, const RequestPtr &req, Mode mode,
     // security state of the processor
     if (state.isSecure)
         req->setFlags(Request::SECURE);
-
+    else
+        req->clearFlags(Request::SECURE);
     if (state.aarch64) {
         bool selbit = bits(vaddr, 55);
         TCR tcr1 = tc->readMiscReg(MISCREG_TCR_EL1);
@@ -835,12 +848,10 @@ MMU::translateMmuOff(ThreadContext *tc, const RequestPtr &req, Mode mode,
     // Set memory attributes
     TlbEntry temp_te;
     temp_te.ns = !state.isSecure;
-    bool dc = (HaveVirtHostExt(tc)
-               && state.hcr.e2h == 1 && state.hcr.tge == 1) ? 0: state.hcr.dc;
+    bool dc = (HaveExt(tc, ArmExtension::FEAT_VHE) &&
+               state.hcr.e2h == 1 && state.hcr.tge == 1) ? 0: state.hcr.dc;
     bool i_cacheability = state.sctlr.i && !state.sctlr.m;
-    if (state.isStage2 || !dc || state.isSecure ||
-       (state.isHyp && !(tran_type & S1CTran))) {
-
+    if (state.isStage2 || !dc || state.exceptionLevel == EL2) {
         temp_te.mtype      = is_fetch ? TlbEntry::MemoryType::Normal
                                       : TlbEntry::MemoryType::StronglyOrdered;
         temp_te.innerAttrs = i_cacheability? 0x2: 0x0;
@@ -861,7 +872,7 @@ MMU::translateMmuOff(ThreadContext *tc, const RequestPtr &req, Mode mode,
             state.isStage2);
     setAttr(temp_te.attributes);
 
-    return testTranslation(req, mode, TlbEntry::DomainType::NoAccess, state);
+    return testAndFinalize(req, tc, mode, nullptr, state);
 }
 
 Fault
@@ -910,6 +921,8 @@ MMU::translateMmuOn(ThreadContext* tc, const RequestPtr &req, Mode mode,
 
         if (state.isSecure && !te->ns) {
             req->setFlags(Request::SECURE);
+        } else {
+            req->clearFlags(Request::SECURE);
         }
         if (!is_fetch && fault == NoFault &&
             (vaddr & mask(flags & AlignmentMask)) &&
@@ -925,18 +938,11 @@ MMU::translateMmuOn(ThreadContext* tc, const RequestPtr &req, Mode mode,
                     tranMethod);
         }
 
-        // Check for a trickbox generated address fault
         if (fault == NoFault)
-            fault = testTranslation(req, mode, te->domain, state);
+            fault = testAndFinalize(req, tc, mode, te, state);
     }
 
-    if (fault == NoFault) {
-        // Don't try to finalize a physical address unless the
-        // translation has completed (i.e., there is a table entry).
-        return te ? finalizePhysical(req, tc, mode) : NoFault;
-    } else {
-        return fault;
-    }
+    return fault;
 }
 
 Fault
@@ -950,11 +956,12 @@ MMU::translateFs(const RequestPtr &req, ThreadContext *tc, Mode mode,
 
     Addr vaddr_tainted = req->getVaddr();
     Addr vaddr = 0;
-    if (state.aarch64)
-        vaddr = purifyTaggedAddr(vaddr_tainted, tc, state.aarch64EL,
-            (TCR)state.ttbcr, mode==Execute);
-    else
+    if (state.aarch64) {
+        vaddr = purifyTaggedAddr(vaddr_tainted, tc, state.exceptionLevel,
+            static_cast<TCR>(state.ttbcr), mode==Execute, state);
+    } else {
         vaddr = vaddr_tainted;
+    }
     Request::Flags flags = req->getFlags();
 
     bool is_fetch  = (mode == Execute);
@@ -995,7 +1002,8 @@ MMU::translateFs(const RequestPtr &req, ThreadContext *tc, Mode mode,
     }
 
     bool vm = state.hcr.vm;
-    if (HaveVirtHostExt(tc) && state.hcr.e2h == 1 && state.hcr.tge ==1)
+    if (HaveExt(tc, ArmExtension::FEAT_VHE) &&
+        state.hcr.e2h == 1 && state.hcr.tge == 1)
         vm = 0;
     else if (state.hcr.dc == 1)
         vm = 1;
@@ -1231,43 +1239,23 @@ MMU::CachedState::updateMiscReg(ThreadContext *tc,
     ArmTranslationType tran_type)
 {
     cpsr = tc->readMiscReg(MISCREG_CPSR);
+    hcr = tc->readMiscReg(MISCREG_HCR_EL2);
+    scr = tc->readMiscReg(MISCREG_SCR_EL3);
 
     // Dependencies: SCR/SCR_EL3, CPSR
     isSecure = ArmISA::isSecure(tc) &&
         !(tran_type & HypMode) && !(tran_type & S1S2NsTran);
 
-    aarch64EL = tranTypeEL(cpsr, tran_type);
+    exceptionLevel = tranTypeEL(cpsr, scr, tran_type);
+    currRegime = translationRegime(tc, exceptionLevel);
     aarch64 = isStage2 ?
         ELIs64(tc, EL2) :
-        ELIs64(tc, aarch64EL == EL0 ? EL1 : aarch64EL);
+        ELIs64(tc, translationEl(currRegime));
 
-    hcr = tc->readMiscReg(MISCREG_HCR_EL2);
     if (aarch64) {  // AArch64
         // determine EL we need to translate in
-        switch (aarch64EL) {
-          case EL0:
-            if (HaveVirtHostExt(tc) && hcr.tge == 1 && hcr.e2h == 1) {
-                // VHE code for EL2&0 regime
-                sctlr = tc->readMiscReg(MISCREG_SCTLR_EL2);
-                ttbcr = tc->readMiscReg(MISCREG_TCR_EL2);
-                uint64_t ttbr_asid = ttbcr.a1 ?
-                    tc->readMiscReg(MISCREG_TTBR1_EL2) :
-                    tc->readMiscReg(MISCREG_TTBR0_EL2);
-                asid = bits(ttbr_asid,
-                            (mmu->haveLargeAsid64 && ttbcr.as) ? 63 : 55, 48);
-
-            } else {
-                sctlr = tc->readMiscReg(MISCREG_SCTLR_EL1);
-                ttbcr = tc->readMiscReg(MISCREG_TCR_EL1);
-                uint64_t ttbr_asid = ttbcr.a1 ?
-                    tc->readMiscReg(MISCREG_TTBR1_EL1) :
-                    tc->readMiscReg(MISCREG_TTBR0_EL1);
-                asid = bits(ttbr_asid,
-                            (mmu->haveLargeAsid64 && ttbcr.as) ? 63 : 55, 48);
-
-            }
-            break;
-          case EL1:
+        switch (currRegime) {
+          case TranslationRegime::EL10:
             {
                 sctlr = tc->readMiscReg(MISCREG_SCTLR_EL1);
                 ttbcr = tc->readMiscReg(MISCREG_TCR_EL1);
@@ -1278,43 +1266,41 @@ MMU::CachedState::updateMiscReg(ThreadContext *tc,
                             (mmu->haveLargeAsid64 && ttbcr.as) ? 63 : 55, 48);
             }
             break;
-          case EL2:
-            sctlr = tc->readMiscReg(MISCREG_SCTLR_EL2);
-            ttbcr = tc->readMiscReg(MISCREG_TCR_EL2);
-            if (hcr.e2h == 1) {
+          case TranslationRegime::EL20:
+            {
                 // VHE code for EL2&0 regime
+                sctlr = tc->readMiscReg(MISCREG_SCTLR_EL2);
+                ttbcr = tc->readMiscReg(MISCREG_TCR_EL2);
                 uint64_t ttbr_asid = ttbcr.a1 ?
                     tc->readMiscReg(MISCREG_TTBR1_EL2) :
                     tc->readMiscReg(MISCREG_TTBR0_EL2);
                 asid = bits(ttbr_asid,
                             (mmu->haveLargeAsid64 && ttbcr.as) ? 63 : 55, 48);
-            } else {
-                asid = -1;
             }
             break;
-          case EL3:
+          case TranslationRegime::EL2:
+            sctlr = tc->readMiscReg(MISCREG_SCTLR_EL2);
+            ttbcr = tc->readMiscReg(MISCREG_TCR_EL2);
+            asid = -1;
+            break;
+          case TranslationRegime::EL3:
             sctlr = tc->readMiscReg(MISCREG_SCTLR_EL3);
             ttbcr = tc->readMiscReg(MISCREG_TCR_EL3);
             asid = -1;
             break;
         }
 
-        scr = tc->readMiscReg(MISCREG_SCR_EL3);
-        isPriv = aarch64EL != EL0;
+        isPriv = exceptionLevel != EL0;
         if (mmu->release()->has(ArmExtension::VIRTUALIZATION)) {
             vmid = getVMID(tc);
-            isHyp = aarch64EL == EL2;
-            isHyp |= tran_type & HypMode;
-            isHyp &= (tran_type & S1S2NsTran) == 0;
-            isHyp &= (tran_type & S1CTran)    == 0;
             bool vm = hcr.vm;
-            if (HaveVirtHostExt(tc) && hcr.e2h == 1 && hcr.tge ==1) {
+            if (HaveExt(tc, ArmExtension::FEAT_VHE) &&
+                hcr.e2h == 1 && hcr.tge ==1) {
                 vm = 0;
             }
 
-            if (hcr.e2h == 1 && (aarch64EL == EL2
-                                  || (hcr.tge ==1 && aarch64EL == EL0))) {
-                isHyp = true;
+            if (hcr.e2h == 1 && (exceptionLevel == EL2
+                                  || (hcr.tge ==1 && exceptionLevel == EL0))) {
                 directToStage2 = false;
                 stage2Req      = false;
                 stage2DescReq  = false;
@@ -1322,18 +1308,17 @@ MMU::CachedState::updateMiscReg(ThreadContext *tc,
             // Work out if we should skip the first stage of translation and go
             // directly to stage 2. This value is cached so we don't have to
             // compute it for every translation.
-                bool sec = !isSecure || (isSecure && IsSecureEL2Enabled(tc));
+                const bool el2_enabled = EL2Enabled(tc);
                 stage2Req = isStage2 ||
-                            (vm && !isHyp && sec &&
-                             !(tran_type & S1CTran) && (aarch64EL < EL2) &&
-                             !(tran_type & S1E1Tran)); // <--- FIX THIS HACK
-                stage2DescReq = isStage2 ||  (vm && !isHyp && sec &&
-                                (aarch64EL < EL2));
+                    (vm && exceptionLevel < EL2 && el2_enabled &&
+                        !(tran_type & S1CTran) &&
+                        !(tran_type & S1E1Tran)); // <--- FIX THIS HACK
+                stage2DescReq = isStage2 ||
+                    (vm && exceptionLevel < EL2 && el2_enabled);
                 directToStage2 = !isStage2 && stage2Req && !sctlr.m;
             }
         } else {
             vmid           = 0;
-            isHyp          = false;
             directToStage2 = false;
             stage2Req      = false;
             stage2DescReq  = false;
@@ -1343,7 +1328,6 @@ MMU::CachedState::updateMiscReg(ThreadContext *tc,
                                  !isSecure));
         ttbcr  = tc->readMiscReg(snsBankedIndex(MISCREG_TTBCR, tc,
                                  !isSecure));
-        scr    = tc->readMiscReg(MISCREG_SCR);
         isPriv = cpsr.mode != MODE_USER;
         if (longDescFormatInUse(tc)) {
             uint64_t ttbr_asid = tc->readMiscReg(
@@ -1362,29 +1346,25 @@ MMU::CachedState::updateMiscReg(ThreadContext *tc,
                                !isSecure));
         dacr = tc->readMiscReg(snsBankedIndex(MISCREG_DACR, tc,
                                !isSecure));
-        hcr  = tc->readMiscReg(MISCREG_HCR);
 
         if (mmu->release()->has(ArmExtension::VIRTUALIZATION)) {
             vmid   = bits(tc->readMiscReg(MISCREG_VTTBR), 55, 48);
-            isHyp  = cpsr.mode == MODE_HYP;
-            isHyp |=  tran_type & HypMode;
-            isHyp &= (tran_type & S1S2NsTran) == 0;
-            isHyp &= (tran_type & S1CTran)    == 0;
-            if (isHyp) {
+            if (exceptionLevel == EL2) {
                 sctlr = tc->readMiscReg(MISCREG_HSCTLR);
             }
             // Work out if we should skip the first stage of translation and go
             // directly to stage 2. This value is cached so we don't have to
             // compute it for every translation.
-            bool sec = !isSecure || (isSecure && IsSecureEL2Enabled(tc));
-            stage2Req      = hcr.vm && !isStage2 && !isHyp && sec &&
-                             !(tran_type & S1CTran);
-            stage2DescReq  = hcr.vm && !isStage2 && !isHyp && sec;
-            directToStage2 = stage2Req && !sctlr.m;
+            const bool el2_enabled = EL2Enabled(tc);
+            stage2Req = isStage2 ||
+                (hcr.vm && exceptionLevel < EL2 && el2_enabled &&
+                    !(tran_type & S1CTran));
+            stage2DescReq  = isStage2 ||
+                (hcr.vm && exceptionLevel < EL2 && el2_enabled);
+            directToStage2 = !isStage2 && stage2Req && !sctlr.m;
         } else {
             vmid           = 0;
             stage2Req      = false;
-            isHyp          = false;
             directToStage2 = false;
             stage2DescReq  = false;
         }
@@ -1394,7 +1374,7 @@ MMU::CachedState::updateMiscReg(ThreadContext *tc,
 }
 
 ExceptionLevel
-MMU::tranTypeEL(CPSR cpsr, ArmTranslationType type)
+MMU::tranTypeEL(CPSR cpsr, SCR scr, ArmTranslationType type)
 {
     switch (type) {
       case S1E0Tran:
@@ -1403,18 +1383,21 @@ MMU::tranTypeEL(CPSR cpsr, ArmTranslationType type)
 
       case S1E1Tran:
       case S12E1Tran:
+      case S1S2NsTran:
         return EL1;
 
       case S1E2Tran:
+      case HypMode:
         return EL2;
 
       case S1E3Tran:
         return EL3;
 
-      case NormalTran:
       case S1CTran:
-      case S1S2NsTran:
-      case HypMode:
+        return currEL(cpsr) == EL3 && scr.ns == 0 ?
+           EL3 : EL1;
+
+      case NormalTran:
         return currEL(cpsr);
 
       default:
@@ -1433,9 +1416,9 @@ MMU::getTE(TlbEntry **te, const RequestPtr &req, ThreadContext *tc, Mode mode,
 }
 
 TlbEntry*
-MMU::lookup(Addr va, uint16_t asid, vmid_t vmid, bool hyp, bool secure,
-            bool functional, bool ignore_asn, ExceptionLevel target_el,
-            bool in_host, bool stage2, BaseMMU::Mode mode)
+MMU::lookup(Addr va, uint16_t asid, vmid_t vmid, bool secure,
+            bool functional, bool ignore_asn, TranslationRegime regime,
+            bool stage2, BaseMMU::Mode mode)
 {
     TLB *tlb = getTlb(mode, stage2);
 
@@ -1445,11 +1428,9 @@ MMU::lookup(Addr va, uint16_t asid, vmid_t vmid, bool hyp, bool secure,
     lookup_data.asn = asid;
     lookup_data.ignoreAsn = ignore_asn;
     lookup_data.vmid = vmid;
-    lookup_data.hyp = hyp;
     lookup_data.secure = secure;
     lookup_data.functional = functional;
-    lookup_data.targetEL = target_el;
-    lookup_data.inHost = in_host;
+    lookup_data.targetRegime = regime;
     lookup_data.mode = mode;
 
     return tlb->multiLookup(lookup_data);
@@ -1469,16 +1450,17 @@ MMU::getTE(TlbEntry **te, const RequestPtr &req, ThreadContext *tc, Mode mode,
 
     Addr vaddr_tainted = req->getVaddr();
     Addr vaddr = 0;
-    ExceptionLevel target_el = state.aarch64 ? state.aarch64EL : EL1;
+    TranslationRegime regime = state.currRegime;
+
     if (state.aarch64) {
-        vaddr = purifyTaggedAddr(vaddr_tainted, tc, target_el,
-            (TCR)state.ttbcr, mode==Execute);
+        vaddr = purifyTaggedAddr(vaddr_tainted, tc, state.exceptionLevel,
+            static_cast<TCR>(state.ttbcr), mode==Execute, state);
     } else {
         vaddr = vaddr_tainted;
     }
 
-    *te = lookup(vaddr, state.asid, state.vmid, state.isHyp, is_secure, false,
-                 false, target_el, false, state.isStage2, mode);
+    *te = lookup(vaddr, state.asid, state.vmid, is_secure, false,
+                 false, regime, state.isStage2, mode);
 
     if (!isCompleteTranslation(*te)) {
         if (req->isPrefetch()) {
@@ -1498,7 +1480,7 @@ MMU::getTE(TlbEntry **te, const RequestPtr &req, ThreadContext *tc, Mode mode,
 
         Fault fault;
         fault = getTableWalker(mode, state.isStage2)->walk(
-            req, tc, state.asid, state.vmid, state.isHyp, mode,
+            req, tc, state.asid, state.vmid, mode,
             translation, timing, functional, is_secure,
             tran_type, state.stage2DescReq, *te);
 
@@ -1507,8 +1489,8 @@ MMU::getTE(TlbEntry **te, const RequestPtr &req, ThreadContext *tc, Mode mode,
             return fault;
         }
 
-        *te = lookup(vaddr, state.asid, state.vmid, state.isHyp, is_secure,
-                     true, false, target_el, false, state.isStage2, mode);
+        *te = lookup(vaddr, state.asid, state.vmid, is_secure,
+                     true, false, regime, state.isStage2, mode);
         assert(*te);
     }
     return NoFault;
@@ -1617,40 +1599,22 @@ MMU::setTestInterface(SimObject *_ti)
         TlbTestInterface *ti(dynamic_cast<TlbTestInterface *>(_ti));
         fatal_if(!ti, "%s is not a valid ARM TLB tester\n", _ti->name());
         test = ti;
+        itbWalker->setTestInterface(test);
+        dtbWalker->setTestInterface(test);
+        itbStage2Walker->setTestInterface(test);
+        dtbStage2Walker->setTestInterface(test);
     }
 }
 
 Fault
 MMU::testTranslation(const RequestPtr &req, Mode mode,
-                     TlbEntry::DomainType domain, CachedState &state)
+                     TlbEntry::DomainType domain, CachedState &state) const
 {
     if (!test || !req->hasSize() || req->getSize() == 0 ||
         req->isCacheMaintenance()) {
         return NoFault;
     } else {
         return test->translationCheck(req, state.isPriv, mode, domain);
-    }
-}
-
-Fault
-MMU::testWalk(Addr pa, Addr size, Addr va, bool is_secure, Mode mode,
-              TlbEntry::DomainType domain, LookupLevel lookup_level,
-              bool stage2)
-{
-    return testWalk(pa, size, va, is_secure, mode, domain, lookup_level,
-        stage2 ? s2State : s1State);
-}
-
-Fault
-MMU::testWalk(Addr pa, Addr size, Addr va, bool is_secure, Mode mode,
-              TlbEntry::DomainType domain, LookupLevel lookup_level,
-              CachedState &state)
-{
-    if (!test) {
-        return NoFault;
-    } else {
-        return test->walkCheck(pa, size, va, is_secure, state.isPriv, mode,
-                               domain, lookup_level);
     }
 }
 

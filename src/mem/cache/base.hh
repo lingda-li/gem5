@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013, 2015-2016, 2018-2019 ARM Limited
+ * Copyright (c) 2012-2013, 2015-2016, 2018-2019, 2023-2024 Arm Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -59,6 +59,7 @@
 #include "debug/CachePort.hh"
 #include "enums/Clusivity.hh"
 #include "mem/cache/cache_blk.hh"
+#include "mem/cache/cache_probe_arg.hh"
 #include "mem/cache/compressors/base.hh"
 #include "mem/cache/mshr_queue.hh"
 #include "mem/cache/tags/base.hh"
@@ -79,10 +80,13 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
 namespace prefetch
 {
     class Base;
+}
+namespace partitioning_policy
+{
+    class PartitionManager;
 }
 class MSHR;
 class RequestPort;
@@ -116,28 +120,6 @@ class BaseCache : public ClockedObject
         NUM_BLOCKED_CAUSES
     };
 
-    /**
-     * A data contents update is composed of the updated block's address,
-     * the old contents, and the new contents.
-     * @sa ppDataUpdate
-     */
-    struct DataUpdate
-    {
-        /** The updated block's address. */
-        Addr addr;
-        /** Whether the block belongs to the secure address space. */
-        bool isSecure;
-        /** The stale data contents. If zero-sized this update is a fill. */
-        std::vector<uint64_t> oldData;
-        /** The new data contents. If zero-sized this is an invalidation. */
-        std::vector<uint64_t> newData;
-
-        DataUpdate(Addr _addr, bool is_secure)
-          : addr(_addr), isSecure(is_secure), oldData(), newData()
-        {
-        }
-    };
-
   protected:
 
     /**
@@ -166,10 +148,10 @@ class BaseCache : public ClockedObject
 
       protected:
 
-        CacheRequestPort(const std::string &_name, BaseCache *_cache,
+        CacheRequestPort(const std::string &_name,
                         ReqPacketQueue &_reqQueue,
                         SnoopRespPacketQueue &_snoopRespQueue) :
-            QueuedRequestPort(_name, _cache, _reqQueue, _snoopRespQueue)
+            QueuedRequestPort(_name, _reqQueue, _snoopRespQueue)
         { }
 
         /**
@@ -286,8 +268,10 @@ class BaseCache : public ClockedObject
 
       protected:
 
-        CacheResponsePort(const std::string &_name, BaseCache *_cache,
+        CacheResponsePort(const std::string &_name, BaseCache& _cache,
                        const std::string &_label);
+
+        BaseCache& cache;
 
         /** A normal packet queue used to store responses. */
         RespPacketQueue queue;
@@ -310,11 +294,6 @@ class BaseCache : public ClockedObject
      */
     class CpuSidePort : public CacheResponsePort
     {
-      private:
-
-        // a pointer to our specific cache implementation
-        BaseCache *cache;
-
       protected:
         virtual bool recvTimingSnoopResp(PacketPtr pkt) override;
 
@@ -330,7 +309,7 @@ class BaseCache : public ClockedObject
 
       public:
 
-        CpuSidePort(const std::string &_name, BaseCache *_cache,
+        CpuSidePort(const std::string &_name, BaseCache& _cache,
                     const std::string &_label);
 
     };
@@ -339,6 +318,30 @@ class BaseCache : public ClockedObject
     MemSidePort memSidePort;
 
   protected:
+
+    struct CacheAccessorImpl : CacheAccessor
+    {
+        BaseCache &cache;
+
+        CacheAccessorImpl(BaseCache &_cache) :cache(_cache) {}
+
+        bool inCache(Addr addr, bool is_secure) const override
+        { return cache.inCache(addr, is_secure); }
+
+        bool hasBeenPrefetched(Addr addr, bool is_secure) const override
+        { return cache.hasBeenPrefetched(addr, is_secure); }
+
+        bool hasBeenPrefetched(Addr addr, bool is_secure,
+                               RequestorID requestor) const override
+        { return cache.hasBeenPrefetched(addr, is_secure, requestor); }
+
+        bool inMissQueue(Addr addr, bool is_secure) const override
+        { return cache.inMissQueue(addr, is_secure); }
+
+        bool coalesce() const override
+        { return cache.coalesce(); }
+
+    } accessor;
 
     /** Miss status registers */
     MSHRQueue mshrQueue;
@@ -352,24 +355,27 @@ class BaseCache : public ClockedObject
     /** Compression method being used. */
     compression::Base* compressor;
 
+    /** Partitioning manager */
+    partitioning_policy::PartitionManager* partitionManager;
+
     /** Prefetcher */
     prefetch::Base *prefetcher;
 
     /** To probe when a cache hit occurs */
-    ProbePointArg<PacketPtr> *ppHit;
+    ProbePointArg<CacheAccessProbeArg> *ppHit;
 
     /** To probe when a cache miss occurs */
-    ProbePointArg<PacketPtr> *ppMiss;
+    ProbePointArg<CacheAccessProbeArg> *ppMiss;
 
     /** To probe when a cache fill occurs */
-    ProbePointArg<PacketPtr> *ppFill;
+    ProbePointArg<CacheAccessProbeArg> *ppFill;
 
     /**
      * To probe when the contents of a block are updated. Content updates
      * include data fills, overwrites, and invalidations, which means that
      * this probe partially overlaps with other probes.
      */
-    ProbePointArg<DataUpdate> *ppDataUpdate;
+    ProbePointArg<CacheDataUpdateProbeArg> *ppDataUpdate;
 
     /**
      * The writeAllocator drive optimizations for streaming writes.
@@ -1006,12 +1012,12 @@ class BaseCache : public ClockedObject
             @sa Packet::Command */
         statistics::Vector misses;
         /**
-         * Total number of cycles per thread/command spent waiting for a hit.
+         * Total number of ticks per thread/command spent waiting for a hit.
          * Used to calculate the average hit latency.
          */
         statistics::Vector hitLatency;
         /**
-         * Total number of cycles per thread/command spent waiting for a miss.
+         * Total number of ticks per thread/command spent waiting for a miss.
          * Used to calculate the average miss latency.
          */
         statistics::Vector missLatency;
@@ -1027,9 +1033,9 @@ class BaseCache : public ClockedObject
         statistics::Vector mshrMisses;
         /** Number of misses that miss in the MSHRs, per command and thread. */
         statistics::Vector mshrUncacheable;
-        /** Total cycle latency of each MSHR miss, per command and thread. */
+        /** Total tick latency of each MSHR miss, per command and thread. */
         statistics::Vector mshrMissLatency;
-        /** Total cycle latency of each MSHR miss, per command and thread. */
+        /** Total tick latency of each MSHR miss, per command and thread. */
         statistics::Vector mshrUncacheableLatency;
         /** The miss rate in the MSHRs pre command and thread. */
         statistics::Formula mshrMissRate;
@@ -1055,9 +1061,9 @@ class BaseCache : public ClockedObject
         statistics::Formula demandHits;
         /** Number of hit for all accesses. */
         statistics::Formula overallHits;
-        /** Total number of cycles spent waiting for demand hits. */
+        /** Total number of ticks spent waiting for demand hits. */
         statistics::Formula demandHitLatency;
-        /** Total number of cycles spent waiting for all hits. */
+        /** Total number of ticks spent waiting for all hits. */
         statistics::Formula overallHitLatency;
 
         /** Number of misses for demand accesses. */
@@ -1065,9 +1071,9 @@ class BaseCache : public ClockedObject
         /** Number of misses for all accesses. */
         statistics::Formula overallMisses;
 
-        /** Total number of cycles spent waiting for demand misses. */
+        /** Total number of ticks spent waiting for demand misses. */
         statistics::Formula demandMissLatency;
-        /** Total number of cycles spent waiting for all misses. */
+        /** Total number of ticks spent waiting for all misses. */
         statistics::Formula overallMissLatency;
 
         /** The number of demand accesses. */
@@ -1109,12 +1115,12 @@ class BaseCache : public ClockedObject
         /** Total number of misses that miss in the MSHRs. */
         statistics::Formula overallMshrUncacheable;
 
-        /** Total cycle latency of demand MSHR misses. */
+        /** Total tick latency of demand MSHR misses. */
         statistics::Formula demandMshrMissLatency;
-        /** Total cycle latency of overall MSHR misses. */
+        /** Total tick latency of overall MSHR misses. */
         statistics::Formula overallMshrMissLatency;
 
-        /** Total cycle latency of overall MSHR misses. */
+        /** Total tick latency of overall MSHR misses. */
         statistics::Formula overallMshrUncacheableLatency;
 
         /** The demand miss rate in the MSHRs. */
@@ -1282,11 +1288,14 @@ class BaseCache : public ClockedObject
 
     bool hasBeenPrefetched(Addr addr, bool is_secure) const {
         CacheBlk *block = tags->findBlock(addr, is_secure);
-        if (block) {
-            return block->wasPrefetched();
-        } else {
-            return false;
-        }
+        return block && block->wasPrefetched();
+    }
+
+    bool hasBeenPrefetched(Addr addr, bool is_secure,
+                           RequestorID requestor) const {
+        CacheBlk *block = tags->findBlock(addr, is_secure);
+        return block && block->wasPrefetched() &&
+               (block->getSrcRequestorId() == requestor);
     }
 
     bool inMissQueue(Addr addr, bool is_secure) const {

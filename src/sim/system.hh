@@ -51,7 +51,6 @@
 #include "base/loader/memory_image.hh"
 #include "base/loader/symtab.hh"
 #include "base/statistics.hh"
-#include "config/the_isa.hh"
 #include "cpu/pc_event.hh"
 #include "enums/MemoryMode.hh"
 #include "mem/mem_requestor.hh"
@@ -88,8 +87,8 @@ class System : public SimObject, public PCEventScope
         /**
          * Create a system port with a name and an owner.
          */
-        SystemPort(const std::string &_name, SimObject *_owner)
-            : RequestPort(_name, _owner)
+        SystemPort(const std::string &_name)
+            : RequestPort(_name)
         { }
 
         bool
@@ -144,7 +143,7 @@ class System : public SimObject, public PCEventScope
             return threads[id];
         }
 
-        void insert(ThreadContext *tc, ContextID id=InvalidContextID);
+        void insert(ThreadContext *tc);
         void replace(ThreadContext *tc, ContextID id);
 
         friend class System;
@@ -153,19 +152,16 @@ class System : public SimObject, public PCEventScope
         class const_iterator
         {
           private:
-            const Threads &threads;
+            Threads const* threads;
             int pos;
 
             friend class Threads;
 
             const_iterator(const Threads &_threads, int _pos) :
-                threads(_threads), pos(_pos)
+                threads(&_threads), pos(_pos)
             {}
 
           public:
-            const_iterator(const const_iterator &) = default;
-            const_iterator &operator = (const const_iterator &) = default;
-
             using iterator_category = std::forward_iterator_tag;
             using value_type = ThreadContext *;
             using difference_type = int;
@@ -182,16 +178,16 @@ class System : public SimObject, public PCEventScope
             const_iterator
             operator ++ (int)
             {
-                return const_iterator(threads, pos++);
+                return const_iterator(*threads, pos++);
             }
 
-            reference operator * () { return threads.thread(pos).context; }
-            pointer operator -> () { return &threads.thread(pos).context; }
+            reference operator * () { return threads->thread(pos).context; }
+            pointer operator -> () { return &threads->thread(pos).context; }
 
             bool
             operator == (const const_iterator &other) const
             {
-                return &threads == &other.threads && pos == other.pos;
+                return threads == other.threads && pos == other.pos;
             }
 
             bool
@@ -309,7 +305,7 @@ class System : public SimObject, public PCEventScope
     /**
      * Get the cache line size of the system.
      */
-    unsigned int cacheLineSize() const { return _cacheLineSize; }
+    Addr cacheLineSize() const { return _cacheLineSize; }
 
     Threads threads;
 
@@ -334,10 +330,13 @@ class System : public SimObject, public PCEventScope
      * Get a pointer to the Kernel Virtual Machine (KVM) SimObject,
      * if present.
      */
-    KvmVM *getKvmVM() { return kvmVM; }
+    KvmVM *getKvmVM() const { return kvmVM; }
 
-    /** Verify gem5 configuration will support KVM emulation */
-    bool validKvmEnvironment() const;
+    /**
+     * Set the pointer to the Kernel Virtual Machine (KVM) SimObject. For use
+     * by that object to declare itself to the system.
+     */
+    void setKvmVM(KvmVM *const vm) { kvmVM = vm; }
 
     /** Get a pointer to access the physical memory of the system */
     memory::PhysicalMemory& getPhysMem() { return physmem; }
@@ -398,7 +397,7 @@ class System : public SimObject, public PCEventScope
 
   protected:
 
-    KvmVM *const kvmVM = nullptr;
+    KvmVM *kvmVM = nullptr;
 
     memory::PhysicalMemory physmem;
 
@@ -406,7 +405,7 @@ class System : public SimObject, public PCEventScope
 
     enums::MemoryMode memoryMode;
 
-    const unsigned int _cacheLineSize;
+    const Addr _cacheLineSize;
 
     uint64_t workItemsBegin = 0;
     uint64_t workItemsEnd = 0;
@@ -552,7 +551,7 @@ class System : public SimObject, public PCEventScope
     void workItemEnd(uint32_t tid, uint32_t workid);
 
     /* Returns whether we successfully trapped into GDB. */
-    bool trapToGdb(int signal, ContextID ctx_id) const;
+    bool trapToGdb(GDBSignal signal, ContextID ctx_id) const;
 
   protected:
     /**
@@ -575,8 +574,7 @@ class System : public SimObject, public PCEventScope
 
   public:
 
-    void registerThreadContext(
-            ThreadContext *tc, ContextID assigned=InvalidContextID);
+    void registerThreadContext(ThreadContext *tc);
     void replaceThreadContext(ThreadContext *tc, ContextID context_id);
 
     void serialize(CheckpointOut &cp) const override;

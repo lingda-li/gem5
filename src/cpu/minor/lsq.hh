@@ -58,7 +58,6 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(Minor, minor);
 namespace minor
 {
 
@@ -71,8 +70,6 @@ class LSQ : public Named
     /** My owner(s) */
     MinorCPU &cpu;
     Execute &execute;
-
-    const RegIndex zeroReg;
 
   protected:
     /** State of memory access for head access. */
@@ -133,8 +130,6 @@ class LSQ : public Named
       public:
         /** Owning port */
         LSQ &port;
-
-        const RegIndex zeroReg;
 
         /** Instruction which made this request */
         MinorDynInstPtr inst;
@@ -208,8 +203,7 @@ class LSQ : public Named
 
       public:
         LSQRequest(LSQ &port_, MinorDynInstPtr inst_, bool isLoad_,
-                RegIndex zero_reg, PacketDataPtr data_ = NULL,
-                uint64_t *res_ = NULL);
+                PacketDataPtr data_ = NULL, uint64_t *res_ = NULL);
 
         virtual ~LSQRequest();
 
@@ -320,7 +314,7 @@ class LSQ : public Named
       public:
         SpecialDataRequest(LSQ &port_, MinorDynInstPtr inst_) :
             /* Say this is a load, not actually relevant */
-            LSQRequest(port_, inst_, true, port_.zeroReg, NULL, 0)
+            LSQRequest(port_, inst_, true, NULL, 0)
         { }
     };
 
@@ -388,7 +382,7 @@ class LSQ : public Named
       public:
         SingleDataRequest(LSQ &port_, MinorDynInstPtr inst_,
             bool isLoad_, PacketDataPtr data_ = NULL, uint64_t *res_ = NULL) :
-            LSQRequest(port_, inst_, isLoad_, port_.zeroReg, data_, res_),
+            LSQRequest(port_, inst_, isLoad_, data_, res_),
             packetInFlight(false),
             packetSent(false)
         { }
@@ -563,7 +557,7 @@ class LSQ : public Named
     const unsigned int inMemorySystemLimit;
 
     /** Memory system access width (and snap) in bytes */
-    const unsigned int lineWidth;
+    const Addr lineWidth;
 
   public:
     /** The LSQ consists of three queues: requests, transfers and the
@@ -668,8 +662,7 @@ class LSQ : public Named
         unsigned int max_accesses_in_memory_system, unsigned int line_width,
         unsigned int requests_queue_size, unsigned int transfers_queue_size,
         unsigned int store_buffer_size,
-        unsigned int store_buffer_cycle_store_limit,
-        RegIndex zero_reg);
+        unsigned int store_buffer_cycle_store_limit);
 
     virtual ~LSQ();
 

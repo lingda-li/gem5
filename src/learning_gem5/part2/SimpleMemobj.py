@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2017 Jason Lowe-Power
 # All rights reserved.
 #
@@ -28,10 +27,11 @@
 from m5.params import *
 from m5.SimObject import SimObject
 
+
 class SimpleMemobj(SimObject):
-    type = 'SimpleMemobj'
+    type = "SimpleMemobj"
     cxx_header = "learning_gem5/part2/simple_memobj.hh"
-    cxx_class = 'gem5::SimpleMemobj'
+    cxx_class = "gem5::SimpleMemobj"
 
     inst_port = ResponsePort("CPU side port, receives requests")
     data_port = ResponsePort("CPU side port, receives requests")

@@ -66,6 +66,7 @@ class LdsChunk;
 class ScalarRegisterFile;
 class Shader;
 class VectorRegisterFile;
+class RegisterFileCache;
 
 struct ComputeUnitParams;
 
@@ -296,6 +297,8 @@ class ComputeUnit : public ClockedObject
     // array of scalar register files, one per SIMD
     std::vector<ScalarRegisterFile*> srf;
 
+    std::vector<RegisterFileCache*> rfc;
+
     // Width per VALU/SIMD unit: number of work items that can be executed
     // on the vector ALU simultaneously in a SIMD unit
     int simdWidth;
@@ -305,6 +308,8 @@ class ComputeUnit : public ClockedObject
     // number of pipe stages for bypassing data to next dependent double
     // precision vector instruction inside the vector ALU pipeline
     int dpBypassPipeLength;
+    // number of pipe stages for register file cache
+    int rfcPipeLength;
     // number of pipe stages for scalar ALU
     int scalarPipeStages;
     // number of pipe stages for operand collection & distribution network
@@ -354,6 +359,8 @@ class ComputeUnit : public ClockedObject
 
     Tick req_tick_latency;
     Tick resp_tick_latency;
+    Tick scalar_req_tick_latency;
+    Tick scalar_resp_tick_latency;
 
     /**
      * Number of WFs to schedule to each SIMD. This vector is populated
@@ -388,6 +395,7 @@ class ComputeUnit : public ClockedObject
     int simdUnitWidth() const { return simdWidth; }
     int spBypassLength() const { return spBypassPipeLength; }
     int dpBypassLength() const { return dpBypassPipeLength; }
+    int rfcLength() const { return rfcPipeLength; }
     int scalarPipeLength() const { return scalarPipeStages; }
     int storeBusLength() const { return numCyclesPerStoreTransfer; }
     int loadBusLength() const { return numCyclesPerLoadTransfer; }
@@ -404,6 +412,7 @@ class ComputeUnit : public ClockedObject
 
     void doInvalidate(RequestPtr req, int kernId);
     void doFlush(GPUDynInstPtr gpuDynInst);
+    void doSQCInvalidate(RequestPtr req, int kernId);
 
     void dispWorkgroup(HSAQueueEntry *task, int num_wfs_in_wg);
     bool hasDispResources(HSAQueueEntry *task, int &num_wfs_in_wg);
@@ -458,9 +467,14 @@ class ComputeUnit : public ClockedObject
     void updatePageDivergenceDist(Addr addr);
 
     RequestorID requestorId() { return _requestorId; }
+    RequestorID vramRequestorId();
 
     bool isDone() const;
     bool isVectorAluIdle(uint32_t simdId) const;
+
+    void handleSQCReturn(PacketPtr pkt);
+
+    void sendInvL2(Addr paddr);
 
   protected:
     RequestorID _requestorId;
@@ -509,12 +523,13 @@ class ComputeUnit : public ClockedObject
     {
       public:
         DataPort(const std::string &_name, ComputeUnit *_cu, PortID id)
-            : RequestPort(_name, _cu, id), computeUnit(_cu) { }
+            : RequestPort(_name, id), computeUnit(_cu) { }
 
         bool snoopRangeSent;
 
         struct SenderState : public Packet::SenderState
         {
+            ComputeUnit *computeUnit = nullptr;
             GPUDynInstPtr _gpuDynInst;
             PortID port_index;
             Packet::SenderState *saved;
@@ -524,6 +539,34 @@ class ComputeUnit : public ClockedObject
                 : _gpuDynInst(gpuDynInst),
                   port_index(_port_index),
                   saved(sender_state) { }
+
+            SenderState(ComputeUnit *cu, PortID _port_index,
+                        Packet::SenderState *sender_state=nullptr)
+                : computeUnit(cu),
+                  port_index(_port_index),
+                  saved(sender_state) { }
+        };
+
+        class SystemHubEvent : public Event
+        {
+          DataPort *dataPort;
+          PacketPtr reqPkt;
+
+          public:
+            SystemHubEvent(PacketPtr pkt, DataPort *_dataPort)
+                : dataPort(_dataPort), reqPkt(pkt)
+            {
+                setFlags(Event::AutoDelete);
+            }
+
+            void
+            process()
+            {
+                // DMAs do not operate on packets and therefore do not
+                // convert to a response. Do that here instead.
+                reqPkt->makeResponse();
+                dataPort->handleResponse(reqPkt);
+            }
         };
 
         void processMemReqEvent(PacketPtr pkt);
@@ -533,6 +576,8 @@ class ComputeUnit : public ClockedObject
         EventFunctionWrapper *createMemRespEvent(PacketPtr pkt);
 
         std::deque<std::pair<PacketPtr, GPUDynInstPtr>> retries;
+
+        bool handleResponse(PacketPtr pkt);
 
       protected:
         ComputeUnit *computeUnit;
@@ -557,7 +602,7 @@ class ComputeUnit : public ClockedObject
     {
       public:
         ScalarDataPort(const std::string &_name, ComputeUnit *_cu)
-            : RequestPort(_name, _cu), computeUnit(_cu)
+            : RequestPort(_name), computeUnit(_cu)
         {
         }
 
@@ -593,6 +638,30 @@ class ComputeUnit : public ClockedObject
             const char *description() const;
         };
 
+        class SystemHubEvent : public Event
+        {
+          ScalarDataPort *dataPort;
+          PacketPtr reqPkt;
+
+          public:
+            SystemHubEvent(PacketPtr pkt, ScalarDataPort *_dataPort)
+                : dataPort(_dataPort), reqPkt(pkt)
+            {
+                setFlags(Event::AutoDelete);
+            }
+
+            void
+            process()
+            {
+                // DMAs do not operate on packets and therefore do not
+                // convert to a response. Do that here instead.
+                reqPkt->makeResponse();
+                dataPort->handleResponse(reqPkt);
+            }
+        };
+
+        bool handleResponse(PacketPtr pkt);
+
         std::deque<PacketPtr> retries;
 
       private:
@@ -604,7 +673,7 @@ class ComputeUnit : public ClockedObject
     {
       public:
         SQCPort(const std::string &_name, ComputeUnit *_cu)
-            : RequestPort(_name, _cu), computeUnit(_cu) { }
+            : RequestPort(_name), computeUnit(_cu) { }
 
         bool snoopRangeSent;
 
@@ -619,6 +688,23 @@ class ComputeUnit : public ClockedObject
                     *sender_state=nullptr, int _kernId=-1)
                 : wavefront(_wavefront), saved(sender_state),
                 kernId(_kernId){ }
+        };
+
+        class MemReqEvent : public Event
+        {
+          private:
+            SQCPort &sqcPort;
+            PacketPtr pkt;
+
+          public:
+            MemReqEvent(SQCPort &_sqc_port, PacketPtr _pkt)
+                : Event(), sqcPort(_sqc_port), pkt(_pkt)
+            {
+              setFlags(Event::AutoDelete);
+            }
+
+            void process();
+            const char *description() const;
         };
 
         std::deque<std::pair<PacketPtr, Wavefront*>> retries;
@@ -645,7 +731,7 @@ class ComputeUnit : public ClockedObject
     {
       public:
         DTLBPort(const std::string &_name, ComputeUnit *_cu, PortID id)
-            : RequestPort(_name, _cu, id), computeUnit(_cu),
+            : RequestPort(_name, id), computeUnit(_cu),
               stalled(false)
         { }
 
@@ -692,7 +778,7 @@ class ComputeUnit : public ClockedObject
     {
       public:
         ScalarDTLBPort(const std::string &_name, ComputeUnit *_cu)
-            : RequestPort(_name, _cu), computeUnit(_cu), stalled(false)
+            : RequestPort(_name), computeUnit(_cu), stalled(false)
         {
         }
 
@@ -720,7 +806,7 @@ class ComputeUnit : public ClockedObject
     {
       public:
         ITLBPort(const std::string &_name, ComputeUnit *_cu)
-            : RequestPort(_name, _cu), computeUnit(_cu), stalled(false) { }
+            : RequestPort(_name), computeUnit(_cu), stalled(false) { }
 
 
         bool isStalled() { return stalled; }
@@ -762,7 +848,7 @@ class ComputeUnit : public ClockedObject
     {
       public:
         LDSPort(const std::string &_name, ComputeUnit *_cu)
-        : RequestPort(_name, _cu), computeUnit(_cu)
+        : RequestPort(_name), computeUnit(_cu)
         {
         }
 
@@ -933,7 +1019,7 @@ class ComputeUnit : public ClockedObject
 
     // hold the time of the arrival of the first cache block related to
     // a particular GPUDynInst. This is used to calculate the difference
-    // between the first and last chace block arrival times.
+    // between the first and last cache block arrival times.
     std::unordered_map<GPUDynInstPtr, Tick> headTailMap;
 
   public:
@@ -1054,6 +1140,12 @@ class ComputeUnit : public ClockedObject
         statistics::Scalar numVecOpsExecutedMAD16;
         statistics::Scalar numVecOpsExecutedMAD32;
         statistics::Scalar numVecOpsExecutedMAD64;
+        // number of individual MFMA 16,32,64 vector operations executed
+        statistics::Scalar numVecOpsExecutedMFMA;
+        statistics::Scalar numVecOpsExecutedMFMAI8;
+        statistics::Scalar numVecOpsExecutedMFMAF16;
+        statistics::Scalar numVecOpsExecutedMFMAF32;
+        statistics::Scalar numVecOpsExecutedMFMAF64;
         // total number of two op FP vector operations executed
         statistics::Scalar numVecOpsExecutedTwoOpFP;
         // Total cycles that something is running on the GPU

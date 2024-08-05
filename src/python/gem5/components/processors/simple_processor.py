@@ -25,67 +25,33 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-from ...utils.override import overrides
-from ..boards.mem_mode import MemMode
-from ..processors.simple_core import SimpleCore
+from typing import Optional
 
 from m5.util import warn
 
-from .abstract_processor import AbstractProcessor
+from ...isas import ISA
+from ..processors.simple_core import SimpleCore
+from .base_cpu_processor import BaseCPUProcessor
 from .cpu_types import CPUTypes
-from ..boards.abstract_board import AbstractBoard
 
 
-class SimpleProcessor(AbstractProcessor):
+class SimpleProcessor(BaseCPUProcessor):
     """
-    A SimpeProcessor contains a number of cores of a a single CPUType.
+    A SimpleProcessor contains a number of cores of SimpleCore objects of the
+    same CPUType.
     """
 
-    def __init__(self, cpu_type: CPUTypes, num_cores: int) -> None:
+    def __init__(self, cpu_type: CPUTypes, num_cores: int, isa: ISA) -> None:
+        """
+        :param cpu_type: The CPU type for each type in the processor.
+
+        :param num_cores: The number of CPU cores in the processor.
+
+        :param isa: The ISA of the processor.
+        """
         super().__init__(
-            cores=self._create_cores(
-                cpu_type=cpu_type,
-                num_cores=num_cores,
-            )
+            cores=[
+                SimpleCore(cpu_type=cpu_type, core_id=i, isa=isa)
+                for i in range(num_cores)
+            ]
         )
-
-        self._cpu_type = cpu_type
-        if self._cpu_type == CPUTypes.KVM:
-            from m5.objects import KvmVM
-
-            self.kvm_vm = KvmVM()
-
-    def _create_cores(self, cpu_type: CPUTypes, num_cores: int):
-        return [
-            SimpleCore(cpu_type=cpu_type, core_id=i) for i in range(num_cores)
-        ]
-
-    @overrides(AbstractProcessor)
-    def incorporate_processor(self, board: AbstractBoard) -> None:
-        if self._cpu_type == CPUTypes.KVM:
-            board.kvm_vm = self.kvm_vm
-
-        # Set the memory mode.
-        if self._cpu_type == CPUTypes.TIMING or self._cpu_type == CPUTypes.O3:
-            board.set_mem_mode(MemMode.TIMING)
-        elif self._cpu_type == CPUTypes.KVM:
-            board.set_mem_mode(MemMode.ATOMIC_NONCACHING)
-        elif self._cpu_type == CPUTypes.ATOMIC:
-            if board.get_cache_hierarchy().is_ruby():
-                warn(
-                    "Using an atomic core with Ruby will result in "
-                    "'atomic_noncaching' memory mode. This will skip caching "
-                    "completely."
-                )
-            else:
-                board.set_mem_mode(MemMode.ATOMIC)
-        else:
-            raise NotImplementedError
-
-        if self._cpu_type == CPUTypes.KVM:
-            # To get the KVM CPUs to run on different host CPUs
-            # Specify a different event queue for each CPU
-            for i, core in enumerate(self.cores):
-                for obj in core.get_simobject().descendants():
-                    obj.eventq_index = 0
-                core.get_simobject().eventq_index = i + 1

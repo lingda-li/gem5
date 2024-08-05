@@ -46,6 +46,7 @@
 #include "scx_evs_CortexR52x2.h"
 #include "scx_evs_CortexR52x3.h"
 #include "scx_evs_CortexR52x4.h"
+#include "sim/signal.hh"
 #include "systemc/ext/core/sc_event.hh"
 #include "systemc/ext/core/sc_module.hh"
 #include "systemc/tlm_port_wrapper.hh"
@@ -53,7 +54,6 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(FastModel, fastmodel);
 namespace fastmodel
 {
 
@@ -109,6 +109,7 @@ class ScxEvsCortexR52 : public Types::Base, public Iris::BaseCpuEvs
         SignalSender core_reset;
         SignalSender poweron_reset;
         SignalSender halt;
+        SignalReceiverInt standbywfi;
 
         SignalInitiator<uint64_t> cfgvectable;
     };
@@ -119,13 +120,17 @@ class ScxEvsCortexR52 : public Types::Base, public Iris::BaseCpuEvs
 
     std::vector<std::unique_ptr<ClstrInt>> spis;
 
-    CortexR52Cluster *gem5CpuCluster;
-
-    const Params &params;
-
     AmbaTarget ext_slave;
 
     SignalSender top_reset;
+
+    SignalSender dbg_reset;
+
+    SignalSinkPort<bool> model_reset;
+
+    CortexR52Cluster *gem5CpuCluster;
+
+    const Params &params;
 
   public:
     ScxEvsCortexR52(const Params &p) : ScxEvsCortexR52(p.name.c_str(), p) {}
@@ -152,8 +157,6 @@ class ScxEvsCortexR52 : public Types::Base, public Iris::BaseCpuEvs
         Base::start_of_simulation();
     }
     void start_of_simulation() override {}
-
-    void sendFunc(PacketPtr pkt) override;
 
     void setClkPeriod(Tick clk_period) override;
 

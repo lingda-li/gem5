@@ -96,7 +96,8 @@ class IdeController : public PciDevice
         /* 0x48      */ Register8 udmaControl = {"udma control"};
         /* 0x49      */ RegisterRaz raz1 = {"raz1", 1};
         /* 0x4a-0x4b */ Register16 udmaTiming = {"udma timing"};
-        /* 0x4c-...  */ RegisterRaz raz2 = {"raz2", PCI_CONFIG_SIZE - 0x4c};
+        /* 0x4c-...  */ RegisterRaz raz2 =
+                            {"raz2", (PCI_CONFIG_SIZE + 1) - 0x4c};
 
         void serialize(CheckpointOut &cp) const;
         void unserialize(CheckpointIn &cp);
@@ -104,14 +105,48 @@ class IdeController : public PciDevice
 
     ConfigSpaceRegs configSpaceRegs;
 
-    struct Channel
+  public:
+    class Channel : public Named
     {
-        std::string _name;
+      private:
+        IdeController *ctrl;
 
-        const std::string
-        name()
+        /** IDE disks connected to this controller
+         * For more details about device0 and device1 see:
+         * https://en.wikipedia.org/wiki/Parallel_ATA
+         * #Multiple_devices_on_a_cable
+         *
+        */
+        IdeDisk *device0 = nullptr, *device1 = nullptr;
+
+        /** Currently selected disk */
+        IdeDisk *_selected = nullptr;
+
+        bool selectBit = false;
+        bool primary;
+
+        bool _pendingInterrupt = false;
+
+      public:
+        bool isPrimary() const { return primary; }
+
+        bool pendingInterrupt() const { return _pendingInterrupt; }
+
+        IdeDisk *selected() const { return _selected; }
+        IdeController *controller() const { return ctrl; }
+
+        void
+        setDevice0(IdeDisk *disk)
         {
-            return _name;
+            assert(!device0 && disk);
+            device0 = disk;
+        }
+
+        void
+        setDevice1(IdeDisk *disk)
+        {
+            assert(!device1 && disk);
+            device1 = disk;
         }
 
         /** Registers used for bus master interface */
@@ -130,36 +165,30 @@ class IdeController : public PciDevice
             uint32_t bmidtp;
         } bmiRegs;
 
-        /** IDE disks connected to this controller
-         * For more details about device0 and device1 see:
-         * https://en.wikipedia.org/wiki/Parallel_ATA
-         * #Multiple_devices_on_a_cable
-         *
-        */
-        IdeDisk *device0 = nullptr, *device1 = nullptr;
-
-        /** Currently selected disk */
-        IdeDisk *selected = nullptr;
-
-        bool selectBit = false;
-
         void
         select(bool select_device_1)
         {
             selectBit = select_device_1;
-            selected = selectBit ? device1 : device0;
+            _selected = selectBit ? device1 : device0;
         }
 
         void accessCommand(Addr offset, int size, uint8_t *data, bool read);
         void accessControl(Addr offset, int size, uint8_t *data, bool read);
         void accessBMI(Addr offset, int size, uint8_t *data, bool read);
 
-        Channel(std::string newName);
+        void setDmaComplete();
+
+        void postInterrupt();
+        void clearInterrupt();
+
+        Channel(std::string new_name, IdeController *new_ctrl,
+                bool new_primary);
 
         void serialize(const std::string &base, std::ostream &os) const;
         void unserialize(const std::string &base, CheckpointIn &cp);
     };
 
+  private:
     Channel primary;
     Channel secondary;
 
@@ -171,15 +200,11 @@ class IdeController : public PciDevice
     PARAMS(IdeController);
     IdeController(const Params &p);
 
-    /** See if a disk is selected based on its pointer */
-    bool isDiskSelected(IdeDisk *diskPtr);
-
-    void intrPost();
+    virtual void postInterrupt(bool is_primary);
+    virtual void clearInterrupt(bool is_primary);
 
     Tick writeConfig(PacketPtr pkt) override;
     Tick readConfig(PacketPtr pkt) override;
-
-    void setDmaComplete(IdeDisk *disk);
 
     Tick read(PacketPtr pkt) override;
     Tick write(PacketPtr pkt) override;

@@ -36,7 +36,10 @@
 #include <memory>
 
 #include "arch/arm/fastmodel/amba_ports.hh"
+#include "arch/arm/fastmodel/common/signal_receiver.hh"
+#include "arch/arm/fastmodel/common/signal_sender.hh"
 #include "dev/arm/base_gic.hh"
+#include "dev/intpin.hh"
 #include "params/FastModelGIC.hh"
 #include "params/SCFastModelGIC.hh"
 #include "scx_evs_GIC.h"
@@ -46,7 +49,6 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(FastModel, fastmodel);
 namespace fastmodel
 {
 
@@ -90,7 +92,13 @@ class SCGIC : public scx_evs_GIC
     SCGIC(const SCFastModelGICParams &p) : SCGIC(p, p.name.c_str()) {}
     SCGIC(const SCFastModelGICParams &params, sc_core::sc_module_name _name);
 
+    Port &gem5_getPort(const std::string &if_name, int idx) override;
+
     SignalInterruptInitiatorSocket signalInterrupt;
+
+    std::vector<std::unique_ptr<SignalReceiver>> wakeRequests;
+    SignalSender resetPort;
+    SignalSender poResetPort;
 
     void before_end_of_elaboration() override;
 
@@ -118,6 +126,7 @@ class GIC : public BaseGic
     AmbaInitiator ambaM;
     AmbaTarget ambaS;
     std::vector<std::unique_ptr<TlmGicInitiator>> redistributors;
+    std::vector<std::unique_ptr<IntSourcePin<GIC>>> wakeRequestPorts;
 
     SCGIC *scGIC;
 

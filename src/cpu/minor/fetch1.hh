@@ -58,7 +58,6 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(Minor, minor);
 namespace minor
 {
 
@@ -215,13 +214,13 @@ class Fetch1 : public Named
     /** Line snap size in bytes.  All fetches clip to make their ends not
      *  extend beyond this limit.  Setting this to the machine L1 cache line
      *  length will result in fetches never crossing line boundaries. */
-    unsigned int lineSnap;
+    Addr lineSnap;
 
     /** Maximum fetch width in bytes.  Setting this (and lineSnap) to the
      *  machine L1 cache line length will result in fetches of whole cache
      *  lines.  Setting this to sizeof(MachInst) will result it fetches of
      *  single instructions (except near the end of lineSnap lines) */
-    unsigned int maxLineWidth;
+    Addr maxLineWidth;
 
     /** Maximum number of fetches allowed in flight (in queues or memory) */
     unsigned int fetchLimit;
@@ -392,7 +391,7 @@ class Fetch1 : public Named
   public:
     Fetch1(const std::string &name_,
         MinorCPU &cpu_,
-        const MinorCPUParams &params,
+        const BaseMinorCPUParams &params,
         Latch<BranchData>::Output inp_,
         Latch<ForwardLineData>::Input out_,
         Latch<BranchData>::Output prediction_,

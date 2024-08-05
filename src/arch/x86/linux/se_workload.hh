@@ -40,6 +40,7 @@
 #define __ARCH_X86_LINUX_SE_WORKLOAD_HH__
 
 #include "arch/x86/linux/linux.hh"
+#include "arch/x86/regs/int.hh"
 #include "arch/x86/remote_gdb.hh"
 #include "params/X86EmuLinux.hh"
 #include "sim/process.hh"
@@ -56,7 +57,7 @@ namespace X86ISA
 class EmuLinux : public SEWorkload
 {
   public:
-    using Params = X86EmuLinuxParams;
+    PARAMS(X86EmuLinux);
 
     EmuLinux(const Params &p);
 
@@ -64,7 +65,8 @@ class EmuLinux : public SEWorkload
     setSystem(System *sys) override
     {
         SEWorkload::setSystem(sys);
-        gdb = BaseRemoteGDB::build<RemoteGDB>(system);
+        gdb = BaseRemoteGDB::build<RemoteGDB>(
+                params().remote_gdb_port, system);
     }
 
     loader::Arch getArch() const override { return loader::X86_64; }
@@ -78,13 +80,13 @@ class EmuLinux : public SEWorkload
     struct SyscallABI64 :
         public GenericSyscallABI64, public X86Linux::SyscallABI
     {
-        static const std::vector<IntRegIndex> ArgumentRegs;
+        static const std::vector<RegId> ArgumentRegs;
     };
 
     struct SyscallABI32 :
         public GenericSyscallABI32, public X86Linux::SyscallABI
     {
-        static const std::vector<IntRegIndex> ArgumentRegs;
+        static const std::vector<RegId> ArgumentRegs;
     };
 
   private:
@@ -94,7 +96,6 @@ class EmuLinux : public SEWorkload
 
 } // namespace X86ISA
 
-GEM5_DEPRECATED_NAMESPACE(GuestABI, guest_abi);
 namespace guest_abi
 {
 

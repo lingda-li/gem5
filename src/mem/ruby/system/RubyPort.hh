@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013,2019 ARM Limited
+ * Copyright (c) 2012-2013,2019,2021 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -67,11 +67,12 @@ class RubyPort : public ClockedObject
     class MemRequestPort : public QueuedRequestPort
     {
       private:
+        RubyPort& owner;
         ReqPacketQueue reqQueue;
         SnoopRespPacketQueue snoopRespQueue;
 
       public:
-        MemRequestPort(const std::string &_name, RubyPort *_port);
+        MemRequestPort(const std::string &_name, RubyPort& _port);
 
       protected:
         bool recvTimingResp(PacketPtr pkt);
@@ -81,14 +82,16 @@ class RubyPort : public ClockedObject
     class MemResponsePort : public QueuedResponsePort
     {
       private:
+        RubyPort& owner;
         RespPacketQueue queue;
         bool access_backing_store;
         bool no_retry_on_stall;
 
       public:
-        MemResponsePort(const std::string &_name, RubyPort *_port,
-                     bool _access_backing_store,
-                     PortID id, bool _no_retry_on_stall);
+        MemResponsePort(const std::string &_name,
+                        RubyPort& _port,
+                        bool _access_backing_store,
+                        PortID id, bool _no_retry_on_stall);
         void hitCallback(PacketPtr pkt);
         void evictionCallback(Addr address);
 
@@ -112,11 +115,12 @@ class RubyPort : public ClockedObject
     class PioRequestPort : public QueuedRequestPort
     {
       private:
+        RubyPort& owner;
         ReqPacketQueue reqQueue;
         SnoopRespPacketQueue snoopRespQueue;
 
       public:
-        PioRequestPort(const std::string &_name, RubyPort *_port);
+        PioRequestPort(const std::string &_name, RubyPort& _port);
 
       protected:
         bool recvTimingResp(PacketPtr pkt);
@@ -126,10 +130,11 @@ class RubyPort : public ClockedObject
     class PioResponsePort : public QueuedResponsePort
     {
       private:
+        RubyPort& owner;
         RespPacketQueue queue;
 
       public:
-        PioResponsePort(const std::string &_name, RubyPort *_port);
+        PioResponsePort(const std::string &_name, RubyPort& _port);
 
       protected:
         bool recvTimingReq(PacketPtr pkt);
@@ -179,6 +184,8 @@ class RubyPort : public ClockedObject
   protected:
     void trySendRetries();
     void ruby_hit_callback(PacketPtr pkt);
+    void ruby_unaddressed_callback(PacketPtr pkt);
+    void ruby_stale_translation_callback(Addr txnId);
     void testDrainComplete();
     void ruby_eviction_callback(Addr address);
 

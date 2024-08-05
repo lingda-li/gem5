@@ -45,7 +45,6 @@
 
 #include "arch/generic/decoder.hh"
 #include "base/output.hh"
-#include "config/the_isa.hh"
 #include "cpu/exetrace.hh"
 #include "cpu/utils.hh"
 #include "debug/Drain.hh"
@@ -54,7 +53,7 @@
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 #include "mem/physical.hh"
-#include "params/AtomicSimpleCPU.hh"
+#include "params/BaseAtomicSimpleCPU.hh"
 #include "sim/faults.hh"
 #include "sim/full_system.hh"
 #include "sim/system.hh"
@@ -74,14 +73,14 @@ AtomicSimpleCPU::init()
     data_amo_req->setContext(cid);
 }
 
-AtomicSimpleCPU::AtomicSimpleCPU(const AtomicSimpleCPUParams &p)
+AtomicSimpleCPU::AtomicSimpleCPU(const BaseAtomicSimpleCPUParams &p)
     : BaseSimpleCPU(p),
       tickEvent([this]{ tick(); }, "AtomicSimpleCPU tick",
                 false, Event::CPU_Tick_Pri),
       width(p.width), locked(false),
       simulate_data_stalls(p.simulate_data_stalls),
       simulate_inst_stalls(p.simulate_inst_stalls),
-      icachePort(name() + ".icache_port", this),
+      icachePort(name() + ".icache_port"),
       dcachePort(name() + ".dcache_port", this),
       dcache_access(false), dcache_latency(0),
       ppCommit(nullptr)
@@ -293,8 +292,6 @@ AtomicSimpleCPU::AtomicCPUDPort::recvAtomicSnoop(PacketPtr pkt)
             __func__, pkt->getAddr(), pkt->cmdString());
 
     // X86 ISA: Snooping an invalidation for monitor/mwait
-    AtomicSimpleCPU *cpu = (AtomicSimpleCPU *)(&owner);
-
     for (ThreadID tid = 0; tid < cpu->numThreads; tid++) {
         if (cpu->getCpuAddrMonitor(tid)->doMonitor(pkt)) {
             cpu->wakeup(tid);
@@ -324,7 +321,6 @@ AtomicSimpleCPU::AtomicCPUDPort::recvFunctionalSnoop(PacketPtr pkt)
             __func__, pkt->getAddr(), pkt->cmdString());
 
     // X86 ISA: Snooping an invalidation for monitor/mwait
-    AtomicSimpleCPU *cpu = (AtomicSimpleCPU *)(&owner);
     for (ThreadID tid = 0; tid < cpu->numThreads; tid++) {
         if (cpu->getCpuAddrMonitor(tid)->doMonitor(pkt)) {
             cpu->wakeup(tid);
@@ -426,7 +422,8 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t *data, unsigned size,
             for (int i = 0; i < 4; i++)
               d_writebacks[i] = std::max(d_writebacks[i], req->writebacks[i]);
 
-            assert(!pkt.isError());
+            panic_if(pkt.isError(), "Data fetch (%s) failed: %s",
+                    pkt.getAddrRange().to_string(), pkt.print());
 
             if (req->isLLSC()) {
                 thread->getIsaPtr()->handleLockedRead(req);
@@ -485,7 +482,7 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
     Addr frag_addr = addr;
     int frag_size = 0;
     int size_left = size;
-    int curr_frag_id = 0;
+    [[maybe_unused]] int curr_frag_id = 0;
     bool predicate;
     Fault fault = NoFault;
 
@@ -536,12 +533,9 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
                     // Notify other threads on this CPU of write
                     threadSnoop(&pkt, curThread);
                 }
-                d_depth = std::max(d_depth, req->getAccessDepth());
-                for (int i = 0; i < 4; i++)
-                  d_writebacks[i] =
-                      std::max(d_writebacks[i], req->writebacks[i]);
-                assert(!pkt.isError());
-
+                dcache_access = true;
+                panic_if(pkt.isError(), "Data write (%s) failed: %s",
+                        pkt.getAddrRange().to_string(), pkt.print());
                 if (req->isSwap()) {
                     assert(res && curr_frag_id == 0);
                     memcpy(res, pkt.getConstPtr<uint8_t>(), size);
@@ -637,7 +631,8 @@ AtomicSimpleCPU::amoMem(Addr addr, uint8_t* data, unsigned size,
         for (int i = 0; i < 4; i++)
           d_writebacks[i] = req->writebacks[i];
 
-        assert(!pkt.isError());
+        panic_if(pkt.isError(), "Atomic access (%s) failed: %s",
+                pkt.getAddrRange().to_string(), pkt.print());
         assert(!req->isLLSC());
     }
 
@@ -823,7 +818,8 @@ AtomicSimpleCPU::fetchInstMem()
     pkt.dataStatic(decoder->moreBytesPtr());
 
     Tick latency = sendPacket(icachePort, &pkt);
-    assert(!pkt.isError());
+    panic_if(pkt.isError(), "Instruction fetch (%s) failed: %s",
+            pkt.getAddrRange().to_string(), pkt.print());
 
     return latency;
 }

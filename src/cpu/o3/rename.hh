@@ -58,7 +58,7 @@
 namespace gem5
 {
 
-struct O3CPUParams;
+struct BaseO3CPUParams;
 
 namespace o3
 {
@@ -125,7 +125,7 @@ class Rename
 
   public:
     /** Rename constructor. */
-    Rename(CPU *_cpu, const O3CPUParams &params);
+    Rename(CPU *_cpu, const BaseO3CPUParams &params);
 
     /** Returns the name of rename. */
     std::string name() const;
@@ -170,7 +170,7 @@ class Rename
     void setActiveThreads(std::list<ThreadID> *at_ptr);
 
     /** Sets pointer to rename maps (per-thread structures). */
-    void setRenameMap(UnifiedRenameMap rm_ptr[MaxThreads]);
+    void setRenameMap(UnifiedRenameMap::PerThreadUnifiedRenameMap& rm_ptr);
 
     /** Sets pointer to the free list. */
     void setFreeList(UnifiedFreeList *fl_ptr);
@@ -359,6 +359,9 @@ class Rename
     /** Free list interface. */
     UnifiedFreeList *freeList;
 
+    /** Hold phys regs to be released after squash finish */
+    std::vector<PhysRegIdPtr> freeingInProgress[MaxThreads];
+
     /** Pointer to the list of active threads. */
     std::list<ThreadID> *activeThreads;
 
@@ -521,6 +524,7 @@ class Rename
         statistics::Scalar fpLookups;
         statistics::Scalar vecLookups;
         statistics::Scalar vecPredLookups;
+        statistics::Scalar matLookups;
         /** Stat for total number of committed renaming mappings. */
         statistics::Scalar committedMaps;
         /** Stat for total number of mappings that were undone due to a

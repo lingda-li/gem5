@@ -51,7 +51,6 @@
 
 #include "arch/generic/pcstate.hh"
 #include "base/statistics.hh"
-#include "config/the_isa.hh"
 #include "cpu/o3/comm.hh"
 #include "cpu/o3/commit.hh"
 #include "cpu/o3/decode.hh"
@@ -68,7 +67,7 @@
 #include "cpu/base.hh"
 #include "cpu/simple_thread.hh"
 #include "cpu/timebuf.hh"
-#include "params/O3CPU.hh"
+#include "params/BaseO3CPU.hh"
 #include "sim/process.hh"
 
 namespace gem5
@@ -110,6 +109,9 @@ class CPU : public BaseCPU
 
     BaseMMU *mmu;
     using LSQRequest = LSQ::LSQRequest;
+
+    using PerThreadUnifiedRenameMap =
+        UnifiedRenameMap::PerThreadUnifiedRenameMap;
 
     /** Overall CPU status. */
     Status _status;
@@ -169,7 +171,7 @@ class CPU : public BaseCPU
 
   public:
     /** Constructs a CPU with the given parameters. */
-    CPU(const O3CPUParams &params);
+    CPU(const BaseO3CPUParams &params);
 
     ProbePointArg<PacketPtr> *ppInstAccessComplete;
     ProbePointArg<std::pair<DynInstPtr, PacketPtr> > *ppDataAccessComplete;
@@ -311,78 +313,25 @@ class CPU : public BaseCPU
      */
     void setMiscReg(int misc_reg, RegVal val, ThreadID tid);
 
-    RegVal readIntReg(PhysRegIdPtr phys_reg);
+    RegVal getReg(PhysRegIdPtr phys_reg, ThreadID tid);
+    void getReg(PhysRegIdPtr phys_reg, void *val, ThreadID tid);
+    void *getWritableReg(PhysRegIdPtr phys_reg, ThreadID tid);
 
-    RegVal readFloatReg(PhysRegIdPtr phys_reg);
-
-    const TheISA::VecRegContainer& readVecReg(PhysRegIdPtr reg_idx) const;
-
-    /**
-     * Read physical vector register for modification.
-     */
-    TheISA::VecRegContainer& getWritableVecReg(PhysRegIdPtr reg_idx);
-
-    RegVal readVecElem(PhysRegIdPtr reg_idx) const;
-
-    const TheISA::VecPredRegContainer&
-        readVecPredReg(PhysRegIdPtr reg_idx) const;
-
-    TheISA::VecPredRegContainer& getWritableVecPredReg(PhysRegIdPtr reg_idx);
-
-    RegVal readCCReg(PhysRegIdPtr phys_reg);
-
-    void setIntReg(PhysRegIdPtr phys_reg, RegVal val);
-
-    void setFloatReg(PhysRegIdPtr phys_reg, RegVal val);
-
-    void setVecReg(PhysRegIdPtr reg_idx, const TheISA::VecRegContainer& val);
-
-    void setVecElem(PhysRegIdPtr reg_idx, RegVal val);
-
-    void setVecPredReg(PhysRegIdPtr reg_idx,
-            const TheISA::VecPredRegContainer& val);
-
-    void setCCReg(PhysRegIdPtr phys_reg, RegVal val);
-
-    RegVal readArchIntReg(int reg_idx, ThreadID tid);
-
-    RegVal readArchFloatReg(int reg_idx, ThreadID tid);
-
-    const TheISA::VecRegContainer&
-        readArchVecReg(int reg_idx, ThreadID tid) const;
-    /** Read architectural vector register for modification. */
-    TheISA::VecRegContainer& getWritableArchVecReg(int reg_idx, ThreadID tid);
-
-    RegVal readArchVecElem(const RegIndex& reg_idx,
-            const ElemIndex& ldx, ThreadID tid) const;
-
-    const TheISA::VecPredRegContainer& readArchVecPredReg(
-            int reg_idx, ThreadID tid) const;
-
-    TheISA::VecPredRegContainer&
-        getWritableArchVecPredReg(int reg_idx, ThreadID tid);
-
-    RegVal readArchCCReg(int reg_idx, ThreadID tid);
+    void setReg(PhysRegIdPtr phys_reg, RegVal val, ThreadID tid);
+    void setReg(PhysRegIdPtr phys_reg, const void *val, ThreadID tid);
 
     /** Architectural register accessors.  Looks up in the commit
      * rename table to obtain the true physical index of the
      * architected register first, then accesses that physical
      * register.
      */
-    void setArchIntReg(int reg_idx, RegVal val, ThreadID tid);
 
-    void setArchFloatReg(int reg_idx, RegVal val, ThreadID tid);
+    RegVal getArchReg(const RegId &reg, ThreadID tid);
+    void getArchReg(const RegId &reg, void *val, ThreadID tid);
+    void *getWritableArchReg(const RegId &reg, ThreadID tid);
 
-    void setArchVecPredReg(int reg_idx, const TheISA::VecPredRegContainer& val,
-                           ThreadID tid);
-
-    void setArchVecReg(int reg_idx, const TheISA::VecRegContainer& val,
-            ThreadID tid);
-
-    void setArchVecElem(const RegIndex& reg_idx, const ElemIndex& ldx,
-                        RegVal val, ThreadID tid);
-
-    void setArchCCReg(int reg_idx, RegVal val, ThreadID tid);
+    void setArchReg(const RegId &reg, RegVal val, ThreadID tid);
+    void setArchReg(const RegId &reg, const void *val, ThreadID tid);
 
     /** Sets the commit PC state of a specific thread. */
     void pcState(const PCStateBase &new_pc_state, ThreadID tid);
@@ -439,7 +388,7 @@ class CPU : public BaseCPU
      */
     std::queue<ListIt> removeList;
 
-#ifdef DEBUG
+#ifdef GEM5_DEBUG
     /** Debug structure to keep track of the sequence numbers still in
      * flight.
      */
@@ -474,10 +423,10 @@ class CPU : public BaseCPU
     UnifiedFreeList freeList;
 
     /** The rename map. */
-    UnifiedRenameMap renameMap[MaxThreads];
+    PerThreadUnifiedRenameMap renameMap;
 
     /** The commit rename map. */
-    UnifiedRenameMap commitRenameMap[MaxThreads];
+    PerThreadUnifiedRenameMap commitRenameMap;
 
     /** The re-order buffer. */
     ROB rob;
@@ -495,7 +444,7 @@ class CPU : public BaseCPU
     /** Integer Register Scoreboard */
     Scoreboard scoreboard;
 
-    std::vector<TheISA::ISA *> isa;
+    std::vector<BaseISA *> isa;
 
   public:
     /** Enum to give each stage a specific index, so when calling
@@ -635,38 +584,6 @@ class CPU : public BaseCPU
         /** Stat for total number of cycles the CPU spends descheduled due to a
          * quiesce operation or waiting for an interrupt. */
         statistics::Scalar quiesceCycles;
-        /** Stat for the number of committed instructions per thread. */
-        statistics::Vector committedInsts;
-        /** Stat for the number of committed ops (including micro ops) per
-         *  thread. */
-        statistics::Vector committedOps;
-        /** Stat for the CPI per thread. */
-        statistics::Formula cpi;
-        /** Stat for the total CPI. */
-        statistics::Formula totalCpi;
-        /** Stat for the IPC per thread. */
-        statistics::Formula ipc;
-        /** Stat for the total IPC. */
-        statistics::Formula totalIpc;
-
-        //number of integer register file accesses
-        statistics::Scalar intRegfileReads;
-        statistics::Scalar intRegfileWrites;
-        //number of float register file accesses
-        statistics::Scalar fpRegfileReads;
-        statistics::Scalar fpRegfileWrites;
-        //number of vector register file accesses
-        mutable statistics::Scalar vecRegfileReads;
-        statistics::Scalar vecRegfileWrites;
-        //number of predicate register file accesses
-        mutable statistics::Scalar vecPredRegfileReads;
-        statistics::Scalar vecPredRegfileWrites;
-        //number of CC register file accesses
-        statistics::Scalar ccRegfileReads;
-        statistics::Scalar ccRegfileWrites;
-        //number of misc
-        statistics::Scalar miscRegfileReads;
-        statistics::Scalar miscRegfileWrites;
     } cpuStats;
 
   public:

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013,2017-2020 ARM Limited
+ * Copyright (c) 2012-2013,2017-2022 Arm Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -58,6 +58,7 @@
 
 #include "base/amo.hh"
 #include "base/compiler.hh"
+#include "base/extensible.hh"
 #include "base/flags.hh"
 #include "base/types.hh"
 #include "cpu/inst_seq.hh"
@@ -74,7 +75,6 @@ namespace gem5
  * doesn't cause a problem with stats and is large enough to realistic
  * benchmarks (Linux/Android boot, BBench, etc.)
  */
-GEM5_DEPRECATED_NAMESPACE(ContextSwitchTaskId, context_switch_task_id);
 namespace context_switch_task_id
 {
     enum TaskId
@@ -94,7 +94,7 @@ class ThreadContext;
 typedef std::shared_ptr<Request> RequestPtr;
 typedef uint16_t RequestorID;
 
-class Request
+class Request : public Extensible<Request>
 {
   public:
     typedef uint64_t FlagsType;
@@ -158,7 +158,7 @@ class Request
         MEM_SWAP                    = 0x00400000,
         MEM_SWAP_COND               = 0x00800000,
         /** This request is a read which will be followed by a write. */
-        READ_MODIFY_WRITE           = 0x00020000,
+        READ_MODIFY_WRITE           = 0x0020000000000000,
 
         /** The request is a prefetch. */
         PREFETCH                    = 0x01000000,
@@ -237,6 +237,20 @@ class Request
         // This separation is necessary to ensure the disjoint components
         // of the system work correctly together.
 
+        /** The Request is a TLB shootdown */
+        TLBI                        = 0x0000100000000000,
+
+        /** The Request is a TLB shootdown sync */
+        TLBI_SYNC                   = 0x0000200000000000,
+
+        /** The Request tells the CPU model that a
+            remote TLB Sync has been requested */
+        TLBI_EXT_SYNC               = 0x0000400000000000,
+
+        /** The Request tells the interconnect that a
+            remote TLB Sync request has completed */
+        TLBI_EXT_SYNC_COMP          = 0x0000800000000000,
+
         /**
          * These flags are *not* cleared when a Request object is
          * reused (assigned a new address).
@@ -248,6 +262,9 @@ class Request
 
     static const FlagsType HTM_CMD = HTM_START | HTM_COMMIT |
         HTM_CANCEL | HTM_ABORT;
+
+    static const FlagsType TLBI_CMD = TLBI | TLBI_SYNC |
+        TLBI_EXT_SYNC | TLBI_EXT_SYNC_COMP;
 
     /** Requestor Ids that are statically allocated
      * @{*/
@@ -275,8 +292,8 @@ class Request
 
     /**
      * These bits are used to set the coherence policy for the GPU and are
-     * encoded in the GCN3 instructions. The GCN3 ISA defines two cache levels
-     * See the AMD GCN3 ISA Architecture Manual for more details.
+     * encoded in the Vega instructions. The Vega ISA defines two cache levels
+     * See the AMD Vega ISA Architecture Manual for more details.
      *
      * INV_L1: L1 cache invalidation
      * FLUSH_L2: L2 cache flush
@@ -419,6 +436,12 @@ class Request
      */
     uint32_t _substreamId = 0;
 
+    /**
+     * For fullsystem GPU simulation, this determines if a requests
+     * destination is system (host) memory or dGPU (device) memory.
+     */
+    bool _systemReq = 0;
+
     /** The virtual address of the request. */
     Addr _vaddr = MaxAddr;
 
@@ -479,7 +502,8 @@ class Request
     }
 
     Request(const Request& other)
-        : _paddr(other._paddr), _size(other._size),
+        : Extensible<Request>(other),
+          _paddr(other._paddr), _size(other._size),
           _byteEnable(other._byteEnable),
           _requestorId(other._requestorId),
           _flags(other._flags),
@@ -498,6 +522,22 @@ class Request
     }
 
     ~Request() {}
+
+    /**
+     * Factory method for creating memory management requests, with
+     * unspecified addr and size.
+     */
+    static RequestPtr
+    createMemManagement(Flags flags, RequestorID id)
+    {
+        auto mgmt_req = std::make_shared<Request>();
+        mgmt_req->_flags.set(flags);
+        mgmt_req->_requestorId = id;
+        mgmt_req->_time = curTick();
+
+        assert(mgmt_req->isMemMgmt());
+        return mgmt_req;
+    }
 
     /**
      * Set up Context numbers.
@@ -717,6 +757,13 @@ class Request
         return atomicOpFunctor.get();
     }
 
+    void
+    setAtomicOpFunctor(AtomicOpFunctorPtr amo_op)
+    {
+        atomicOpFunctor = std::move(amo_op);
+    }
+
+
     /**
      * Accessor for hardware transactional memory abort cause.
      */
@@ -761,11 +808,26 @@ class Request
     }
 
     void
+    clearFlags(Flags flags)
+    {
+        assert(hasPaddr() || hasVaddr());
+        _flags.clear(flags);
+    }
+
+    void
     setCacheCoherenceFlags(CacheCoherenceFlags extraFlags)
     {
         // TODO: do mem_sync_op requests have valid paddr/vaddr?
         assert(hasPaddr() || hasVaddr());
         _cacheCoherenceFlags.set(extraFlags);
+    }
+
+    void
+    clearCacheCoherenceFlags(CacheCoherenceFlags extraFlags)
+    {
+        // TODO: do mem_sync_op requests have valid paddr/vaddr?
+        assert(hasPaddr() || hasVaddr());
+        _cacheCoherenceFlags.clear(extraFlags);
     }
 
     /** Accessor function for vaddr.*/
@@ -787,6 +849,12 @@ class Request
     requestorId() const
     {
         return _requestorId;
+    }
+
+    void
+    requestorId(RequestorID rid)
+    {
+        _requestorId = rid;
     }
 
     uint32_t
@@ -844,6 +912,10 @@ class Request
         assert(hasContextId());
         return _contextId;
     }
+
+    /* For GPU fullsystem mark this request is not to device memory. */
+    void setSystemReq(bool sysReq) { _systemReq = sysReq; }
+    bool systemReq() const { return _systemReq; }
 
     bool
     hasStreamId() const
@@ -975,6 +1047,18 @@ class Request
                 isHTMCancel() || isHTMAbort());
     }
 
+    bool isTlbi() const { return _flags.isSet(TLBI); }
+    bool isTlbiSync() const { return _flags.isSet(TLBI_SYNC); }
+    bool isTlbiExtSync() const { return _flags.isSet(TLBI_EXT_SYNC); }
+    bool isTlbiExtSyncComp() const { return _flags.isSet(TLBI_EXT_SYNC_COMP); }
+    bool
+    isTlbiCmd() const
+    {
+        return (isTlbi() || isTlbiSync() ||
+                isTlbiExtSync() || isTlbiExtSyncComp());
+    }
+    bool isMemMgmt() const { return isTlbiCmd() || isHTMCmd(); }
+
     bool
     isAtomic() const
     {
@@ -995,12 +1079,24 @@ class Request
 
     bool isAcquire() const { return _cacheCoherenceFlags.isSet(ACQUIRE); }
 
+
+    /**
+     * Accessor functions for the cache bypass flags. The cache bypass
+     * can specify which levels in the hierarchy to bypass. If GLC_BIT
+     * is set, the requests are globally coherent and bypass TCP.
+     * If SLC_BIT is set, then the requests are system level coherent
+     * and bypass both TCP and TCC.
+     */
+    bool isGLCSet() const {return _cacheCoherenceFlags.isSet(GLC_BIT); }
+    bool isSLCSet() const {return _cacheCoherenceFlags.isSet(SLC_BIT); }
+
     /**
      * Accessor functions for the memory space configuration flags and used by
      * GPU ISAs such as the Heterogeneous System Architecture (HSA). Note that
      * setting extraFlags should be done via setCacheCoherenceFlags().
      */
     bool isInvL1() const { return _cacheCoherenceFlags.isSet(INV_L1); }
+    bool isInvL2() const { return _cacheCoherenceFlags.isSet(GL2_CACHE_INV); }
 
     bool
     isGL2CacheFlush() const

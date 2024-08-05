@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2017 Jason Lowe-Power
 # All rights reserved.
 #
@@ -28,7 +27,8 @@
 from m5.params import *
 from m5.SimObject import SimObject
 
+
 class SimpleObject(SimObject):
-    type = 'SimpleObject'
+    type = "SimpleObject"
     cxx_header = "learning_gem5/part2/simple_object.hh"
-    cxx_class = 'gem5::SimpleObject'
+    cxx_class = "gem5::SimpleObject"

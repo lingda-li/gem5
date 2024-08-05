@@ -100,7 +100,7 @@ class MemTest : public ClockedObject
       public:
 
         CpuPort(const std::string &_name, MemTest &_memtest)
-            : RequestPort(_name, &_memtest), memtest(_memtest)
+            : RequestPort(_name), memtest(_memtest)
         { }
 
       protected:
@@ -120,6 +120,10 @@ class MemTest : public ClockedObject
 
     PacketPtr retryPkt;
 
+    // Set if reached the maximum number of outstanding requests.
+    // Won't tick until a response is received.
+    bool waitResponse;
+
     const unsigned size;
 
     const Cycles interval;
@@ -127,6 +131,7 @@ class MemTest : public ClockedObject
     const unsigned percentReads;
     const unsigned percentFunctional;
     const unsigned percentUncacheable;
+    const unsigned percentAtomic;
 
     /** Request id for all generated traffic */
     RequestorID requestorId;
@@ -134,13 +139,16 @@ class MemTest : public ClockedObject
     unsigned int id;
 
     std::unordered_set<Addr> outstandingAddrs;
+    std::unordered_map<Addr, uint8_t> atomicPendingData;
 
     // store the expected value for the addresses we have touched
     std::unordered_map<Addr, uint8_t> referenceData;
 
-    const unsigned blockSize;
+    const Addr blockSize;
 
     const Addr blockAddrMask;
+
+    const unsigned sizeBlocks;
 
     /**
      * Get the block aligned address.
@@ -163,6 +171,7 @@ class MemTest : public ClockedObject
 
     uint64_t numReads;
     uint64_t numWrites;
+    uint64_t numAtomics;
     const uint64_t maxLoads;
 
     const bool atomic;
@@ -174,6 +183,7 @@ class MemTest : public ClockedObject
         MemTestStats(statistics::Group *parent);
         statistics::Scalar numReads;
         statistics::Scalar numWrites;
+        statistics::Scalar numAtomics;
     } stats;
 
     /**

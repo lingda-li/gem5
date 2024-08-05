@@ -24,31 +24,62 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from abc import ABCMeta, abstractmethod
-from .abstract_core import AbstractCore
+from abc import (
+    ABCMeta,
+    abstractmethod,
+)
+from typing import (
+    List,
+    Optional,
+)
 
 from m5.objects import SubSystem
 
+from ...isas import ISA
+from ...utils.requires import requires
 from ..boards.abstract_board import AbstractBoard
-
-from typing import List
+from .abstract_core import AbstractCore
 
 
 class AbstractProcessor(SubSystem):
     __metaclass__ = ABCMeta
 
-    def __init__(self, cores: List[AbstractCore]) -> None:
-        super().__init__()
-        assert len(cores) > 0
+    def __init__(
+        self,
+        cores: Optional[List[AbstractCore]] = None,
+        isa: ISA = ISA.NULL,
+    ) -> None:
+        """Set the cores on the processor
 
-        self.cores = cores
+        Cores are optional for some processor types. If a processor does not
+        set the cores here, it must override ``get_num_cores`` and ``get_cores``.
+        """
+        super().__init__()
+
+        if cores:
+            # In the stdlib we assume the system processor conforms to a single
+            # ISA target.
+            assert len({core.get_isa() for core in cores}) == 1
+            self.cores = cores
+            self._isa = cores[0].get_isa()
+        else:
+            self._isa = isa
 
     def get_num_cores(self) -> int:
+        assert getattr(self, "cores")
         return len(self.cores)
 
     def get_cores(self) -> List[AbstractCore]:
+        assert getattr(self, "cores")
         return self.cores
+
+    def get_isa(self) -> ISA:
+        return self._isa
 
     @abstractmethod
     def incorporate_processor(self, board: AbstractBoard) -> None:
         raise NotImplementedError
+
+    def _post_instantiate(self) -> None:
+        """Called to set up anything needed after ``m5.instantiate``."""
+        pass

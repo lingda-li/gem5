@@ -25,26 +25,24 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-from .abstract_ruby_cache_hierarchy import AbstractRubyCacheHierarchy
-from ..abstract_two_level_cache_hierarchy import AbstractTwoLevelCacheHierarchy
-from ....coherence_protocol import CoherenceProtocol
-from ....isas import ISA
-from ...boards.abstract_board import AbstractBoard
-from ....runtime import get_runtime_isa
-from ....utils.requires import requires
-
-from .topologies.simple_pt2pt import SimplePt2Pt
-from .caches.mesi_two_level.l1_cache import L1Cache
-from .caches.mesi_two_level.l2_cache import L2Cache
-from .caches.mesi_two_level.directory import Directory
-from .caches.mesi_two_level.dma_controller import DMAController
-
 from m5.objects import (
-    RubySystem,
-    RubySequencer,
     DMASequencer,
     RubyPortProxy,
+    RubySequencer,
+    RubySystem,
 )
+
+from ....coherence_protocol import CoherenceProtocol
+from ....isas import ISA
+from ....utils.requires import requires
+from ...boards.abstract_board import AbstractBoard
+from ..abstract_two_level_cache_hierarchy import AbstractTwoLevelCacheHierarchy
+from .abstract_ruby_cache_hierarchy import AbstractRubyCacheHierarchy
+from .caches.mesi_two_level.directory import Directory
+from .caches.mesi_two_level.dma_controller import DMAController
+from .caches.mesi_two_level.l1_cache import L1Cache
+from .caches.mesi_two_level.l2_cache import L2Cache
+from .topologies.simple_pt2pt import SimplePt2Pt
 
 
 class MESITwoLevelCacheHierarchy(
@@ -82,18 +80,17 @@ class MESITwoLevelCacheHierarchy(
         self._num_l2_banks = num_l2_banks
 
     def incorporate_cache(self, board: AbstractBoard) -> None:
-
         requires(coherence_protocol_required=CoherenceProtocol.MESI_TWO_LEVEL)
 
         cache_line_size = board.get_cache_line_size()
 
         self.ruby_system = RubySystem()
 
-        # MESI_Two_Level needs 5 virtual networks
-        self.ruby_system.number_of_virtual_networks = 5
+        # MESI_Two_Level needs 3 virtual networks
+        self.ruby_system.number_of_virtual_networks = 3
 
         self.ruby_system.network = SimplePt2Pt(self.ruby_system)
-        self.ruby_system.network.number_of_virtual_networks = 5
+        self.ruby_system.network.number_of_virtual_networks = 3
 
         self._l1_controllers = []
         for i, core in enumerate(board.get_processor().get_cores()):
@@ -106,14 +103,12 @@ class MESITwoLevelCacheHierarchy(
                 core,
                 self._num_l2_banks,
                 cache_line_size,
-                get_runtime_isa(),
+                board.processor.get_isa(),
                 board.get_clock_domain(),
             )
 
             cache.sequencer = RubySequencer(
-                version=i,
-                dcache=cache.L1Dcache,
-                clk_domain=cache.clk_domain,
+                version=i, dcache=cache.L1Dcache, clk_domain=cache.clk_domain
             )
 
             if board.has_io_bus():
@@ -129,7 +124,7 @@ class MESITwoLevelCacheHierarchy(
             )
 
             # Connect the interrupt ports
-            if get_runtime_isa() == ISA.X86:
+            if board.get_processor().get_isa() == ISA.X86:
                 int_req_port = cache.sequencer.interrupt_out_port
                 int_resp_port = cache.sequencer.in_ports
                 core.connect_interrupt(int_req_port, int_resp_port)
@@ -155,7 +150,7 @@ class MESITwoLevelCacheHierarchy(
 
         self._directory_controllers = [
             Directory(self.ruby_system.network, cache_line_size, range, port)
-            for range, port in board.get_memory().get_mem_ports()
+            for range, port in board.get_mem_ports()
         ]
         # TODO: Make this prettier: The problem is not being able to proxy
         # the ruby system correctly

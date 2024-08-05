@@ -86,8 +86,6 @@ class GPUComputeDriver final : public EmulatedDriver
     doorbellSize()
     {
         switch (gfxVersion) {
-          case GfxVersion::gfx801:
-          case GfxVersion::gfx803:
           case GfxVersion::gfx902:
             return 4;
           case GfxVersion::gfx900:
@@ -142,6 +140,8 @@ class GPUComputeDriver final : public EmulatedDriver
     };
     typedef class EventTableEntry ETEntry;
 
+    GfxVersion getGfxVersion() const { return gfxVersion; }
+
   private:
     /**
      * GPU that is controlled by this driver.
@@ -168,7 +168,8 @@ class GPUComputeDriver final : public EmulatedDriver
     {
         SHARED                  = 0,
         READ_WRITE              = 1,
-        CACHED                  = 2
+        CACHED                  = 2,
+        NUM_MTYPE_BITS
     };
 
     Request::CacheCoherenceFlags defaultMtype;

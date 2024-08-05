@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2014 ARM Limited
+ * Copyright (c) 2013-2014, 2021 Arm Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -56,12 +56,17 @@
 namespace gem5
 {
 
+class BaseISA;
+
 namespace ArmISA
 {
 
-class ISA;
 class Decoder : public InstDecoder
 {
+  public: // Public decoder parameters
+    /** True if the decoder should emit DVM Ops (treated as Loads) */
+    const bool dvmEnabled;
+
   protected:
     //The extended machine instruction being generated
     ExtMachInst emi;
@@ -79,6 +84,12 @@ class Decoder : public InstDecoder
      * bitfields.
      */
     int sveLen;
+
+    /**
+     * SME vector length, encoded in the same format as the SMCR_EL<x>.LEN
+     * bitfields.
+     */
+    int smeLen;
 
     enums::DecoderFlavor decoderFlavor;
 
@@ -127,6 +138,7 @@ class Decoder : public InstDecoder
         StaticInstPtr si = defaultCache.decode(this, mach_inst, addr);
         DPRINTF(Decode, "Decode: Decoded %s instruction: %#x\n",
                 si->getName(), mach_inst);
+        si->size((!emi.thumb || emi.bigThumb) ? 4 : 2);
         return si;
     }
 
@@ -152,6 +164,12 @@ class Decoder : public InstDecoder
     setSveLen(uint8_t len)
     {
         sveLen = len;
+    }
+
+    void
+    setSmeLen(uint8_t len)
+    {
+        smeLen = len;
     }
 };
 

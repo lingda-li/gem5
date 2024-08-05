@@ -35,7 +35,6 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(FastModel, fastmodel);
 namespace fastmodel
 {
 
@@ -104,10 +103,10 @@ CortexR52TC::readCCRegFlat(RegIndex idx) const
 {
     RegVal result = Iris::ThreadContext::readCCRegFlat(idx);
     switch (idx) {
-      case ArmISA::CCREG_NZ:
+      case ArmISA::cc_reg::Nz:
         result = ((ArmISA::CPSR)result).nz;
         break;
-      case ArmISA::CCREG_FP:
+      case ArmISA::cc_reg::Fp:
         result = bits(result, 31, 28);
         break;
       default:
@@ -120,14 +119,14 @@ void
 CortexR52TC::setCCRegFlat(RegIndex idx, RegVal val)
 {
     switch (idx) {
-      case ArmISA::CCREG_NZ:
+      case ArmISA::cc_reg::Nz:
         {
             ArmISA::CPSR cpsr = readMiscRegNoEffect(ArmISA::MISCREG_CPSR);
             cpsr.nz = val;
             val = cpsr;
         }
         break;
-      case ArmISA::CCREG_FP:
+      case ArmISA::cc_reg::Fp:
         {
             ArmISA::FPSCR fpscr = readMiscRegNoEffect(ArmISA::MISCREG_FPSCR);
             val = insertBits(fpscr, 31, 28, val);
@@ -189,7 +188,7 @@ Iris::ThreadContext::IdxNameMap CortexR52TC::miscRegIdxNameMap({
         // ArmISA::MISCREG_SCTLR_RST?
         // ArmISA::MISCREG_SEV_MAILBOX?
 
-        // AArch32 CP14 registers (debug/trace/ThumbEE/Jazelle control)
+        // AArch32 CP14 registers (debug/trace control)
         // ArmISA::MISCREG_DBGDIDR?
         // ArmISA::MISCREG_DBGDSCRint?
         // ArmISA::MISCREG_DBGDCCINT?
@@ -792,30 +791,30 @@ Iris::ThreadContext::IdxNameMap CortexR52TC::miscRegIdxNameMap({
 });
 
 Iris::ThreadContext::IdxNameMap CortexR52TC::intReg32IdxNameMap({
-        { ArmISA::INTREG_R0, "R0" },
-        { ArmISA::INTREG_R1, "R1" },
-        { ArmISA::INTREG_R2, "R2" },
-        { ArmISA::INTREG_R3, "R3" },
-        { ArmISA::INTREG_R4, "R4" },
-        { ArmISA::INTREG_R5, "R5" },
-        { ArmISA::INTREG_R6, "R6" },
-        { ArmISA::INTREG_R7, "R7" },
-        { ArmISA::INTREG_R8, "R8" },
-        { ArmISA::INTREG_R9, "R9" },
-        { ArmISA::INTREG_R10, "R10" },
-        { ArmISA::INTREG_R11, "R11" },
-        { ArmISA::INTREG_R12, "R12" },
-        { ArmISA::INTREG_R13, "R13" },
-        { ArmISA::INTREG_R14, "R14" },
-        { ArmISA::INTREG_R15, "R15" }
+        { ArmISA::int_reg::R0, "R0" },
+        { ArmISA::int_reg::R1, "R1" },
+        { ArmISA::int_reg::R2, "R2" },
+        { ArmISA::int_reg::R3, "R3" },
+        { ArmISA::int_reg::R4, "R4" },
+        { ArmISA::int_reg::R5, "R5" },
+        { ArmISA::int_reg::R6, "R6" },
+        { ArmISA::int_reg::R7, "R7" },
+        { ArmISA::int_reg::R8, "R8" },
+        { ArmISA::int_reg::R9, "R9" },
+        { ArmISA::int_reg::R10, "R10" },
+        { ArmISA::int_reg::R11, "R11" },
+        { ArmISA::int_reg::R12, "R12" },
+        { ArmISA::int_reg::R13, "R13" },
+        { ArmISA::int_reg::R14, "R14" },
+        { ArmISA::int_reg::R15, "R15" }
 });
 
 Iris::ThreadContext::IdxNameMap CortexR52TC::ccRegIdxNameMap({
-        { ArmISA::CCREG_NZ, "CPSR" },
-        { ArmISA::CCREG_C, "CPSR.C" },
-        { ArmISA::CCREG_V, "CPSR.V" },
-        { ArmISA::CCREG_GE, "CPSR.GE" },
-        { ArmISA::CCREG_FP, "FPSCR" },
+        { ArmISA::cc_reg::Nz, "CPSR" },
+        { ArmISA::cc_reg::C, "CPSR.C" },
+        { ArmISA::cc_reg::V, "CPSR.V" },
+        { ArmISA::cc_reg::Ge, "CPSR.GE" },
+        { ArmISA::cc_reg::Fp, "FPSCR" },
 });
 
 std::vector<iris::MemorySpaceId> CortexR52TC::bpSpaceIds;

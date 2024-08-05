@@ -67,14 +67,18 @@ GPUComputeDriver::GPUComputeDriver(const Params &p)
 
     // Convert the 3 bit mtype specified in Shader.py to the proper type
     // used for requests.
-    if (MtypeFlags::SHARED & p.m_type)
+    std::bitset<MtypeFlags::NUM_MTYPE_BITS> mtype(p.m_type);
+    if (mtype.test(MtypeFlags::SHARED)) {
         defaultMtype.set(Request::SHARED);
+    }
 
-    if (MtypeFlags::READ_WRITE & p.m_type)
+    if (mtype.test(MtypeFlags::READ_WRITE)) {
         defaultMtype.set(Request::READ_WRITE);
+    }
 
-    if (MtypeFlags::CACHED & p.m_type)
+    if (mtype.test(MtypeFlags::CACHED)) {
         defaultMtype.set(Request::CACHED);
+    }
 }
 
 const char*
@@ -323,14 +327,8 @@ GPUComputeDriver::ioctl(ThreadContext *tc, unsigned req, Addr ioc_buf)
                  */
 
                 switch (gfxVersion) {
-                  case GfxVersion::gfx801:
-                  case GfxVersion::gfx803:
-                    args->process_apertures[i].scratch_base =
-                        scratchApeBase(i + 1);
-                    args->process_apertures[i].lds_base =
-                        ldsApeBase(i + 1);
-                    break;
                   case GfxVersion::gfx900:
+                  case GfxVersion::gfx902:
                     args->process_apertures[i].scratch_base =
                         scratchApeBaseV9();
                     args->process_apertures[i].lds_base =
@@ -340,7 +338,6 @@ GPUComputeDriver::ioctl(ThreadContext *tc, unsigned req, Addr ioc_buf)
                     fatal("Invalid gfx version\n");
                 }
 
-                // GFX8 and GFX9 set lds and scratch limits the same way
                 args->process_apertures[i].scratch_limit =
                     scratchApeLimit(args->process_apertures[i].scratch_base);
 
@@ -348,13 +345,6 @@ GPUComputeDriver::ioctl(ThreadContext *tc, unsigned req, Addr ioc_buf)
                     ldsApeLimit(args->process_apertures[i].lds_base);
 
                 switch (gfxVersion) {
-                  case GfxVersion::gfx801:
-                    args->process_apertures[i].gpuvm_base =
-                        gpuVmApeBase(i + 1);
-                    args->process_apertures[i].gpuvm_limit =
-                        gpuVmApeLimit(args->process_apertures[i].gpuvm_base);
-                    break;
-                  case GfxVersion::gfx803:
                   case GfxVersion::gfx900:
                   case GfxVersion::gfx902:
                     // Taken from SVM_USE_BASE in Linux kernel
@@ -378,9 +368,6 @@ GPUComputeDriver::ioctl(ThreadContext *tc, unsigned req, Addr ioc_buf)
                 // id composed out of a non-zero base and an offset.
                 if (isdGPU) {
                     switch (gfxVersion) {
-                      case GfxVersion::gfx803:
-                        args->process_apertures[i].gpu_id = 50156;
-                        break;
                       case GfxVersion::gfx900:
                         args->process_apertures[i].gpu_id = 22124;
                         break;
@@ -389,7 +376,6 @@ GPUComputeDriver::ioctl(ThreadContext *tc, unsigned req, Addr ioc_buf)
                     }
                 } else {
                     switch (gfxVersion) {
-                      case GfxVersion::gfx801:
                       case GfxVersion::gfx902:
                         args->process_apertures[i].gpu_id = 2765;
                         break;
@@ -625,12 +611,8 @@ GPUComputeDriver::ioctl(ThreadContext *tc, unsigned req, Addr ioc_buf)
                     (ioc_args->kfd_process_device_apertures_ptr);
 
                 switch (gfxVersion) {
-                  case GfxVersion::gfx801:
-                  case GfxVersion::gfx803:
-                    ape_args->scratch_base = scratchApeBase(i + 1);
-                    ape_args->lds_base = ldsApeBase(i + 1);
-                    break;
                   case GfxVersion::gfx900:
+                  case GfxVersion::gfx902:
                     ape_args->scratch_base = scratchApeBaseV9();
                     ape_args->lds_base = ldsApeBaseV9();
                     break;
@@ -638,18 +620,11 @@ GPUComputeDriver::ioctl(ThreadContext *tc, unsigned req, Addr ioc_buf)
                     fatal("Invalid gfx version\n");
                 }
 
-                // GFX8 and GFX9 set lds and scratch limits the same way
                 ape_args->scratch_limit =
                     scratchApeLimit(ape_args->scratch_base);
                 ape_args->lds_limit = ldsApeLimit(ape_args->lds_base);
 
                 switch (gfxVersion) {
-                  case GfxVersion::gfx801:
-                    ape_args->gpuvm_base = gpuVmApeBase(i + 1);
-                    ape_args->gpuvm_limit =
-                        gpuVmApeLimit(ape_args->gpuvm_base);
-                    break;
-                  case GfxVersion::gfx803:
                   case GfxVersion::gfx900:
                   case GfxVersion::gfx902:
                     // Taken from SVM_USE_BASE in Linux kernel
@@ -664,9 +639,6 @@ GPUComputeDriver::ioctl(ThreadContext *tc, unsigned req, Addr ioc_buf)
                 // NOTE: Must match ID populated by hsaTopology.py
                 if (isdGPU) {
                     switch (gfxVersion) {
-                      case GfxVersion::gfx803:
-                        ape_args->gpu_id = 50156;
-                        break;
                       case GfxVersion::gfx900:
                         ape_args->gpu_id = 22124;
                         break;
@@ -675,7 +647,6 @@ GPUComputeDriver::ioctl(ThreadContext *tc, unsigned req, Addr ioc_buf)
                     }
                 } else {
                     switch (gfxVersion) {
-                      case GfxVersion::gfx801:
                       case GfxVersion::gfx902:
                         ape_args->gpu_id = 2765;
                         break;
@@ -727,13 +698,13 @@ GPUComputeDriver::ioctl(ThreadContext *tc, unsigned req, Addr ioc_buf)
             args.copyIn(virt_proxy);
 
             assert(isdGPU || gfxVersion == GfxVersion::gfx902);
-            assert((args->va_addr % TheISA::PageBytes) == 0);
+            assert((args->va_addr % X86ISA::PageBytes) == 0);
             [[maybe_unused]] Addr mmap_offset = 0;
 
             Request::CacheCoherenceFlags mtype = defaultMtype;
             Addr pa_addr = 0;
 
-            int npages = divCeil(args->size, (int64_t)TheISA::PageBytes);
+            int npages = divCeil(args->size, (int64_t)X86ISA::PageBytes);
             bool cacheable = true;
 
             if (KFD_IOC_ALLOC_MEM_FLAGS_VRAM & args->flags) {
@@ -1017,6 +988,7 @@ GPUComputeDriver::setMtype(RequestPtr req)
 {
     // If we are a dGPU then set the MTYPE from our VMAs.
     if (isdGPU) {
+        assert(!FullSystem);
         AddrRange range = RangeSize(req->getVaddr(), req->getSize());
         auto vma = gpuVmas.contains(range);
         assert(vma != gpuVmas.end());

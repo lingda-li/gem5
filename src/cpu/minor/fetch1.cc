@@ -54,13 +54,12 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(Minor, minor);
 namespace minor
 {
 
 Fetch1::Fetch1(const std::string &name_,
     MinorCPU &cpu_,
-    const MinorCPUParams &params,
+    const BaseMinorCPUParams &params,
     Latch<BranchData>::Output inp_,
     Latch<ForwardLineData>::Input out_,
     Latch<BranchData>::Output prediction_,

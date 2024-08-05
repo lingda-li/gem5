@@ -35,22 +35,22 @@
 #include <map>
 
 #include "base/bitunion.hh"
+#include "dev/amdgpu/amdgpu_defines.hh"
+#include "dev/amdgpu/amdgpu_gfx.hh"
+#include "dev/amdgpu/amdgpu_nbio.hh"
+#include "dev/amdgpu/amdgpu_vm.hh"
+#include "dev/amdgpu/memory_manager.hh"
 #include "dev/amdgpu/mmio_reader.hh"
 #include "dev/io_device.hh"
 #include "dev/pci/device.hh"
+#include "enums/GfxVersion.hh"
 #include "params/AMDGPUDevice.hh"
 
 namespace gem5
 {
 
-/* Names of BARs used by the device. */
-constexpr int FRAMEBUFFER_BAR = 0;
-constexpr int DOORBELL_BAR = 2;
-constexpr int MMIO_BAR = 5;
-
-/* By default the X86 kernel expects the vga ROM at 0xc0000. */
-constexpr uint32_t VGA_ROM_DEFAULT = 0xc0000;
-constexpr uint32_t ROM_SIZE = 0x20000;        // 128kB
+class AMDGPUInterruptHandler;
+class SDMAEngine;
 
 /**
  * Device model for an AMD GPU. This models the interface between the PCI bus
@@ -85,11 +85,18 @@ class AMDGPUDevice : public PciDevice
     void writeMMIO(PacketPtr pkt, Addr offset);
 
     /**
+     * Structures to hold registers, doorbells, and some frame memory
+     */
+    std::unordered_map<uint32_t, DoorbellInfo> doorbells;
+    std::unordered_map<uint32_t, PacketPtr> pendingDoorbellPkts;
+
+    /**
      * VGA ROM methods
      */
     AddrRange romRange;
     bool isROM(Addr addr) const { return romRange.contains(addr); }
     void readROM(PacketPtr pkt);
+    void writeROM(PacketPtr pkt);
 
     std::array<uint8_t, ROM_SIZE> rom;
 
@@ -99,12 +106,59 @@ class AMDGPUDevice : public PciDevice
     AMDMMIOReader mmioReader;
 
     /**
-     * Device registers - Maps register address to register value
+     * Blocks of the GPU
      */
-    std::unordered_map<uint32_t, uint64_t> regs;
+    AMDGPUNbio nbio;
+    AMDGPUGfx gfx;
+    AMDGPUMemoryManager *gpuMemMgr;
+    AMDGPUInterruptHandler *deviceIH;
+    AMDGPUVM gpuvm;
+    GPUCommandProcessor *cp;
 
+    struct AddrRangeHasher
+    {
+        std::size_t operator()(const AddrRange& k) const
+        {
+            return k.start();
+        }
+    };
+    std::unordered_map<int, PM4PacketProcessor *> pm4PktProcs;
+    std::unordered_map<AddrRange, PM4PacketProcessor *,
+                       AddrRangeHasher> pm4Ranges;
+
+    // SDMAs mapped by doorbell offset
+    std::unordered_map<uint32_t, SDMAEngine *> sdmaEngs;
+    // SDMAs mapped by ID
+    std::unordered_map<uint32_t, SDMAEngine *> sdmaIds;
+    // SDMA ID to MMIO range
+    std::unordered_map<uint32_t, AddrRange> sdmaMmios;
+    // SDMA ID to function
+    typedef void (SDMAEngine::*sdmaFuncPtr)(uint32_t);
+    std::unordered_map<uint32_t, sdmaFuncPtr> sdmaFunc;
+
+    /**
+     * Initial checkpoint support variables.
+     */
     bool checkpoint_before_mmios;
     int init_interrupt_count;
+
+    // VMIDs data structures
+    // map of pasids to vmids
+    std::unordered_map<uint16_t, uint16_t> idMap;
+    // map of doorbell offsets to vmids
+    std::unordered_map<Addr, uint16_t> doorbellVMIDMap;
+    // map of vmid to all queue ids using that vmid
+    std::unordered_map<uint16_t, std::set<int>> usedVMIDs;
+    // last vmid allocated by map_process PM4 packet
+    uint16_t _lastVMID;
+
+    /*
+     * Backing store for GPU memory / framebuffer / VRAM
+     */
+    memory::PhysicalMemory deviceMem;
+
+    /* Device information */
+    GfxVersion gfx_version = GfxVersion::gfx900;
 
   public:
     AMDGPUDevice(const AMDGPUDeviceParams &p);
@@ -127,6 +181,50 @@ class AMDGPUDevice : public PciDevice
      */
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
+
+    /**
+     * Get handles to GPU blocks.
+     */
+    AMDGPUInterruptHandler* getIH() { return deviceIH; }
+    SDMAEngine* getSDMAById(int id);
+    SDMAEngine* getSDMAEngine(Addr offset);
+    AMDGPUVM &getVM() { return gpuvm; }
+    AMDGPUMemoryManager* getMemMgr() { return gpuMemMgr; }
+    GPUCommandProcessor* CP() { return cp; }
+
+    /**
+     * Set handles to GPU blocks.
+     */
+    void setDoorbellType(uint32_t offset, QueueType qt, int ip_id = 0);
+    void unsetDoorbell(uint32_t offset);
+    void processPendingDoorbells(uint32_t offset);
+    void setSDMAEngine(Addr offset, SDMAEngine *eng);
+
+    /**
+     * Register value getter/setter. Used by other GPU blocks to change
+     * values from incoming driver/user packets.
+     */
+    uint32_t getRegVal(uint64_t addr);
+    void setRegVal(uint64_t addr, uint32_t value);
+
+    /**
+     * Methods related to translations and system/device memory.
+     */
+    RequestorID vramRequestorId() { return gpuMemMgr->getRequestorID(); }
+
+    /* HW context stuff */
+    uint16_t lastVMID() { return _lastVMID; }
+    uint16_t allocateVMID(uint16_t pasid);
+    void deallocateVmid(uint16_t vmid);
+    void deallocatePasid(uint16_t pasid);
+    void deallocateAllQueues();
+    void mapDoorbellToVMID(Addr doorbell, uint16_t vmid);
+    uint16_t getVMID(Addr doorbell) { return doorbellVMIDMap[doorbell]; }
+    std::unordered_map<uint16_t, std::set<int>>& getUsedVMIDs();
+    void insertQId(uint16_t vmid, int id);
+
+    /* Device information */
+    GfxVersion getGfxVersion() const { return gfx_version; }
 };
 
 } // namespace gem5

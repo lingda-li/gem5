@@ -51,12 +51,11 @@
 #include "cpu/minor/stats.hh"
 #include "cpu/simple_thread.hh"
 #include "enums/ThreadPolicy.hh"
-#include "params/MinorCPU.hh"
+#include "params/BaseMinorCPU.hh"
 
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(Minor, minor);
 namespace minor
 {
 
@@ -111,7 +110,7 @@ class MinorCPU : public BaseCPU
 
       public:
         MinorCPUPort(const std::string& name_, MinorCPU &cpu_)
-            : RequestPort(name_, &cpu_), cpu(cpu_)
+            : RequestPort(name_), cpu(cpu_)
         { }
 
     };
@@ -126,7 +125,7 @@ class MinorCPU : public BaseCPU
     Port &getInstPort() override;
 
   public:
-    MinorCPU(const MinorCPUParams &params);
+    MinorCPU(const BaseMinorCPUParams &params);
 
     ~MinorCPU();
 

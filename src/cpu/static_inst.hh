@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2017, 2020 ARM Limited
+ * Copyright (c) 2017, 2020, 2023 Arm Limited
+ * Copyright (c) 2022-2023 The University of Edinburgh
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -42,6 +43,7 @@
 #ifndef __CPU_STATIC_INST_HH__
 #define __CPU_STATIC_INST_HH__
 
+#include <array>
 #include <bitset>
 #include <cstdint>
 #include <memory>
@@ -65,16 +67,15 @@ class Packet;
 class ExecContext;
 class ThreadContext;
 
-GEM5_DEPRECATED_NAMESPACE(Loader, loader);
 namespace loader
 {
 class SymbolTable;
 } // namespace loader
 
-namespace Trace
+namespace trace
 {
 class InstRecord;
-} // namespace Trace
+} // namespace trace
 
 /**
  * Base, ISA-independent static instruction class.
@@ -105,51 +106,29 @@ class StaticInst : public RefCounted, public StaticInstFlags
     OpClass _opClass;
 
     /// See numSrcRegs().
-    int8_t _numSrcRegs = 0;
+    uint8_t _numSrcRegs = 0;
 
     /// See numDestRegs().
-    int8_t _numDestRegs = 0;
+    uint8_t _numDestRegs = 0;
 
-    /// The following are used to track physical register usage
-    /// for machines with separate int & FP reg files.
-    //@{
-    int8_t _numFPDestRegs = 0;
-    int8_t _numIntDestRegs = 0;
-    int8_t _numCCDestRegs = 0;
-    //@}
-
-    /** To use in architectures with vector register file. */
-    /** @{ */
-    int8_t _numVecDestRegs = 0;
-    int8_t _numVecElemDestRegs = 0;
-    int8_t _numVecPredDestRegs = 0;
-    /** @} */
+    std::array<uint8_t, MiscRegClass + 1> _numTypedDestRegs = {};
 
   public:
 
     /// @name Register information.
-    /// The sum of numFPDestRegs(), numIntDestRegs(), numVecDestRegs(),
-    /// numVecElemDestRegs() and numVecPredDestRegs() equals numDestRegs().
-    /// The former two functions are used to track physical register usage for
-    /// machines with separate int & FP reg files, the next three are for
-    /// machines with vector and predicate register files.
+    /// The sum of the different numDestRegs([type])-s equals numDestRegs().
+    /// The per-type function is used to track physical register usage.
     //@{
     /// Number of source registers.
-    int8_t numSrcRegs()  const { return _numSrcRegs; }
+    uint8_t numSrcRegs()  const { return _numSrcRegs; }
     /// Number of destination registers.
-    int8_t numDestRegs() const { return _numDestRegs; }
-    /// Number of floating-point destination regs.
-    int8_t numFPDestRegs()  const { return _numFPDestRegs; }
-    /// Number of integer destination regs.
-    int8_t numIntDestRegs() const { return _numIntDestRegs; }
-    /// Number of vector destination regs.
-    int8_t numVecDestRegs() const { return _numVecDestRegs; }
-    /// Number of vector element destination regs.
-    int8_t numVecElemDestRegs() const { return _numVecElemDestRegs; }
-    /// Number of predicate destination regs.
-    int8_t numVecPredDestRegs() const { return _numVecPredDestRegs; }
-    /// Number of coprocesor destination regs.
-    int8_t numCCDestRegs() const { return _numCCDestRegs; }
+    uint8_t numDestRegs() const { return _numDestRegs; }
+    /// Number of destination registers of a particular type.
+    uint8_t
+    numDestRegs(RegClassType type) const
+    {
+        return _numTypedDestRegs[type];
+    }
     //@}
 
     /// @name Flag accessors.
@@ -177,6 +156,7 @@ class StaticInst : public RefCounted, public StaticInstFlags
     bool isInteger()      const { return flags[IsInteger]; }
     bool isFloating()     const { return flags[IsFloating]; }
     bool isVector()       const { return flags[IsVector]; }
+    bool isMatrix()       const { return flags[IsMatrix]; }
 
     bool isControl()      const { return flags[IsControl]; }
     bool isCall()         const { return flags[IsCall]; }
@@ -202,6 +182,7 @@ class StaticInst : public RefCounted, public StaticInstFlags
     bool isNonSpeculative() const { return flags[IsNonSpeculative]; }
     bool isQuiesce() const { return flags[IsQuiesce]; }
     bool isUnverifiable() const { return flags[IsUnverifiable]; }
+    bool isPseudo() const { return flags[IsPseudo]; }
     bool isSyscall() const { return flags[IsSyscall]; }
     bool isMacroop() const { return flags[IsMacroop]; }
     bool isMicroop() const { return flags[IsMicroop]; }
@@ -214,6 +195,8 @@ class StaticInst : public RefCounted, public StaticInstFlags
     bool isHtmStart() const { return flags[IsHtmStart]; }
     bool isHtmStop() const { return flags[IsHtmStop]; }
     bool isHtmCancel() const { return flags[IsHtmCancel]; }
+
+    bool isInvalid() const { return flags[IsInvalid]; }
 
     bool
     isHtmCmd() const
@@ -272,6 +255,11 @@ class StaticInst : public RefCounted, public StaticInstFlags
     }
 
     /**
+     * Instruction size in bytes. Necessary for dynamic instruction sizes
+     */
+    size_t _size = 0;
+
+    /**
      * Base mnemonic (e.g., "add").  Used by generateDisassembly()
      * methods.  Also useful to readily identify instructions from
      * within the debugger when #cachedDisassembly has not been
@@ -304,17 +292,17 @@ class StaticInst : public RefCounted, public StaticInstFlags
     virtual ~StaticInst() {};
 
     virtual Fault execute(ExecContext *xc,
-            Trace::InstRecord *traceData) const = 0;
+            trace::InstRecord *traceData) const = 0;
 
     virtual Fault
-    initiateAcc(ExecContext *xc, Trace::InstRecord *traceData) const
+    initiateAcc(ExecContext *xc, trace::InstRecord *traceData) const
     {
         panic("initiateAcc not defined!");
     }
 
     virtual Fault
     completeAcc(Packet *pkt, ExecContext *xc,
-            Trace::InstRecord *trace_data) const
+            trace::InstRecord *trace_data) const
     {
         panic("completeAcc not defined!");
     }
@@ -327,6 +315,17 @@ class StaticInst : public RefCounted, public StaticInstFlags
     {
         panic("buildRetPC not defined!");
     }
+
+    size_t size() const
+    {
+        if (_size == 0) fatal(
+            "Instruction size for this instruction not set! It's size is "
+            "required for the decoupled front-end. Either use the standard "
+            "front-end or this ISA needs to be extended with the instruction "
+            "size. Refer to the X86, Arm or RiscV decoders for an example.");
+        return _size;
+    }
+    virtual void size(size_t newSize) { _size = newSize; }
 
     /**
      * Return the microop that goes with a particular micropc. This should

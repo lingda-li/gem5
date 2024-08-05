@@ -33,26 +33,24 @@ Characteristics
 * Automatically generates the DTB file
 """
 
+import argparse
+
 import m5
 from m5.objects import Root
 
-from gem5.runtime import get_runtime_isa
 from gem5.components.boards.experimental.lupv_board import LupvBoard
 from gem5.components.memory.single_channel import SingleChannelDDR3_1600
-from gem5.components.processors.simple_processor import SimpleProcessor
 from gem5.components.processors.cpu_types import CPUTypes
+from gem5.components.processors.simple_processor import SimpleProcessor
 from gem5.isas import ISA
+from gem5.resources.resource import obtain_resource
 from gem5.utils.requires import requires
-from gem5.resources.resource import Resource, CustomResource
-
-import argparse
 
 # Run a check to ensure the right version of gem5 is being used.
 requires(isa_required=ISA.RISCV)
 
-from gem5.components.cachehierarchies.classic.\
-    private_l1_private_l2_cache_hierarchy import (
-    PrivateL1PrivateL2CacheHierarchy,
+from gem5.components.cachehierarchies.classic.private_l1_private_l2_walk_cache_hierarchy import (
+    PrivateL1PrivateL2WalkCacheHierarchy,
 )
 
 parser = argparse.ArgumentParser(description="Runs Linux fs test with RISCV.")
@@ -74,7 +72,7 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-cache_hierarchy = PrivateL1PrivateL2CacheHierarchy(
+cache_hierarchy = PrivateL1PrivateL2WalkCacheHierarchy(
     l1d_size="32KiB", l1i_size="32KiB", l2_size="512KiB"
 )
 
@@ -83,11 +81,11 @@ memory = SingleChannelDDR3_1600(size="128MB")
 # Setup a single core Processor.
 if args.cpu_type == "atomic":
     processor = SimpleProcessor(
-        cpu_type=CPUTypes.ATOMIC, num_cores=args.num_cpus
+        cpu_type=CPUTypes.ATOMIC, num_cores=args.num_cpus, isa=ISA.RISCV
     )
 elif args.cpu_type == "timing":
     processor = SimpleProcessor(
-        cpu_type=CPUTypes.TIMING, num_cores=args.num_cpus
+        cpu_type=CPUTypes.TIMING, num_cores=args.num_cpus, isa=ISA.RISCV
     )
 
 # Setup the board.
@@ -100,20 +98,23 @@ board = LupvBoard(
 # Set the Full System workload.
 
 board.set_kernel_disk_workload(
-    kernel=Resource("riscv-lupio-linux-kernel"),
-    disk_image=Resource("riscv-lupio-busybox-img"),
+    kernel=obtain_resource(
+        "riscv-lupio-linux-kernel", resource_version="1.0.0"
+    ),
+    disk_image=obtain_resource(
+        "riscv-lupio-busybox-img", resource_version="1.0.0"
+    ),
 )
 
 
 # Begin running of the simulation.
-print("Running with ISA: " + get_runtime_isa().name)
+print("Running with ISA: " + processor.get_isa().name)
 print()
 root = Root(full_system=True, system=board)
+board._pre_instantiate()
 m5.instantiate()
 print("Beginning simulation!")
 
 exit_event = m5.simulate(args.max_ticks)
 
-print(
-    "Exiting @ tick {} because {}.".format(m5.curTick(), exit_event.getCause())
-)
+print(f"Exiting @ tick {m5.curTick()} because {exit_event.getCause()}.")

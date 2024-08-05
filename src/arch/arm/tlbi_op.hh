@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 ARM Limited
+ * Copyright (c) 2018-2020, 2022-2024 Arm Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -57,8 +57,8 @@ namespace ArmISA {
 class TLBIOp
 {
   public:
-    TLBIOp(ExceptionLevel _targetEL, bool _secure)
-      : secureLookup(_secure), targetEL(_targetEL)
+    TLBIOp(TranslationRegime _target_regime, bool _secure)
+      : secureLookup(_secure), targetRegime(_target_regime)
     {}
 
     virtual ~TLBIOp() {}
@@ -75,6 +75,8 @@ class TLBIOp
         for (auto *oc: tc->getSystemPtr()->threads)
             (*this)(oc);
     }
+
+    virtual bool match(TlbEntry *entry, vmid_t curr_vmid) const = 0;
 
     /**
      * Return true if the TLBI op needs to flush stage1
@@ -99,19 +101,21 @@ class TLBIOp
     }
 
     bool secureLookup;
-    ExceptionLevel targetEL;
+    TranslationRegime targetRegime;
 };
 
 /** TLB Invalidate All */
 class TLBIALL : public TLBIOp
 {
   public:
-    TLBIALL(ExceptionLevel _targetEL, bool _secure)
-      : TLBIOp(_targetEL, _secure), inHost(false), el2Enabled(false),
+    TLBIALL(TranslationRegime _target_regime, bool _secure)
+      : TLBIOp(_target_regime, _secure), el2Enabled(false),
         currentEL(EL0)
     {}
 
     void operator()(ThreadContext* tc) override;
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
 
     bool
     stage2Flush() const override
@@ -124,10 +128,9 @@ class TLBIALL : public TLBIOp
     TLBIALL
     makeStage2() const
     {
-        return TLBIALL(EL1, secureLookup);
+        return TLBIALL(targetRegime, secureLookup);
     }
 
-    bool inHost;
     bool el2Enabled;
     ExceptionLevel currentEL;
 };
@@ -136,64 +139,68 @@ class TLBIALL : public TLBIOp
 class ITLBIALL : public TLBIALL
 {
   public:
-    ITLBIALL(ExceptionLevel _targetEL, bool _secure)
-      : TLBIALL(_targetEL, _secure)
+    ITLBIALL(TranslationRegime _target_regime, bool _secure)
+      : TLBIALL(_target_regime, _secure)
     {}
 
-    void broadcast(ThreadContext *tc) = delete;
-
     void operator()(ThreadContext* tc) override;
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
 };
 
 /** Data TLB Invalidate All */
 class DTLBIALL : public TLBIALL
 {
   public:
-    DTLBIALL(ExceptionLevel _targetEL, bool _secure)
-      : TLBIALL(_targetEL, _secure)
+    DTLBIALL(TranslationRegime _target_regime, bool _secure)
+      : TLBIALL(_target_regime, _secure)
     {}
 
-    void broadcast(ThreadContext *tc) = delete;
-
     void operator()(ThreadContext* tc) override;
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
 };
 
 /** Implementaton of AArch64 TLBI ALLE(1,2,3)(IS) instructions */
 class TLBIALLEL : public TLBIOp
 {
   public:
-    TLBIALLEL(ExceptionLevel _targetEL, bool _secure)
-      : TLBIOp(_targetEL, _secure), inHost(false)
+    TLBIALLEL(TranslationRegime _target_regime, bool _secure)
+      : TLBIOp(_target_regime, _secure)
     {}
 
     void operator()(ThreadContext* tc) override;
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
 
     bool
     stage2Flush() const override
     {
         // If we're targeting EL1 then flush stage2 as well
-        return targetEL == EL1;
+        return targetRegime == TranslationRegime::EL10 ||
+               targetRegime == TranslationRegime::EL20;
     }
 
     TLBIALLEL
     makeStage2() const
     {
-        return TLBIALLEL(EL1, secureLookup);
+        return TLBIALLEL(targetRegime, secureLookup);
     }
 
-    bool inHost;
 };
 
 /** Implementaton of AArch64 TLBI VMALLE1(IS)/VMALLS112E1(IS) instructions */
 class TLBIVMALL : public TLBIOp
 {
   public:
-    TLBIVMALL(ExceptionLevel _targetEL, bool _secure, bool _stage2)
-      : TLBIOp(_targetEL, _secure), inHost(false), el2Enabled(false),
+    TLBIVMALL(TranslationRegime _target_regime, bool _secure, bool _stage2)
+      : TLBIOp(_target_regime, _secure), el2Enabled(false),
         stage2(_stage2)
     {}
 
     void operator()(ThreadContext* tc) override;
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
 
     bool
     stage2Flush() const override
@@ -204,10 +211,9 @@ class TLBIVMALL : public TLBIOp
     TLBIVMALL
     makeStage2() const
     {
-        return TLBIVMALL(EL1, secureLookup, false);
+        return TLBIVMALL(targetRegime, secureLookup, false);
     }
 
-    bool inHost;
     bool el2Enabled;
     bool stage2;
 };
@@ -216,15 +222,16 @@ class TLBIVMALL : public TLBIOp
 class TLBIASID : public TLBIOp
 {
   public:
-    TLBIASID(ExceptionLevel _targetEL, bool _secure, uint16_t _asid)
-      : TLBIOp(_targetEL, _secure), asid(_asid), inHost(false),
+    TLBIASID(TranslationRegime _target_regime, bool _secure, uint16_t _asid)
+      : TLBIOp(_target_regime, _secure), asid(_asid),
         el2Enabled(false)
     {}
 
     void operator()(ThreadContext* tc) override;
 
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
+
     uint16_t asid;
-    bool inHost;
     bool el2Enabled;
 };
 
@@ -232,120 +239,194 @@ class TLBIASID : public TLBIOp
 class ITLBIASID : public TLBIASID
 {
   public:
-    ITLBIASID(ExceptionLevel _targetEL, bool _secure, uint16_t _asid)
-      : TLBIASID(_targetEL, _secure, _asid)
+    ITLBIASID(TranslationRegime _target_regime, bool _secure, uint16_t _asid)
+      : TLBIASID(_target_regime, _secure, _asid)
     {}
 
-    void broadcast(ThreadContext *tc) = delete;
-
     void operator()(ThreadContext* tc) override;
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
 };
 
 /** Data TLB Invalidate by ASID match */
 class DTLBIASID : public TLBIASID
 {
   public:
-    DTLBIASID(ExceptionLevel _targetEL, bool _secure, uint16_t _asid)
-      : TLBIASID(_targetEL, _secure, _asid)
+    DTLBIASID(TranslationRegime _target_regime, bool _secure, uint16_t _asid)
+      : TLBIASID(_target_regime, _secure, _asid)
     {}
 
-    void broadcast(ThreadContext *tc) = delete;
-
     void operator()(ThreadContext* tc) override;
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
 };
 
 /** TLB Invalidate All, Non-Secure */
 class TLBIALLN : public TLBIOp
 {
   public:
-    TLBIALLN(ExceptionLevel _targetEL)
-      : TLBIOp(_targetEL, false)
+    TLBIALLN(TranslationRegime _target_regime)
+      : TLBIOp(_target_regime, false)
     {}
 
     void operator()(ThreadContext* tc) override;
 
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
+
     bool
     stage2Flush() const override
     {
-        return targetEL != EL2;
+        return targetRegime != TranslationRegime::EL2;
     }
 
     TLBIALLN
     makeStage2() const
     {
-        return TLBIALLN(EL1);
+        return TLBIALLN(targetRegime);
     }
 };
 
 /** TLB Invalidate by VA, All ASID */
 class TLBIMVAA : public TLBIOp
 {
+  protected:
+    TlbEntry::Lookup lookupGen(vmid_t vmid) const;
   public:
-    TLBIMVAA(ExceptionLevel _targetEL, bool _secure,
-             Addr _addr)
-      : TLBIOp(_targetEL, _secure), addr(_addr), inHost(false)
+    TLBIMVAA(TranslationRegime _target_regime, bool _secure,
+             Addr _addr, bool last_level)
+      : TLBIOp(_target_regime, _secure), addr(_addr),
+        lastLevel(last_level)
     {}
 
     void operator()(ThreadContext* tc) override;
 
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
+
     Addr addr;
-    bool inHost;
+    bool lastLevel;
 };
 
 /** TLB Invalidate by VA */
 class TLBIMVA : public TLBIOp
 {
+  protected:
+    TlbEntry::Lookup lookupGen(vmid_t vmid) const;
+
   public:
-    TLBIMVA(ExceptionLevel _targetEL, bool _secure,
-            Addr _addr, uint16_t _asid)
-      : TLBIOp(_targetEL, _secure), addr(_addr), asid(_asid),
-        inHost(false)
+    TLBIMVA(TranslationRegime _target_regime, bool _secure,
+            Addr _addr, uint16_t _asid, bool last_level)
+      : TLBIOp(_target_regime, _secure), addr(_addr), asid(_asid),
+        lastLevel(last_level)
     {}
 
     void operator()(ThreadContext* tc) override;
 
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
+
     Addr addr;
     uint16_t asid;
-    bool inHost;
+    bool lastLevel;
 };
 
 /** Instruction TLB Invalidate by VA */
 class ITLBIMVA : public TLBIMVA
 {
   public:
-    ITLBIMVA(ExceptionLevel _targetEL, bool _secure,
+    ITLBIMVA(TranslationRegime _target_regime, bool _secure,
              Addr _addr, uint16_t _asid)
-      : TLBIMVA(_targetEL, _secure, _addr, _asid)
+      : TLBIMVA(_target_regime, _secure, _addr, _asid, false)
     {}
 
-    void broadcast(ThreadContext *tc) = delete;
-
     void operator()(ThreadContext* tc) override;
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
 };
 
 /** Data TLB Invalidate by VA */
 class DTLBIMVA : public TLBIMVA
 {
   public:
-    DTLBIMVA(ExceptionLevel _targetEL, bool _secure,
+    DTLBIMVA(TranslationRegime _target_regime, bool _secure,
              Addr _addr, uint16_t _asid)
-      : TLBIMVA(_targetEL, _secure, _addr, _asid)
+      : TLBIMVA(_target_regime, _secure, _addr, _asid, false)
     {}
 
-    void broadcast(ThreadContext *tc) = delete;
-
     void operator()(ThreadContext* tc) override;
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
+};
+
+class TLBIRange
+{
+  public:
+    /**
+     * Is the range valid? This mainly depends on the specified
+     * translation granule.
+     */
+    bool valid() const { return granule != ReservedGrain; }
+
+  protected:
+    BitUnion64(RangeData)
+        Bitfield<47, 46> tg;
+        Bitfield<45, 44> scale;
+        Bitfield<43, 39> num;
+        Bitfield<38, 37> ttl;
+        Bitfield<36, 0> baseAddr;
+    EndBitUnion(RangeData)
+
+    static constexpr std::array<GrainSize, 4> tgMap = {
+        ReservedGrain,
+        Grain4KB,
+        Grain16KB,
+        Grain64KB
+    };
+
+    TLBIRange(RegVal val)
+      : rangeData(val), granule(tgMap[rangeData.tg])
+    {}
+
+    Addr
+    startAddress() const
+    {
+        return sext<37>(rangeData.baseAddr) << granule;
+    }
+
+    Addr
+    rangeSize() const
+    {
+        return (rangeData.num + 1) << (5 * rangeData.scale + 1 + granule);
+    }
+
+    bool
+    resTLBIttl(uint8_t tg, uint8_t ttl) const
+    {
+        switch (ttl) {
+          case 0: return true;
+          case 1: return tgMap[tg] == Grain16KB;
+          default: return false;
+        }
+    }
+
+    RangeData rangeData;
+    GrainSize granule;
 };
 
 /** TLB Invalidate by Intermediate Physical Address */
 class TLBIIPA : public TLBIOp
 {
   public:
-    TLBIIPA(ExceptionLevel _targetEL, bool _secure, Addr _addr)
-      : TLBIOp(_targetEL, _secure), addr(_addr)
+    TLBIIPA(TranslationRegime _target_regime, bool _secure, Addr _addr,
+            bool last_level)
+      : TLBIOp(_target_regime, _secure), addr(_addr), lastLevel(last_level)
     {}
 
     void operator()(ThreadContext* tc) override;
+
+    bool
+    match(TlbEntry *entry, vmid_t curr_vmid) const override
+    {
+        panic("This shouldn't be called\n");
+    }
 
     bool
     stage1Flush() const override
@@ -354,13 +435,57 @@ class TLBIIPA : public TLBIOp
     }
 
     /** TLBIIPA is basically a TLBIMVAA for stage2 TLBs */
-    TLBIMVAA
+    virtual TLBIMVAA
     makeStage2() const
     {
-        return TLBIMVAA(EL1, secureLookup, addr);
+        return TLBIMVAA(targetRegime, secureLookup, addr, lastLevel);
     }
 
     Addr addr;
+    bool lastLevel;
+};
+
+/** TLB Range Invalidate by VA */
+class TLBIRMVA : public TLBIRange, public TLBIMVA
+{
+  public:
+    TLBIRMVA(TranslationRegime _target_regime, bool _secure,
+             RegVal val, uint16_t _asid, bool last_level)
+      : TLBIRange(val),
+        TLBIMVA(_target_regime, _secure, startAddress(), _asid, last_level)
+    {}
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
+};
+
+/** TLB Range Invalidate by VA, All ASIDs */
+class TLBIRMVAA : public TLBIRange, public TLBIMVAA
+{
+  public:
+    TLBIRMVAA(TranslationRegime _target_regime, bool _secure,
+              RegVal val, bool last_level)
+      : TLBIRange(val),
+        TLBIMVAA(_target_regime, _secure, startAddress(), last_level)
+    {}
+
+    bool match(TlbEntry *entry, vmid_t curr_vmid) const override;
+};
+
+/** TLB Range Invalidate by VA, All ASIDs */
+class TLBIRIPA : public TLBIRange, public TLBIIPA
+{
+  public:
+    TLBIRIPA(TranslationRegime _target_regime, bool _secure,
+             RegVal val, bool last_level)
+      : TLBIRange(val),
+        TLBIIPA(_target_regime, _secure, startAddress(), last_level)
+    {}
+
+    virtual TLBIMVAA
+    makeStage2() const
+    {
+        return TLBIRMVAA(targetRegime, secureLookup, rangeData, lastLevel);
+    }
 };
 
 } // namespace ArmISA

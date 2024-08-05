@@ -24,18 +24,17 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import math
 from abc import abstractmethod
-from .....isas import ISA
-from ....processors.cpu_types import CPUTypes
-from ....processors.abstract_core import AbstractCore
 
 from m5.objects import L1Cache_Controller
 
-import math
+from .....isas import ISA
+from ....processors.abstract_core import AbstractCore
+from ....processors.cpu_types import CPUTypes
 
 
 class AbstractL1Cache(L1Cache_Controller):
-
     _version = 0
 
     @classmethod
@@ -55,20 +54,9 @@ class AbstractL1Cache(L1Cache_Controller):
 
     def getBlockSizeBits(self):
         bits = int(math.log(self._cache_line_size, 2))
-        if 2 ** bits != self._cache_line_size.value:
+        if 2**bits != self._cache_line_size.value:
             raise Exception("Cache line size not a power of 2!")
         return bits
-
-    def sendEvicts(self, core: AbstractCore, target_isa: ISA):
-        """True if the CPU model or ISA requires sending evictions from caches
-        to the CPU. Two scenarios warrant forwarding evictions to the CPU:
-        1. The O3 model must keep the LSQ coherent with the caches
-        2. The x86 mwait instruction is built on top of coherence
-        3. The local exclusive monitor in ARM systems
-        """
-        if core.get_type() is CPUTypes.O3 or target_isa in (ISA.X86, ISA.ARM):
-            return True
-        return False
 
     @abstractmethod
     def connectQueues(self, network):

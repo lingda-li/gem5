@@ -34,7 +34,6 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(FastModel, fastmodel);
 namespace fastmodel
 {
 
@@ -73,9 +72,20 @@ SCGIC::Terminator::sendTowardsCPU(uint8_t len, const uint8_t *data)
 
 SCGIC::SCGIC(const SCFastModelGICParams &params,
              sc_core::sc_module_name _name)
-    : scx_evs_GIC(_name), _params(params)
+    : scx_evs_GIC(_name), _params(params),
+      resetPort(params.name + ".reset", 0),
+      poResetPort(params.name + ".po_reset", 0)
 {
     signalInterrupt.bind(signal_interrupt);
+
+    resetPort.signal_out.bind(scx_evs_GIC::normal_reset);
+    poResetPort.signal_out.bind(scx_evs_GIC::po_reset);
+
+    for (int i = 0; i < wake_request.size(); i++) {
+        wakeRequests.emplace_back(
+            new SignalReceiver(csprintf("%s.wakerequest[%d]", name(), i)));
+        wake_request[i].bind(wakeRequests[i]->signal_in);
+    }
 
     set_parameter("gic.enabled", params.enabled);
     set_parameter("gic.has-gicv3", params.has_gicv3);
@@ -293,6 +303,18 @@ SCGIC::SCGIC(const SCFastModelGICParams &params,
     set_parameter("gic.consolidators", params.consolidators);
 }
 
+Port &
+SCGIC::gem5_getPort(const std::string &if_name, int idx)
+{
+    if (if_name == "reset") {
+        return resetPort;
+    } else if (if_name == "po_reset") {
+        return poResetPort;
+    } else {
+        return scx_evs_GIC::gem5_getPort(if_name, idx);
+    }
+}
+
 void
 SCGIC::before_end_of_elaboration()
 {
@@ -306,7 +328,18 @@ GIC::GIC(const FastModelGICParams &params) :
     ambaS(params.sc_gic->amba_s, params.name + ".amba_s", -1),
     redistributors(params.port_redistributor_connection_count),
     scGIC(params.sc_gic)
-{}
+{
+    for (int i = 0; i < params.port_wake_request_connection_count; i++) {
+        wakeRequestPorts.emplace_back(new IntSourcePin<GIC>(
+            csprintf("%s.wakerequestport[%d]", name(), i), i, this));
+        auto handler = [this, i](bool status)
+        {
+            auto &port = wakeRequestPorts[i];
+            status ? port->raise() : port->lower();
+        };
+        scGIC->wakeRequests[i]->onChange(handler);
+    }
+}
 
 Port &
 GIC::getPort(const std::string &if_name, PortID idx)
@@ -323,6 +356,10 @@ GIC::getPort(const std::string &if_name, PortID idx)
                                                    name(), idx), idx));
         }
         return *ptr;
+    } else if (if_name == "wake_request") {
+        return *wakeRequestPorts.at(idx);
+    } else if (if_name == "reset" || if_name == "po_reset") {
+        return scGIC->gem5_getPort(if_name, idx);
     } else {
         return BaseGic::getPort(if_name, idx);
     }

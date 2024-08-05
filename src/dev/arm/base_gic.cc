@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2017-2018 ARM Limited
+ * Copyright (c) 2012, 2017-2018, 2021 Arm Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -39,6 +39,7 @@
 
 #include "cpu/thread_context.hh"
 #include "dev/arm/realview.hh"
+#include "debug/GIC.hh"
 #include "params/ArmInterruptPin.hh"
 #include "params/ArmPPI.hh"
 #include "params/ArmSigInterruptPin.hh"
@@ -153,7 +154,6 @@ ArmInterruptPin::ArmInterruptPin(
       : threadContext(tc), platform(dynamic_cast<RealView*>(p.platform)),
         intNum(p.num), triggerType(p.int_type), _active(false)
 {
-    fatal_if(!platform, "Interrupt not connected to a RealView platform");
 }
 
 void
@@ -189,6 +189,7 @@ ArmSPI::ArmSPI(
     const ArmSPIParams &p)
       : ArmInterruptPin(p, nullptr)
 {
+    fatal_if(!platform, "Interrupt not connected to a RealView platform");
 }
 
 void
@@ -209,6 +210,7 @@ ArmPPI::ArmPPI(
     const ArmPPIParams &p, ThreadContext *tc)
       : ArmInterruptPin(p, tc)
 {
+    fatal_if(!platform, "Interrupt not connected to a RealView platform");
 }
 
 void

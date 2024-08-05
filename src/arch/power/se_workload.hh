@@ -45,7 +45,7 @@ namespace PowerISA
 class SEWorkload : public gem5::SEWorkload
 {
   public:
-    using Params = PowerSEWorkloadParams;
+    PARAMS(PowerSEWorkload);
     SEWorkload(const Params &p, Addr page_shift) :
         gem5::SEWorkload(p, page_shift)
     {}
@@ -54,20 +54,20 @@ class SEWorkload : public gem5::SEWorkload
     setSystem(System *sys) override
     {
         gem5::SEWorkload::setSystem(sys);
-        gdb = BaseRemoteGDB::build<RemoteGDB>(system);
+        gdb = BaseRemoteGDB::build<RemoteGDB>(
+                params().remote_gdb_port, system);
     }
 
     loader::Arch getArch() const override { return loader::Power; }
 
     struct SyscallABI : public GenericSyscallABI64
     {
-        static const std::vector<int> ArgumentRegs;
+        static const std::vector<RegId> ArgumentRegs;
     };
 };
 
 } // namespace PowerISA
 
-GEM5_DEPRECATED_NAMESPACE(GuestABI, guest_abi);
 namespace guest_abi
 {
 
@@ -77,14 +77,14 @@ struct Result<PowerISA::SEWorkload::SyscallABI, SyscallReturn>
     static void
     store(ThreadContext *tc, const SyscallReturn &ret)
     {
-        PowerISA::Cr cr = tc->readIntReg(PowerISA::INTREG_CR);
+        PowerISA::Cr cr = tc->getReg(PowerISA::int_reg::Cr);
         if (ret.successful()) {
             cr.cr0.so = 0;
         } else {
             cr.cr0.so = 1;
         }
-        tc->setIntReg(PowerISA::INTREG_CR, cr);
-        tc->setIntReg(PowerISA::ReturnValueReg, ret.encodedValue());
+        tc->setReg(PowerISA::int_reg::Cr, cr);
+        tc->setReg(PowerISA::ReturnValueReg, ret.encodedValue());
     }
 };
 

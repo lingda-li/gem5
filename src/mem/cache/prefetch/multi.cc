@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2019 ARM Limited
+ * Copyright (c) 2014, 2019, 2023 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -42,21 +42,21 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
 namespace prefetch
 {
 
 Multi::Multi(const MultiPrefetcherParams &p)
   : Base(p),
-    prefetchers(p.prefetchers.begin(), p.prefetchers.end())
+    prefetchers(p.prefetchers.begin(), p.prefetchers.end()),
+    lastChosenPf(0)
 {
 }
 
 void
-Multi::setCache(BaseCache *_cache)
+Multi::setParentInfo(System *sys, ProbeManager *pm, unsigned blk_size)
 {
     for (auto pf : prefetchers)
-        pf->setCache(_cache);
+        pf->setParentInfo(sys, pm, blk_size);
 }
 
 Tick
@@ -73,14 +73,18 @@ Multi::nextPrefetchReadyTime() const
 PacketPtr
 Multi::getPacket()
 {
-    for (auto pf : prefetchers) {
-        if (pf->nextPrefetchReadyTime() <= curTick()) {
-            PacketPtr pkt = pf->getPacket();
+    lastChosenPf = (lastChosenPf + 1) % prefetchers.size();
+    uint8_t pf_turn = lastChosenPf;
+
+    for (int pf = 0 ;  pf < prefetchers.size(); pf++) {
+        if (prefetchers[pf_turn]->nextPrefetchReadyTime() <= curTick()) {
+            PacketPtr pkt = prefetchers[pf_turn]->getPacket();
             panic_if(!pkt, "Prefetcher is ready but didn't return a packet.");
             prefetchStats.pfIssued++;
             issuedPrefetches++;
             return pkt;
         }
+        pf_turn = (pf_turn + 1) % prefetchers.size();
     }
 
     return nullptr;

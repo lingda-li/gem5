@@ -157,7 +157,7 @@ class BaseKvmCPU : public BaseCPU
      */
     ThreadContext *tc;
 
-    KvmVM &vm;
+    KvmVM *vm;
 
   protected:
     /**
@@ -444,7 +444,7 @@ class BaseKvmCPU : public BaseCPU
      * this queue when accessing devices. By convention, devices and
      * the VM use the same event queue.
      */
-    EventQueue *deviceEventQueue() { return vm.eventQueue(); }
+    EventQueue *deviceEventQueue() { return vm->eventQueue(); }
 
     /**
      * Update the KVM if the thread context is dirty.
@@ -601,7 +601,7 @@ class BaseKvmCPU : public BaseCPU
 
       public:
         KVMCpuPort(const std::string &_name, BaseKvmCPU *_cpu)
-            : RequestPort(_name, _cpu), cpu(_cpu), activeMMIOReqs(0)
+            : RequestPort(_name), cpu(_cpu), activeMMIOReqs(0)
         { }
         /**
          * Interface to send Atomic or Timing IO request.  Assumes that the pkt
@@ -653,8 +653,11 @@ class BaseKvmCPU : public BaseCPU
      */
     bool kvmStateDirty;
 
+    /** True if using perf; False otherwise*/
+    bool usePerf;
+
     /** KVM internal ID of the vCPU */
-    const long vcpuID;
+    long vcpuID;
 
     /** ID of the vCPU thread */
     pthread_t vcpuThread;
@@ -763,7 +766,7 @@ class BaseKvmCPU : public BaseCPU
      * PerfKvmTimer (see perfControlledByTimer) to trigger exits from
      * KVM.
      */
-    PerfKvmCounter hwCycles;
+    std::unique_ptr<PerfKvmCounter> hwCycles;
 
     /**
      * Guest instruction counter.
@@ -776,7 +779,7 @@ class BaseKvmCPU : public BaseCPU
      * @see setupInstBreak
      * @see scheduleInstStop
      */
-    PerfKvmCounter hwInstructions;
+    std::unique_ptr<PerfKvmCounter> hwInstructions;
 
     /**
      * Does the runTimer control the performance counters?
@@ -804,7 +807,6 @@ class BaseKvmCPU : public BaseCPU
     struct StatGroup : public statistics::Group
     {
         StatGroup(statistics::Group *parent);
-        statistics::Scalar committedInsts;
         statistics::Scalar numVMExits;
         statistics::Scalar numVMHalfEntries;
         statistics::Scalar numExitSignal;

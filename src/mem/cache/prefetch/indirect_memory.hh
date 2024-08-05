@@ -50,7 +50,6 @@ namespace gem5
 
 struct IndirectMemoryPrefetcherParams;
 
-GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
 namespace prefetch
 {
 
@@ -122,7 +121,7 @@ class IndirectMemory : public Queued
         }
     };
     /** Prefetch table */
-    AssociativeSet<PrefetchTableEntry> prefetchTable;
+    AssociativeCache<PrefetchTableEntry> prefetchTable;
 
     /** Indirect Pattern Detector entrt */
     struct IndirectPatternDetectorEntry : public TaggedEntry
@@ -161,7 +160,7 @@ class IndirectMemory : public Queued
         }
     };
     /** Indirect Pattern Detector (IPD) table */
-    AssociativeSet<IndirectPatternDetectorEntry> ipd;
+    AssociativeCache<IndirectPatternDetectorEntry> ipd;
 
     /** Entry currently tracking misses */
     IndirectPatternDetectorEntry *ipdEntryTrackingMisses;
@@ -202,7 +201,8 @@ class IndirectMemory : public Queued
     ~IndirectMemory() = default;
 
     void calculatePrefetch(const PrefetchInfo &pfi,
-                           std::vector<AddrPriority> &addresses) override;
+                           std::vector<AddrPriority> &addresses,
+                           const CacheAccessor &cache) override;
 };
 
 } // namespace prefetch

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2014, 2017-2020 ARM Limited
+ * Copyright (c) 2010-2014, 2017-2021 ARM Limited
  * Copyright (c) 2013 Advanced Micro Devices, Inc.
  * All rights reserved
  *
@@ -43,7 +43,6 @@
 
 #include "arch/generic/debugfaults.hh"
 #include "base/str.hh"
-#include "config/the_isa.hh"
 #include "cpu/checker/cpu.hh"
 #include "cpu/o3/dyn_inst.hh"
 #include "cpu/o3/limits.hh"
@@ -205,7 +204,7 @@ LSQUnit::LSQUnit(uint32_t lqEntries, uint32_t sqEntries)
 }
 
 void
-LSQUnit::init(CPU *cpu_ptr, IEW *iew_ptr, const O3CPUParams &params,
+LSQUnit::init(CPU *cpu_ptr, IEW *iew_ptr, const BaseO3CPUParams &params,
         LSQ *lsq_ptr, unsigned id)
 {
     lsqID = id;
@@ -456,7 +455,7 @@ LSQUnit::checkSnoop(PacketPtr pkt)
     LSQRequest *request = iter->request();
 
     // Check that this snoop didn't just invalidate our lock flag
-    if (ld_inst->effAddrValid() &&
+    if (ld_inst->effAddrValid() && request &&
         request->isCacheBlockHit(invalidate_addr, cacheBlockMask)
         && ld_inst->memReqFlags & Request::LLSC) {
         ld_inst->tcBase()->getIsaPtr()->handleLockedSnoopHit(ld_inst.get());
@@ -468,7 +467,7 @@ LSQUnit::checkSnoop(PacketPtr pkt)
         ld_inst = iter->instruction();
         assert(ld_inst);
         request = iter->request();
-        if (!ld_inst->effAddrValid() || ld_inst->strictlyOrdered())
+        if (!ld_inst->effAddrValid() || ld_inst->strictlyOrdered() || !request)
             continue;
 
         DPRINTF(LSQUnit, "-- inst [sn:%lli] to pktAddr:%#x\n",
@@ -664,7 +663,7 @@ LSQUnit::executeStore(const DynInstPtr &store_inst)
     // Make sure that a store exists.
     assert(storeQueue.size() != 0);
 
-    int store_idx = store_inst->sqIdx;
+    ssize_t store_idx = store_inst->sqIdx;
 
     DPRINTF(LSQUnit, "Executing store PC %s [sn:%lli]\n",
             store_inst->pcState(), store_inst->seqNum);
@@ -1050,7 +1049,7 @@ LSQUnit::storePostSend()
     if (isStalled() &&
         storeWBIt->instruction()->seqNum == stallingStoreIsn) {
         DPRINTF(LSQUnit, "Unstalling, stalling store [sn:%lli] "
-                "load idx:%i\n",
+                "load idx:%li\n",
                 stallingStoreIsn, stallingLoadIdx);
         stalled = false;
         stallingStoreIsn = 0;
@@ -1177,7 +1176,7 @@ LSQUnit::completeStore(typename StoreQueue::iterator store_idx)
     if (isStalled() &&
         store_inst->seqNum == stallingStoreIsn) {
         DPRINTF(LSQUnit, "Unstalling, stalling store [sn:%lli] "
-                "load idx:%i\n",
+                "load idx:%li\n",
                 stallingStoreIsn, stallingLoadIdx);
         stalled = false;
         stallingStoreIsn = 0;
@@ -1244,6 +1243,39 @@ LSQUnit::trySendPacket(bool isLoad, PacketPtr data_pkt)
 }
 
 void
+LSQUnit::startStaleTranslationFlush()
+{
+    DPRINTF(LSQUnit, "Unit %p marking stale translations %d %d\n", this,
+        storeQueue.size(), loadQueue.size());
+    for (auto& entry : storeQueue) {
+        if (entry.valid() && entry.hasRequest())
+            entry.request()->markAsStaleTranslation();
+    }
+    for (auto& entry : loadQueue) {
+        if (entry.valid() && entry.hasRequest())
+            entry.request()->markAsStaleTranslation();
+    }
+}
+
+bool
+LSQUnit::checkStaleTranslations() const
+{
+    DPRINTF(LSQUnit, "Unit %p checking stale translations\n", this);
+    for (auto& entry : storeQueue) {
+        if (entry.valid() && entry.hasRequest()
+            && entry.request()->hasStaleTranslation())
+            return true;
+    }
+    for (auto& entry : loadQueue) {
+        if (entry.valid() && entry.hasRequest()
+            && entry.request()->hasStaleTranslation())
+            return true;
+    }
+    DPRINTF(LSQUnit, "Unit %p found no stale translations\n", this);
+    return false;
+}
+
+void
 LSQUnit::recvRetry()
 {
     if (isStoreBlocked) {
@@ -1287,7 +1319,7 @@ LSQUnit::cacheLineSize()
 }
 
 Fault
-LSQUnit::read(LSQRequest *request, int load_idx)
+LSQUnit::read(LSQRequest *request, ssize_t load_idx)
 {
     LQEntry& load_entry = loadQueue[load_idx];
     const DynInstPtr& load_inst = load_entry.instruction();
@@ -1341,7 +1373,6 @@ LSQUnit::read(LSQRequest *request, int load_idx)
 
     if (request->mainReq()->isLocalAccess()) {
         assert(!load_inst->memData);
-        assert(!load_inst->inHtmTransactionalState());
         load_inst->memData = new uint8_t[MaxDataBytes];
 
         gem5::ThreadContext *thread = cpu->tcBase(lsqID);
@@ -1354,37 +1385,6 @@ LSQUnit::read(LSQRequest *request, int load_idx)
         WritebackEvent *wb = new WritebackEvent(load_inst, main_pkt, this);
         cpu->schedule(wb, cpu->clockEdge(delay));
         return NoFault;
-    }
-
-    // hardware transactional memory
-    if (request->mainReq()->isHTMStart() || request->mainReq()->isHTMCommit())
-    {
-        // don't want to send nested transactionStarts and
-        // transactionStops outside of core, e.g. to Ruby
-        if (request->mainReq()->getFlags().isSet(Request::NO_ACCESS)) {
-            Cycles delay(0);
-            PacketPtr data_pkt =
-                new Packet(request->mainReq(), MemCmd::ReadReq);
-
-            // Allocate memory if this is the first time a load is issued.
-            if (!load_inst->memData) {
-                load_inst->memData =
-                    new uint8_t[request->mainReq()->getSize()];
-                // sanity checks espect zero in request's data
-                memset(load_inst->memData, 0, request->mainReq()->getSize());
-            }
-
-            data_pkt->dataStatic(load_inst->memData);
-            if (load_inst->inHtmTransactionalState()) {
-                data_pkt->setHtmTransactional(
-                    load_inst->getHtmTransactionUid());
-            }
-            data_pkt->makeResponse();
-
-            WritebackEvent *wb = new WritebackEvent(load_inst, data_pkt, this);
-            cpu->schedule(wb, cpu->clockEdge(delay));
-            return NoFault;
-        }
     }
 
     // Check the SQ for any previous stores that might lead to forwarding
@@ -1515,6 +1515,8 @@ LSQUnit::read(LSQRequest *request, int load_idx)
                     // first time this load got executed. Signal the senderSate
                     // that response packets should be discarded.
                     request->discard();
+                    // Avoid checking snoops on this discarded request.
+                    load_entry.setRequest(nullptr);
                 }
 
                 WritebackEvent *wb = new WritebackEvent(load_inst, data_pkt,
@@ -1604,7 +1606,7 @@ LSQUnit::read(LSQRequest *request, int load_idx)
 }
 
 Fault
-LSQUnit::write(LSQRequest *request, uint8_t *data, int store_idx)
+LSQUnit::write(LSQRequest *request, uint8_t *data, ssize_t store_idx)
 {
     assert(storeQueue[store_idx].valid());
 

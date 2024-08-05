@@ -24,19 +24,19 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from .....processors.abstract_core import AbstractCore
-from ......isas import ISA
-from ..abstract_l1_cache import AbstractL1Cache
-from ......utils.override import *
+import math
 
 from m5.objects import (
-    MessageBuffer,
-    RubyPrefetcher,
-    RubyCache,
     ClockDomain,
+    MessageBuffer,
+    RubyCache,
+    RubyPrefetcher,
 )
 
-import math
+from ......isas import ISA
+from ......utils.override import *
+from .....processors.abstract_core import AbstractCore
+from ..abstract_l1_cache import AbstractL1Cache
 
 
 class L1Cache(AbstractL1Cache):
@@ -74,7 +74,7 @@ class L1Cache(AbstractL1Cache):
         self.l2_select_num_bits = int(math.log(num_l2Caches, 2))
         self.clk_domain = clk_domain
         self.prefetcher = RubyPrefetcher()
-        self.send_evictions = self.sendEvicts(core=core, target_isa=target_isa)
+        self.send_evictions = core.requires_send_evicts()
         self.transitions_per_cycle = 4
         self.enable_prefetch = False
 

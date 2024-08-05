@@ -387,7 +387,8 @@ Process::unserialize(CheckpointIn &cp)
 {
     memState->unserialize(cp);
     pTable->unserialize(cp);
-    fds->unserialize(cp);
+    fds->unserialize(cp, this);
+
     /**
      * Checkpoints for pipes, device drivers or sockets currently
      * do not work. Need to come back and fix them at a later date.
@@ -400,7 +401,7 @@ Process::unserialize(CheckpointIn &cp)
 }
 
 bool
-Process::map(Addr vaddr, Addr paddr, int size, bool cacheable)
+Process::map(Addr vaddr, Addr paddr, int64_t size, bool cacheable)
 {
     pTable->map(vaddr, paddr, size,
                 cacheable ? EmulationPageTable::MappingFlags(0) :
@@ -519,7 +520,7 @@ Process::absolutePath(const std::string &filename, bool host_filesystem)
     }
 
     // Add a trailing '/' if the current working directory did not have one.
-    normalize(path_base);
+    path_base = normalize(path_base);
 
     // Append the filename onto the current working path.
     auto absolute_path = path_base + filename;

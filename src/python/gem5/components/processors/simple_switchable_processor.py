@@ -24,13 +24,20 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from ..boards.mem_mode import MemMode
-from ..boards.abstract_board import AbstractBoard
-from ..processors.simple_core import SimpleCore
-from ..processors.cpu_types import CPUTypes
-from .switchable_processor import SwitchableProcessor
+from typing import Optional
 
+from m5.util import warn
+
+from ...isas import ISA
 from ...utils.override import *
+from ..boards.abstract_board import AbstractBoard
+from ..boards.mem_mode import MemMode
+from ..processors.cpu_types import (
+    CPUTypes,
+    get_mem_mode,
+)
+from ..processors.simple_core import SimpleCore
+from .switchable_processor import SwitchableProcessor
 
 
 class SimpleSwitchableProcessor(SwitchableProcessor):
@@ -46,7 +53,17 @@ class SimpleSwitchableProcessor(SwitchableProcessor):
         starting_core_type: CPUTypes,
         switch_core_type: CPUTypes,
         num_cores: int,
+        isa: ISA = None,
     ) -> None:
+        """
+        :param starting_core_type: The CPU type for each type in the processor
+                                   to start with (i.e., when the simulation has
+                                   just started).
+        :param switch_core_types: The CPU type for each core, to be switched
+        to.
+
+        :param isa: The ISA of the processor.
+        """
 
         if num_cores <= 0:
             raise AssertionError("Number of cores must be a positive integer!")
@@ -55,35 +72,37 @@ class SimpleSwitchableProcessor(SwitchableProcessor):
         self._switch_key = "switch"
         self._current_is_start = True
 
-        if starting_core_type in (CPUTypes.TIMING, CPUTypes.O3):
-            self._mem_mode = MemMode.TIMING
-        elif starting_core_type == CPUTypes.KVM:
-            self._mem_mode = MemMode.ATOMIC_NONCACHING
-        elif starting_core_type == CPUTypes.ATOMIC:
-            self._mem_mode = MemMode.ATOMIC
-        else:
-            raise NotImplementedError
+        self._mem_mode = get_mem_mode(starting_core_type)
 
         switchable_cores = {
             self._start_key: [
-                SimpleCore(cpu_type=starting_core_type, core_id=i)
+                SimpleCore(cpu_type=starting_core_type, core_id=i, isa=isa)
                 for i in range(num_cores)
             ],
             self._switch_key: [
-                SimpleCore(cpu_type=switch_core_type, core_id=i)
+                SimpleCore(cpu_type=switch_core_type, core_id=i, isa=isa)
                 for i in range(num_cores)
             ],
         }
 
         super().__init__(
-            switchable_cores=switchable_cores,
-            starting_cores=self._start_key,
+            switchable_cores=switchable_cores, starting_cores=self._start_key
         )
 
     @overrides(SwitchableProcessor)
     def incorporate_processor(self, board: AbstractBoard) -> None:
         super().incorporate_processor(board=board)
 
+        if (
+            board.get_cache_hierarchy().is_ruby()
+            and self._mem_mode == MemMode.ATOMIC
+        ):
+            warn(
+                "Using an atomic core with Ruby will result in "
+                "'atomic_noncaching' memory mode. This will skip caching "
+                "completely."
+            )
+            self._mem_mode = MemMode.ATOMIC_NONCACHING
         board.set_mem_mode(self._mem_mode)
 
     def switch(self):

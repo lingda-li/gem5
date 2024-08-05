@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2013, 2016, 2019-2021 Arm Limited
+ * Copyright (c) 2010-2013, 2016, 2019-2024 Arm Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -43,8 +43,9 @@
 
 #include "arch/arm/page_size.hh"
 #include "arch/arm/tlb.hh"
+#include "arch/arm/utility.hh"
 #include "arch/generic/mmu.hh"
-
+#include "base/memoizer.hh"
 #include "enums/ArmLookupLevel.hh"
 
 #include "params/ArmMMU.hh"
@@ -130,10 +131,43 @@ class MMU : public BaseMMU
         S12E1Tran = 0x100
     };
 
-    struct CachedState {
-        explicit CachedState(MMU *_mmu, bool stage2)
-          : mmu(_mmu), isStage2(stage2)
+    struct CachedState
+    {
+        CachedState(MMU *_mmu, bool stage2)
+          : mmu(_mmu), isStage2(stage2),
+            computeAddrTop(ArmISA::computeAddrTop)
         {}
+
+        CachedState&
+        operator=(const CachedState &rhs)
+        {
+            isStage2 = rhs.isStage2;
+            cpsr = rhs.cpsr;
+            aarch64 = rhs.aarch64;
+            exceptionLevel = rhs.exceptionLevel;
+            currRegime = rhs.currRegime;
+            sctlr = rhs.sctlr;
+            scr = rhs.scr;
+            isPriv = rhs.isPriv;
+            isSecure = rhs.isSecure;
+            ttbcr = rhs.ttbcr;
+            asid = rhs.asid;
+            vmid = rhs.vmid;
+            prrr = rhs.prrr;
+            nmrr = rhs.nmrr;
+            hcr = rhs.hcr;
+            dacr = rhs.dacr;
+            miscRegValid = rhs.miscRegValid;
+            curTranType = rhs.curTranType;
+            stage2Req = rhs.stage2Req;
+            stage2DescReq = rhs.stage2DescReq;
+            directToStage2 = rhs.directToStage2;
+
+            // When we copy we just flush the memoizer cache
+            computeAddrTop.flush();
+
+            return *this;
+        }
 
         void updateMiscReg(ThreadContext *tc, ArmTranslationType tran_type);
 
@@ -145,12 +179,12 @@ class MMU : public BaseMMU
         bool isStage2 = false;
         CPSR cpsr = 0;
         bool aarch64 = false;
-        ExceptionLevel aarch64EL = EL0;
+        ExceptionLevel exceptionLevel = EL0;
+        TranslationRegime currRegime = TranslationRegime::EL10;
         SCTLR sctlr = 0;
         SCR scr = 0;
         bool isPriv = false;
         bool isSecure = false;
-        bool isHyp = false;
         TTBCR ttbcr = 0;
         uint16_t asid = 0;
         vmid_t vmid = 0;
@@ -173,6 +207,9 @@ class MMU : public BaseMMU
         // Indicates whether all translation requests should
         // be routed directly to the stage 2 TLB
         bool directToStage2 = false;
+
+        Memoizer<int, ThreadContext*, bool,
+                 bool, TCR, ExceptionLevel> computeAddrTop;
     };
 
     MMU(const ArmMMUParams &p);
@@ -353,7 +390,9 @@ class MMU : public BaseMMU
      * a specific translation type. If the translation type doesn't
      * specify an EL, we use the current EL.
      */
-    static ExceptionLevel tranTypeEL(CPSR cpsr, ArmTranslationType type);
+    static ExceptionLevel tranTypeEL(CPSR cpsr, SCR scr, ArmTranslationType type);
+
+    static bool hasUnprivRegime(TranslationRegime regime);
 
   public:
     /** Lookup an entry in the TLB
@@ -361,18 +400,16 @@ class MMU : public BaseMMU
      * @param asn context id/address space id to use
      * @param vmid The virtual machine ID used for stage 2 translation
      * @param secure if the lookup is secure
-     * @param hyp if the lookup is done from hyp mode
      * @param functional if the lookup should modify state
      * @param ignore_asn if on lookup asn should be ignored
-     * @param target_el selecting the translation regime
-     * @param in_host if we are in host (EL2&0 regime)
+     * @param target_regime selecting the translation regime
      * @param mode to differentiate between read/writes/fetches.
      * @return pointer to TLB entry if it exists
      */
-    TlbEntry *lookup(Addr vpn, uint16_t asn, vmid_t vmid, bool hyp,
+    TlbEntry *lookup(Addr vpn, uint16_t asn, vmid_t vmid,
                      bool secure, bool functional,
-                     bool ignore_asn, ExceptionLevel target_el,
-                     bool in_host, bool stage2, BaseMMU::Mode mode);
+                     bool ignore_asn, TranslationRegime target_regime,
+                     bool stage2, BaseMMU::Mode mode);
 
     Fault getTE(TlbEntry **te, const RequestPtr &req,
                 ThreadContext *tc, Mode mode,
@@ -399,7 +436,12 @@ class MMU : public BaseMMU
                              ThreadContext *tc, bool stage2);
     Fault checkPermissions64(TlbEntry *te, const RequestPtr &req, Mode mode,
                              ThreadContext *tc, CachedState &state);
+
   protected:
+    Addr purifyTaggedAddr(Addr vaddr_tainted, ThreadContext *tc,
+                          ExceptionLevel el,
+                          TCR tcr, bool is_inst, CachedState& state);
+
     bool checkPAN(ThreadContext *tc, uint8_t ap, const RequestPtr &req,
                   Mode mode, const bool is_priv, CachedState &state);
 
@@ -420,13 +462,7 @@ class MMU : public BaseMMU
     void setTestInterface(SimObject *ti);
 
     Fault testTranslation(const RequestPtr &req, Mode mode,
-                          TlbEntry::DomainType domain, CachedState &state);
-    Fault testWalk(Addr pa, Addr size, Addr va, bool is_secure, Mode mode,
-                   TlbEntry::DomainType domain,
-                   LookupLevel lookup_level, bool stage2);
-    Fault testWalk(Addr pa, Addr size, Addr va, bool is_secure, Mode mode,
-                   TlbEntry::DomainType domain,
-                   LookupLevel lookup_level, CachedState &state);
+                          TlbEntry::DomainType domain, CachedState &state) const;
 
   protected:
     bool checkWalkCache() const;
@@ -436,6 +472,10 @@ class MMU : public BaseMMU
     CachedState& updateMiscReg(
         ThreadContext *tc, ArmTranslationType tran_type,
         bool stage2);
+
+    Fault testAndFinalize(const RequestPtr &req,
+                          ThreadContext *tc, Mode mode,
+                          TlbEntry *te, CachedState &state) const;
 
   protected:
     ContextID miscRegContext;

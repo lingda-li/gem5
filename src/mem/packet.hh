@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 ARM Limited
+ * Copyright (c) 2012-2019, 2021 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -55,6 +55,7 @@
 #include "base/addr_range.hh"
 #include "base/cast.hh"
 #include "base/compiler.hh"
+#include "base/extensible.hh"
 #include "base/flags.hh"
 #include "base/logging.hh"
 #include "base/printable.hh"
@@ -112,6 +113,10 @@ class MemCmd
         StoreCondReq,
         StoreCondFailReq,       // Failed StoreCondReq in MSHR (never sent)
         StoreCondResp,
+        LockedRMWReadReq,
+        LockedRMWReadResp,
+        LockedRMWWriteReq,
+        LockedRMWWriteResp,
         SwapReq,
         SwapResp,
         // MessageReq and MessageResp are deprecated.
@@ -129,6 +134,8 @@ class MemCmd
         // compatibility
         InvalidDestError,  // packet dest field invalid
         BadAddressError,   // memory address invalid
+        ReadError,         // packet dest unable to fulfill read command
+        WriteError,        // packet dest unable to fulfill write command
         FunctionalReadError, // unable to fulfill functional read
         FunctionalWriteError, // unable to fulfill functional write
         // Fake simulator-only commands
@@ -140,6 +147,8 @@ class MemCmd
         HTMReq,
         HTMReqResp,
         HTMAbort,
+        // Tlb shootdown
+        TlbiExtSync,
         NUM_MEM_CMDS
     };
 
@@ -162,6 +171,7 @@ class MemCmd
         IsSWPrefetch,
         IsHWPrefetch,
         IsLlsc,         //!< Alpha/MIPS LL or SC access
+        IsLockedRMW,    //!< x86 locked RMW access
         HasData,        //!< There is an associated payload
         IsError,        //!< Error response
         IsPrint,        //!< Print state matching address (for debugging)
@@ -239,6 +249,7 @@ class MemCmd
      */
     bool hasData() const        { return testCmdAttrib(HasData); }
     bool isLLSC() const         { return testCmdAttrib(IsLlsc); }
+    bool isLockedRMW() const    { return testCmdAttrib(IsLockedRMW); }
     bool isSWPrefetch() const   { return testCmdAttrib(IsSWPrefetch); }
     bool isHWPrefetch() const   { return testCmdAttrib(IsHWPrefetch); }
     bool isPrefetch() const     { return testCmdAttrib(IsSWPrefetch) ||
@@ -280,7 +291,7 @@ class MemCmd
  * ultimate destination and back, possibly being conveyed by several
  * different Packets along the way.)
  */
-class Packet : public Printable
+class Packet : public Printable, public Extensible<Packet>
 {
   public:
     typedef uint32_t FlagsType;
@@ -607,6 +618,7 @@ class Packet : public Printable
         return resp_cmd.hasData();
     }
     bool isLLSC() const              { return cmd.isLLSC(); }
+    bool isLockedRMW() const         { return cmd.isLockedRMW(); }
     bool isError() const             { return cmd.isError(); }
     bool isPrint() const             { return cmd.isPrint(); }
     bool isFlush() const             { return cmd.isFlush(); }
@@ -614,7 +626,8 @@ class Packet : public Printable
     bool isWholeLineWrite(unsigned blk_size)
     {
         return (cmd == MemCmd::WriteReq || cmd == MemCmd::WriteLineReq) &&
-            getOffset(blk_size) == 0 && getSize() == blk_size;
+            getOffset(blk_size) == 0 && getSize() == blk_size &&
+            !isMaskedWrite();
     }
 
     //@{
@@ -776,6 +789,19 @@ class Packet : public Printable
         cmd = MemCmd::BadAddressError;
     }
 
+    // Command error conditions. The request is sent to target but the target
+    // cannot make it.
+    void
+    setBadCommand()
+    {
+        assert(isResponse());
+        if (isWrite()) {
+            cmd = MemCmd::WriteError;
+        } else {
+            cmd = MemCmd::ReadError;
+        }
+    }
+
     void copyError(Packet *pkt) { assert(pkt->isError()); cmd = pkt->cmd; }
 
     Addr getAddr() const { assert(flags.isSet(VALID_ADDR)); return addr; }
@@ -916,7 +942,8 @@ class Packet : public Printable
      * packet should allocate its own data.
      */
     Packet(const PacketPtr pkt, bool clear_flags, bool alloc_data)
-        :  cmd(pkt->cmd), id(pkt->id), req(pkt->req),
+        :  Extensible<Packet>(*pkt),
+           cmd(pkt->cmd), id(pkt->id), req(pkt->req),
            data(nullptr),
            addr(pkt->addr), _isSecure(pkt->_isSecure), size(pkt->size),
            bytesValid(pkt->bytesValid),
@@ -976,6 +1003,8 @@ class Packet : public Printable
             return MemCmd::SoftPFExReq;
         else if (req->isPrefetch())
             return MemCmd::SoftPFReq;
+        else if (req->isLockedRMW())
+            return MemCmd::LockedRMWReadReq;
         else
             return MemCmd::ReadReq;
     }
@@ -995,6 +1024,8 @@ class Packet : public Printable
               MemCmd::InvalidateReq;
         } else if (req->isCacheClean()) {
             return MemCmd::CleanSharedReq;
+        } else if (req->isLockedRMW()) {
+            return MemCmd::LockedRMWWriteReq;
         } else
             return MemCmd::WriteReq;
     }
@@ -1073,6 +1104,16 @@ class Packet : public Printable
     }
 
     /**
+     * Accessor functions for the cache bypass flags. The cache bypass
+     * can specify which levels in the hierarchy to bypass. If GLC_BIT
+     * is set, the requests are globally coherent and bypass TCP.
+     * If SLC_BIT is set, then the requests are system level coherent
+     * and bypass both TCP and TCC.
+     */
+    bool isGLCSet() const { return req->isGLCSet();}
+    bool isSLCSet() const { return req->isSLCSet();}
+
+    /**
      * Check if packet corresponds to a given block-aligned address and
      * address space.
      *
@@ -1115,7 +1156,7 @@ class Packet : public Printable
   public:
     /**
      * @{
-     * @name Data accessor mehtods
+     * @name Data accessor methods
      */
 
     /**
@@ -1394,6 +1435,15 @@ class Packet : public Printable
     isCleanEviction() const
     {
         return cmd == MemCmd::CleanEvict || cmd == MemCmd::WritebackClean;
+    }
+
+    /**
+     * Is this packet a clean invalidate request, e.g., clflush/clflushopt?
+     */
+    bool
+    isCleanInvalidateRequest() const
+    {
+        return cmd == MemCmd::CleanInvalidReq;
     }
 
     bool

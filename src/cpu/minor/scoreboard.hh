@@ -56,7 +56,6 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(Minor, minor);
 namespace minor
 {
 
@@ -72,7 +71,9 @@ class Scoreboard : public Named
     const unsigned floatRegOffset;
     const unsigned ccRegOffset;
     const unsigned vecRegOffset;
+    const unsigned vecRegElemOffset;
     const unsigned vecPredRegOffset;
+    const unsigned matRegOffset;
 
     /** The number of registers in the Scoreboard.  These
      *  are just the integer, CC and float registers packed
@@ -81,8 +82,6 @@ class Scoreboard : public Named
      *  and float regs in the range
      *  [NumIntRegs+NumCCRegs, NumFloatRegs+NumIntRegs+NumCCRegs-1] */
     const unsigned numRegs;
-
-    const RegIndex zeroReg;
 
     /** Type to use when indexing numResults */
     typedef unsigned short int Index;
@@ -114,12 +113,15 @@ class Scoreboard : public Named
         Named(name),
         regClasses(reg_classes),
         intRegOffset(0),
-        floatRegOffset(intRegOffset + reg_classes.at(IntRegClass).size()),
-        ccRegOffset(floatRegOffset + reg_classes.at(FloatRegClass).size()),
-        vecRegOffset(ccRegOffset + reg_classes.at(CCRegClass).size()),
-        vecPredRegOffset(vecRegOffset + reg_classes.at(VecElemClass).size()),
-        numRegs(vecPredRegOffset + reg_classes.at(VecPredRegClass).size()),
-        zeroReg(reg_classes.at(IntRegClass).zeroReg()),
+        floatRegOffset(intRegOffset + reg_classes.at(IntRegClass)->numRegs()),
+        ccRegOffset(floatRegOffset + reg_classes.at(FloatRegClass)->numRegs()),
+        vecRegOffset(ccRegOffset + reg_classes.at(CCRegClass)->numRegs()),
+        vecRegElemOffset(vecRegOffset + reg_classes.at(VecRegClass)->numRegs()),
+        vecPredRegOffset(vecRegElemOffset +
+                reg_classes.at(VecElemClass)->numRegs()),
+        matRegOffset(vecPredRegOffset +
+                reg_classes.at(VecPredRegClass)->numRegs()),
+        numRegs(matRegOffset + reg_classes.at(MatRegClass)->numRegs()),
         numResults(numRegs, 0),
         numUnpredictableResults(numRegs, 0),
         fuIndices(numRegs, invalidFUIndex),

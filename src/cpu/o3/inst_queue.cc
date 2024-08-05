@@ -50,7 +50,7 @@
 #include "cpu/o3/limits.hh"
 #include "debug/IQ.hh"
 #include "enums/OpClass.hh"
-#include "params/O3CPU.hh"
+#include "params/BaseO3CPU.hh"
 #include "sim/core.hh"
 
 // clang complains about std::set being overloaded with Packet::set if
@@ -85,7 +85,7 @@ InstructionQueue::FUCompletion::description() const
 }
 
 InstructionQueue::InstructionQueue(CPU *cpu_ptr, IEW *iew_ptr,
-        const O3CPUParams &params)
+        const BaseO3CPUParams &params)
     : cpu(cpu_ptr),
       iewStage(iew_ptr),
       fuPool(params.fuPool),
@@ -99,12 +99,16 @@ InstructionQueue::InstructionQueue(CPU *cpu_ptr, IEW *iew_ptr,
 {
     assert(fuPool);
 
+    const auto &reg_classes = params.isa[0]->regClasses();
     // Set the number of total physical registers
     // As the vector registers have two addressing modes, they are added twice
     numPhysRegs = params.numPhysIntRegs + params.numPhysFloatRegs +
                     params.numPhysVecRegs +
-                    params.numPhysVecRegs * TheISA::NumVecElemPerVecReg +
+                    params.numPhysVecRegs * (
+                            reg_classes.at(VecElemClass)->numRegs() /
+                            reg_classes.at(VecRegClass)->numRegs()) +
                     params.numPhysVecPredRegs +
+                    params.numPhysMatRegs +
                     params.numPhysCCRegs;
 
     //Create an entry for each physical register within the
@@ -161,7 +165,7 @@ InstructionQueue::InstructionQueue(CPU *cpu_ptr, IEW *iew_ptr,
 InstructionQueue::~InstructionQueue()
 {
     dependGraph.reset();
-#ifdef DEBUG
+#ifdef GEM5_DEBUG
     cprintf("Nodes traversed: %i, removed: %i\n",
             dependGraph.nodesTraversed, dependGraph.nodesRemoved);
 #endif

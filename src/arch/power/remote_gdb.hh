@@ -56,8 +56,8 @@ class RemoteGDB : public BaseRemoteGDB
       private:
         struct GEM5_PACKED
         {
-            uint32_t gpr[NumIntArchRegs];
-            uint64_t fpr[NumFloatArchRegs];
+            uint32_t gpr[int_reg::NumArchRegs];
+            uint64_t fpr[float_reg::NumArchRegs];
             uint32_t pc;
             uint32_t msr;
             uint32_t cr;
@@ -85,8 +85,8 @@ class RemoteGDB : public BaseRemoteGDB
       private:
         struct GEM5_PACKED
         {
-            uint64_t gpr[NumIntArchRegs];
-            uint64_t fpr[NumFloatArchRegs];
+            uint64_t gpr[int_reg::NumArchRegs];
+            uint64_t fpr[float_reg::NumArchRegs];
             uint64_t pc;
             uint64_t msr;
             uint32_t cr;
@@ -112,7 +112,7 @@ class RemoteGDB : public BaseRemoteGDB
     Power64GdbRegCache regCache64;
 
   public:
-    RemoteGDB(System *_system, int _port);
+    RemoteGDB(System *_system, ListenSocketConfig _listen_config);
     BaseGdbRegCache *gdbRegs();
 
     std::vector<std::string>

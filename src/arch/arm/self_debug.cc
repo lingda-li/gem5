@@ -56,9 +56,7 @@ SelfDebug::testDebug(ThreadContext *tc, const RequestPtr &req,
     if (mode == BaseMMU::Execute) {
         const bool d_step = softStep->advanceSS(tc);
         if (!d_step) {
-            fault = testVectorCatch(tc, req->getVaddr(), nullptr);
-            if (fault == NoFault)
-                fault = testBreakPoints(tc, req->getVaddr());
+            fault = testBreakPoints(tc, req->getVaddr());
         }
     } else if (!req->isCacheMaintenance() ||
              (req->isCacheInvalidate() && !req->isCacheClean())) {
@@ -81,8 +79,6 @@ SelfDebug::testBreakPoints(ThreadContext *tc, Addr vaddr)
     setAArch32(tc);
 
     to32 = targetAArch32(tc);
-
-    init(tc);
 
     if (!isDebugEnabled(tc))
         return NoFault;
@@ -127,15 +123,11 @@ SelfDebug::testWatchPoints(ThreadContext *tc, Addr vaddr, bool write,
 {
     setAArch32(tc);
     to32 = targetAArch32(tc);
-    if (!initialized)
-        init(tc);
     if (!isDebugEnabled(tc) || !mde)
         return NoFault;
 
     ExceptionLevel el = (ExceptionLevel) currEL(tc);
-    int idxtmp = -1;
     for (auto &p: arWatchPoints){
-        idxtmp ++;
         if (p.enable) {
             if (p.test(tc, vaddr, el, write, atomic, size)) {
                 return triggerWatchpointException(tc, vaddr, write, cm);
@@ -165,8 +157,9 @@ bool
 SelfDebug::isDebugEnabledForEL64(ThreadContext *tc, ExceptionLevel el,
                          bool secure, bool mask)
 {
-    bool route_to_el2 =  ArmSystem::haveEL(tc, EL2) &&
-                         (!secure || HaveSecureEL2Ext(tc)) && enableTdeTge;
+    bool route_to_el2 = ArmSystem::haveEL(tc, EL2) &&
+                        (!secure || HaveExt(tc, ArmExtension::FEAT_SEL2)) &&
+                        enableTdeTge;
 
     ExceptionLevel target_el = route_to_el2 ? EL2 : EL1;
     if (oslk || (sdd && secure && ArmSystem::haveEL(tc, EL3))) {
@@ -256,12 +249,13 @@ BrkPoint::test(ThreadContext *tc, Addr pc, ExceptionLevel el, DBGBCR ctr,
         break;
 
       case 0x6:
-        if (HaveVirtHostExt(tc) && !ELIsInHost(tc, el))
+        if (HaveExt(tc, ArmExtension::FEAT_VHE) && !ELIsInHost(tc, el))
              v = testContextMatch(tc, true);
         break;
 
       case 0x7:
-        if (HaveVirtHostExt(tc) && !ELIsInHost(tc, el) && from_link)
+        if (HaveExt(tc, ArmExtension::FEAT_VHE) && !ELIsInHost(tc, el) &&
+            from_link)
             v = testContextMatch(tc, true);
         break;
 
@@ -292,27 +286,29 @@ BrkPoint::test(ThreadContext *tc, Addr pc, ExceptionLevel el, DBGBCR ctr,
         break;
 
       case 0xc:
-        if (HaveVirtHostExt(tc) && (!isSecure(tc)|| HaveSecureEL2Ext(tc)))
+        if (HaveExt(tc, ArmExtension::FEAT_VHE) &&
+            (!isSecure(tc)|| HaveExt(tc, ArmExtension::FEAT_SEL2)))
             v = testContextMatch(tc, false);
         break;
 
       case 0xd:
-        if (HaveVirtHostExt(tc) && from_link &&
-            (!isSecure(tc)|| HaveSecureEL2Ext(tc))) {
+        if (HaveExt(tc, ArmExtension::FEAT_VHE) && from_link &&
+            (!isSecure(tc)|| HaveExt(tc, ArmExtension::FEAT_SEL2))) {
              v = testContextMatch(tc, false);
         }
         break;
 
       case 0xe:
-        if (HaveVirtHostExt(tc) && !ELIsInHost(tc, el) &&
-            (!isSecure(tc)|| HaveSecureEL2Ext(tc))) {
+        if (HaveExt(tc, ArmExtension::FEAT_VHE) && !ELIsInHost(tc, el) &&
+            (!isSecure(tc)|| HaveExt(tc, ArmExtension::FEAT_SEL2))) {
             v = testContextMatch(tc, true); // CONTEXTIDR_EL1
             v = v && testContextMatch(tc, false); // CONTEXTIDR_EL2
         }
         break;
       case 0xf:
-        if (HaveVirtHostExt(tc) && !ELIsInHost(tc, el) && from_link &&
-            (!isSecure(tc)|| HaveSecureEL2Ext(tc))) {
+        if (HaveExt(tc, ArmExtension::FEAT_VHE) && !ELIsInHost(tc, el) &&
+            from_link &&
+            (!isSecure(tc)|| HaveExt(tc, ArmExtension::FEAT_SEL2))) {
             v = testContextMatch(tc, true); // CONTEXTIDR_EL1
             v = v && testContextMatch(tc, false); // CONTEXTIDR_EL2
         }
@@ -326,8 +322,6 @@ BrkPoint::test(ThreadContext *tc, Addr pc, ExceptionLevel el, DBGBCR ctr,
 void
 SelfDebug::init(ThreadContext *tc)
 {
-    if (initialized)
-        return;
     CPSR cpsr = tc->readMiscReg(MISCREG_CPSR);
     aarch32 = cpsr.width == 1;
 
@@ -349,16 +343,14 @@ SelfDebug::init(ThreadContext *tc)
     }
 
     for (int i = 0; i <= dfr.wrps; i++) {
-        WatchPoint wtp = WatchPoint((MiscRegIndex)(MISCREG_DBGWCR0 + i),
-                                    (MiscRegIndex)(MISCREG_DBGWVR0 + i),
+        WatchPoint wtp = WatchPoint((MiscRegIndex)(MISCREG_DBGWCR0_EL1 + i),
+                                    (MiscRegIndex)(MISCREG_DBGWVR0_EL1 + i),
                                     this, (bool)mm_fr2.varange, aarch32);
-        const DBGWCR ctr = tc->readMiscReg(MISCREG_DBGWCR0 + i);
+        const DBGWCR ctr = tc->readMiscReg(MISCREG_DBGWCR0_EL1 + i);
 
         wtp.updateControl(ctr);
         arWatchPoints.push_back(wtp);
     }
-
-    initialized = true;
 
     RegVal oslar_el1 = tc->readMiscReg(MISCREG_OSLAR_EL1);
     updateOSLock(oslar_el1);
@@ -372,10 +364,6 @@ SelfDebug::init(ThreadContext *tc)
     const HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
     const HDCR mdcr  = tc->readMiscRegNoEffect(MISCREG_MDCR_EL2);
     setenableTDETGE(hcr, mdcr);
-
-    // Enable Vector Catch Exceptions
-    const DEVID dvid = tc->readMiscReg(MISCREG_DBGDEVID0);
-    vcExcpt = new VectorCatch(dvid.vectorcatch==0x0, this);
 }
 
 bool
@@ -708,126 +696,6 @@ SoftwareStep::advanceSS(ThreadContext * tc)
         break;
     }
     return res;
-}
-
-Fault
-SelfDebug::testVectorCatch(ThreadContext *tc, Addr addr,
-                           ArmFault *fault)
-{
-
-    setAArch32(tc);
-    to32 = targetAArch32(tc);
-    if (!initialized)
-        init(tc);
-    if (!isDebugEnabled(tc) || !mde || !aarch32)
-        return NoFault;
-
-    ExceptionLevel el = (ExceptionLevel) currEL(tc);
-    bool do_debug;
-    if (fault == nullptr)
-        do_debug = vcExcpt->addressMatching(tc, addr, el);
-    else
-        do_debug = vcExcpt->exceptionTrapping(tc, el, fault);
-    if (do_debug) {
-        if (enableTdeTge) {
-            return std::make_shared<HypervisorTrap>(0, 0x22,
-                                        EC_PREFETCH_ABORT_TO_HYP);
-        } else {
-            return std::make_shared<PrefetchAbort>(addr,
-                                       ArmFault::DebugEvent, false,
-                                       ArmFault::UnknownTran,
-                                       ArmFault::VECTORCATCH);
-        }
-    }
-
-    return NoFault;
-}
-
-bool
-VectorCatch::addressMatching(ThreadContext *tc, Addr addr, ExceptionLevel el)
-{
-    // Each bit position in this string corresponds to a bit in DBGVCR
-    // and an exception vector.
-    bool enabled;
-    if (conf->isAArch32() && ELIs32(tc, EL1) &&
-        (addr & 0x3) == 0 && el != EL2 ) {
-
-        DBGVCR match_word = 0x0;
-
-        Addr vbase = getVectorBase(tc, false);
-        Addr vaddress = addr & ~ 0x1f;
-        Addr low_addr = bits(addr, 5, 2);
-        if (vaddress == vbase) {
-            if (ArmSystem::haveEL(tc, EL3) && !isSecure(tc)) {
-                uint32_t bmask = 1UL << (low_addr + 24);
-                match_word = match_word | (DBGVCR) bmask;
-                // Non-secure vectors
-            } else {
-                uint32_t bmask = 1UL << (low_addr);
-                match_word = match_word | (DBGVCR) bmask;
-                // Secure vectors (or no EL3)
-            }
-        }
-        uint32_t mvbase = getVectorBase(tc, true);
-        if (ArmSystem::haveEL(tc, EL3) && ELIs32(tc, EL3) &&
-            isSecure(tc) && (vaddress == mvbase)) {
-            uint32_t bmask = 1UL << (low_addr + 8);
-            match_word = match_word | (DBGVCR) bmask;
-            // Monitor vectors
-        }
-
-        DBGVCR mask;
-
-        // Mask out bits not corresponding to vectors.
-        if (!ArmSystem::haveEL(tc, EL3)) {
-            mask = (DBGVCR) 0xDE;
-        } else if (!ELIs32(tc, EL3)) {
-            mask = (DBGVCR) 0xDE0000DE;
-        } else {
-            mask = (DBGVCR) 0xDE00DEDE;
-        }
-        DBGVCR dbgvcr = tc->readMiscReg(MISCREG_DBGVCR);
-        match_word = match_word & dbgvcr & mask;
-        enabled = match_word != 0x0;
-        // Check for UNPREDICTABLE case - match on Prefetch Abort and
-        // Data Abort vectors
-        ExceptionLevel ELd = debugTargetFrom(tc, isSecure(tc));
-        if (((match_word & 0x18001818) != 0x0) && ELd == el) {
-            enabled = false;
-        }
-    } else {
-        enabled = false;
-    }
-    return enabled;
-}
-
-bool
-VectorCatch::exceptionTrapping(ThreadContext *tc, ExceptionLevel el,
-                               ArmFault* fault)
-{
-    if (conf->isAArch32() && ELIs32(tc, EL1) && el != EL2) {
-
-        DBGVCR dbgvcr = tc->readMiscReg(MISCREG_DBGVCR);
-        DBGVCR match_type = fault->vectorCatchFlag();
-        DBGVCR mask;
-
-        if (!ArmSystem::haveEL(tc, EL3)) {
-            mask = (DBGVCR) 0xDE;
-        } else if (ELIs32(tc, EL3) && fault->getToMode() == MODE_MON) {
-            mask = (DBGVCR) 0x0000DE00;
-        } else {
-            if (isSecure(tc))
-                mask = (DBGVCR) 0x000000DE;
-            else
-                mask = (DBGVCR) 0xDE000000;
-        }
-        match_type = match_type & mask & dbgvcr;
-
-        if (match_type != 0x0) {
-            return true;
-        }
-    }
-    return false;
 }
 
 } // namespace gem5

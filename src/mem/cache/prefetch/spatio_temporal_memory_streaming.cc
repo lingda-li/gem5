@@ -35,7 +35,6 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(Prefetcher, prefetch);
 namespace prefetch
 {
 
@@ -43,26 +42,30 @@ STeMS::STeMS(const STeMSPrefetcherParams &p)
   : Queued(p), spatialRegionSize(p.spatial_region_size),
     spatialRegionSizeBits(floorLog2(p.spatial_region_size)),
     reconstructionEntries(p.reconstruction_entries),
-    activeGenerationTable(p.active_generation_table_assoc,
+    activeGenerationTable((name() + ".ActiveGenerationTable").c_str(),
                           p.active_generation_table_entries,
-                          p.active_generation_table_indexing_policy,
+			  p.active_generation_table_assoc,
                           p.active_generation_table_replacement_policy,
+                          p.active_generation_table_indexing_policy,
                           ActiveGenerationTableEntry(
                               spatialRegionSize / blkSize)),
-    patternSequenceTable(p.pattern_sequence_table_assoc,
+    patternSequenceTable((name() + ".PatternSequenceTable").c_str(),
                          p.pattern_sequence_table_entries,
-                         p.pattern_sequence_table_indexing_policy,
+			 p.pattern_sequence_table_assoc,
                          p.pattern_sequence_table_replacement_policy,
+                         p.pattern_sequence_table_indexing_policy,
                          ActiveGenerationTableEntry(
                              spatialRegionSize / blkSize)),
-    rmob(p.region_miss_order_buffer_entries)
+    rmob(p.region_miss_order_buffer_entries),
+    addDuplicateEntriesToRMOB(p.add_duplicate_entries_to_rmob),
+    lastTriggerCounter(0)
 {
     fatal_if(!isPowerOf2(spatialRegionSize),
         "The spatial region size must be a power of 2.");
 }
 
 void
-STeMS::checkForActiveGenerationsEnd()
+STeMS::checkForActiveGenerationsEnd(const CacheAccessor &cache)
 {
     // This prefetcher operates attached to the L1 and it observes all
     // accesses, this guarantees that no evictions are missed
@@ -73,28 +76,28 @@ STeMS::checkForActiveGenerationsEnd()
         if (agt_entry.isValid()) {
             bool generation_ended = false;
             bool sr_is_secure = agt_entry.isSecure();
+            Addr pst_addr = 0;
             for (auto &seq_entry : agt_entry.sequence) {
                 if (seq_entry.counter > 0) {
                     Addr cache_addr =
                         agt_entry.paddress + seq_entry.offset * blkSize;
-                    if (!inCache(cache_addr, sr_is_secure) &&
-                            !inMissQueue(cache_addr, sr_is_secure)) {
+                    if (!cache.inCache(cache_addr, sr_is_secure) &&
+                            !cache.inMissQueue(cache_addr, sr_is_secure)) {
                         generation_ended = true;
+                        pst_addr = (agt_entry.pc << spatialRegionSizeBits)
+                                    + seq_entry.offset;
                         break;
                     }
                 }
             }
             if (generation_ended) {
                 // PST is indexed using the PC (secure bit is unused)
-                ActiveGenerationTableEntry *pst_entry =
-                    patternSequenceTable.findEntry(agt_entry.pc,
-                                                   false /*unused*/);
+                auto pst_entry = patternSequenceTable.findEntry(pst_addr);
                 if (pst_entry == nullptr) {
                     // Tipically an entry will not exist
-                    pst_entry = patternSequenceTable.findVictim(agt_entry.pc);
+                    pst_entry = patternSequenceTable.findVictim(pst_addr);
                     assert(pst_entry != nullptr);
-                    patternSequenceTable.insertEntry(agt_entry.pc,
-                            false /*unused*/, pst_entry);
+                    patternSequenceTable.insertEntry(pst_addr, pst_entry);
                 } else {
                     patternSequenceTable.accessEntry(pst_entry);
                 }
@@ -116,12 +119,23 @@ STeMS::addToRMOB(Addr sr_addr, Addr pst_addr, unsigned int delta)
     rmob_entry.pstAddress = pst_addr;
     rmob_entry.delta = delta;
 
+    if (!addDuplicateEntriesToRMOB) {
+        for (const auto& entry : rmob) {
+            if (entry.srAddress == sr_addr &&
+                entry.pstAddress == pst_addr &&
+                entry.delta == delta) {
+                return;
+            }
+        }
+    }
+
     rmob.push_back(rmob_entry);
 }
 
 void
 STeMS::calculatePrefetch(const PrefetchInfo &pfi,
-                                   std::vector<AddrPriority> &addresses)
+                                   std::vector<AddrPriority> &addresses,
+                                   const CacheAccessor &cache)
 {
     if (!pfi.hasPC()) {
         DPRINTF(HWPrefetch, "Ignoring request with no PC.\n");
@@ -138,7 +152,7 @@ STeMS::calculatePrefetch(const PrefetchInfo &pfi,
     Addr sr_offset = (pfi.getAddr() % spatialRegionSize) / blkSize;
 
     // Check if any active generation has ended
-    checkForActiveGenerationsEnd();
+    checkForActiveGenerationsEnd(cache);
 
     ActiveGenerationTableEntry *agt_entry =
         activeGenerationTable.findEntry(sr_addr, is_secure);
@@ -207,8 +221,7 @@ STeMS::reconstructSequence(
     idx = 0;
     for (auto it = rmob_it; it != rmob.end() && (idx < reconstructionEntries);
         it++) {
-        ActiveGenerationTableEntry *pst_entry =
-            patternSequenceTable.findEntry(it->pstAddress, false /* unused */);
+        auto pst_entry = patternSequenceTable.findEntry(it->pstAddress);
         if (pst_entry != nullptr) {
             patternSequenceTable.accessEntry(pst_entry);
             for (auto &seq_entry : pst_entry->sequence) {

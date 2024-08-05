@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017,2019-2021 ARM Limited
+ * Copyright (c) 2017,2019-2023 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -61,6 +61,7 @@
 #include "mem/ruby/system/CacheRecorder.hh"
 #include "params/RubyController.hh"
 #include "sim/clocked_object.hh"
+#include "sim/eventq.hh"
 
 namespace gem5
 {
@@ -100,6 +101,14 @@ class AbstractController : public ClockedObject, public Consumer
     virtual MessageBuffer* getMandatoryQueue() const = 0;
     virtual MessageBuffer* getMemReqQueue() const = 0;
     virtual MessageBuffer* getMemRespQueue() const = 0;
+
+    // That function must be called by controller when dequeuing mem resp queue
+    // for memory controller to receive the retry request in time
+    void memRespQueueDequeued();
+    // Or that function can be called to perform both dequeue and notification
+    // at once.
+    void dequeueMemRespQueue();
+
     virtual AccessPermission getAccessPermission(const Addr &addr) = 0;
 
     virtual void print(std::ostream & out) const = 0;
@@ -165,7 +174,7 @@ class AbstractController : public ClockedObject, public Consumer
     Port &getPort(const std::string &if_name,
                   PortID idx=InvalidPortID);
 
-    void recvTimingResp(PacketPtr pkt);
+    bool recvTimingResp(PacketPtr pkt);
     Tick recvAtomic(PacketPtr pkt);
 
     const AddrRangeList &getAddrRanges() const { return addrRanges; }
@@ -214,7 +223,11 @@ class AbstractController : public ClockedObject, public Consumer
     MachineID mapAddressToDownstreamMachine(Addr addr,
                                     MachineType mtype = MachineType_NUM) const;
 
+    /** List of downstream destinations (towards memory) */
     const NetDest& allDownstreamDest() const { return downstreamDestinations; }
+
+    /** List of upstream destinations (towards the CPU) */
+    const NetDest& allUpstreamDest() const { return upstreamDestinations; }
 
   protected:
     //! Profiles original cache requests including PUTs
@@ -224,58 +237,94 @@ class AbstractController : public ClockedObject, public Consumer
 
     // Tracks outstanding transactions for latency profiling
     struct TransMapPair { unsigned transaction; unsigned state; Tick time; };
-    std::unordered_map<Addr, TransMapPair> m_inTrans;
-    std::unordered_map<Addr, TransMapPair> m_outTrans;
+    std::unordered_map<Addr, TransMapPair> m_inTransAddressed;
+    std::unordered_map<Addr, TransMapPair> m_outTransAddressed;
+
+    std::unordered_map<Addr, TransMapPair> m_inTransUnaddressed;
+    std::unordered_map<Addr, TransMapPair> m_outTransUnaddressed;
 
     /**
      * Profiles an event that initiates a protocol transactions for a specific
      * line (e.g. events triggered by incoming request messages).
      * A histogram with the latency of the transactions is generated for
      * all combinations of trigger event, initial state, and final state.
+     * This function also supports "unaddressed" transactions,
+     * those not associated with an address in memory but
+     * instead associated with a unique ID.
      *
-     * @param addr address of the line
+     * @param addr address of the line, or unique transaction ID
      * @param type event that started the transaction
      * @param initialState state of the line before the transaction
+     * @param isAddressed is addr a line address or a unique ID
      */
     template<typename EventType, typename StateType>
     void incomingTransactionStart(Addr addr,
-        EventType type, StateType initialState, bool retried)
+        EventType type, StateType initialState, bool retried,
+        bool isAddressed=true)
     {
+        auto& m_inTrans =
+          isAddressed ? m_inTransAddressed : m_inTransUnaddressed;
         assert(m_inTrans.find(addr) == m_inTrans.end());
         m_inTrans[addr] = {type, initialState, curTick()};
         if (retried)
-          ++(*stats.inTransLatRetries[type]);
+          ++(*stats.inTransRetryCnt[type]);
     }
 
     /**
      * Profiles an event that ends a transaction.
+     * This function also supports "unaddressed" transactions,
+     * those not associated with an address in memory but
+     * instead associated with a unique ID.
      *
-     * @param addr address of the line with a outstanding transaction
+     * @param addr address or unique ID with an outstanding transaction
      * @param finalState state of the line after the transaction
+     * @param isAddressed is addr a line address or a unique ID
      */
     template<typename StateType>
-    void incomingTransactionEnd(Addr addr, StateType finalState)
+    void incomingTransactionEnd(Addr addr, StateType finalState,
+        bool isAddressed=true)
     {
+        auto& m_inTrans =
+          isAddressed ? m_inTransAddressed : m_inTransUnaddressed;
         auto iter = m_inTrans.find(addr);
         assert(iter != m_inTrans.end());
-        stats.inTransLatHist[iter->second.transaction]
-                              [iter->second.state]
-                              [(unsigned)finalState]->sample(
-                                ticksToCycles(curTick() - iter->second.time));
-        ++(*stats.inTransLatTotal[iter->second.transaction]);
+        auto &trans = iter->second;
+
+        auto stat_iter_ev = stats.inTransStateChanges.find(trans.transaction);
+        gem5_assert(stat_iter_ev != stats.inTransStateChanges.end(),
+          "%s: event type=%d not marked as in_trans in SLICC",
+          name(), trans.transaction);
+
+        auto stat_iter_state = stat_iter_ev->second.find(trans.state);
+        gem5_assert(stat_iter_state != stat_iter_ev->second.end(),
+          "%s: event type=%d has no transition from state=%d",
+          name(), trans.transaction, trans.state);
+
+        ++(*stat_iter_state->second[(unsigned)finalState]);
+
+        stats.inTransLatHist[iter->second.transaction]->sample(
+                                ticksToCycles(curTick() - trans.time));
+
        m_inTrans.erase(iter);
     }
 
     /**
      * Profiles an event that initiates a transaction in a peer controller
      * (e.g. an event that sends a request message)
+     * This function also supports "unaddressed" transactions,
+     * those not associated with an address in memory but
+     * instead associated with a unique ID.
      *
-     * @param addr address of the line
+     * @param addr address of the line or a unique transaction ID
      * @param type event that started the transaction
+     * @param isAddressed is addr a line address or a unique ID
      */
     template<typename EventType>
-    void outgoingTransactionStart(Addr addr, EventType type)
+    void outgoingTransactionStart(Addr addr, EventType type,
+        bool isAddressed=true)
     {
+        auto& m_outTrans =
+          isAddressed ? m_outTransAddressed : m_outTransUnaddressed;
         assert(m_outTrans.find(addr) == m_outTrans.end());
         m_outTrans[addr] = {type, 0, curTick()};
     }
@@ -283,17 +332,31 @@ class AbstractController : public ClockedObject, public Consumer
     /**
      * Profiles the end of an outgoing transaction.
      * (e.g. receiving the response for a requests)
+     * This function also supports "unaddressed" transactions,
+     * those not associated with an address in memory but
+     * instead associated with a unique ID.
      *
      * @param addr address of the line with an outstanding transaction
+     * @param isAddressed is addr a line address or a unique ID
      */
-    void outgoingTransactionEnd(Addr addr, bool retried)
+    void outgoingTransactionEnd(Addr addr, bool retried,
+        bool isAddressed=true)
     {
+        auto& m_outTrans =
+          isAddressed ? m_outTransAddressed : m_outTransUnaddressed;
         auto iter = m_outTrans.find(addr);
         assert(iter != m_outTrans.end());
-        stats.outTransLatHist[iter->second.transaction]->sample(
-            ticksToCycles(curTick() - iter->second.time));
+        auto &trans = iter->second;
+
+        auto stat_iter = stats.outTransLatHist.find(trans.transaction);
+        gem5_assert(stat_iter != stats.outTransLatHist.end(),
+          "%s: event type=%d not marked as out_trans in SLICC",
+          name(), trans.transaction);
+
+        stat_iter->second->sample(
+            ticksToCycles(curTick() - trans.time));
         if (retried)
-          ++(*stats.outTransLatHistRetries[iter->second.transaction]);
+          ++(*stats.outTransRetryCnt[trans.transaction]);
         m_outTrans.erase(iter);
     }
 
@@ -303,6 +366,28 @@ class AbstractController : public ClockedObject, public Consumer
     void wakeUpAllBuffers(Addr addr);
     void wakeUpAllBuffers();
     bool serviceMemoryQueue();
+
+    /**
+     * Functions needed by CacheAccessor. These are implemented in SLICC,
+     * thus the const& for all args to match the generated code.
+     */
+    virtual bool inCache(const Addr &addr, const bool &is_secure)
+    { fatal("inCache: prefetching not supported"); return false; }
+
+    virtual bool hasBeenPrefetched(const Addr &addr, const bool &is_secure)
+    { fatal("hasBeenPrefetched: prefetching not supported"); return false; }
+
+    virtual bool hasBeenPrefetched(const Addr &addr, const bool &is_secure,
+                                   const RequestorID &requestor)
+    { fatal("hasBeenPrefetched: prefetching not supported"); return false; }
+
+    virtual bool inMissQueue(const Addr &addr, const bool &is_secure)
+    { fatal("inMissQueue: prefetching not supported"); return false; }
+
+    virtual bool coalesce()
+    { fatal("coalesce: prefetching not supported"); return false; }
+
+    friend class RubyPrefetcherProxy;
 
   protected:
     const NodeID m_version;
@@ -329,6 +414,7 @@ class AbstractController : public ClockedObject, public Consumer
     Cycles m_recycle_latency;
     const Cycles m_mandatory_queue_latency;
     bool m_waiting_mem_retry;
+    bool m_mem_ctrl_waiting_retry;
 
     /**
      * Port that forwards requests and receives responses from the
@@ -370,28 +456,39 @@ class AbstractController : public ClockedObject, public Consumer
     /** The address range to which the controller responds on the CPU side. */
     const AddrRangeList addrRanges;
 
-    typedef std::unordered_map<MachineType, MachineID> AddrMapEntry;
-
-    AddrRangeMap<AddrMapEntry, 3> downstreamAddrMap;
+    std::unordered_map<MachineType, AddrRangeMap<MachineID, 3>>
+      downstreamAddrMap;
 
     NetDest downstreamDestinations;
+    NetDest upstreamDestinations;
+
+    void sendRetryRespToMem();
+    MemberEventWrapper<&AbstractController::sendRetryRespToMem> mRetryRespEvent;
 
   public:
     struct ControllerStats : public statistics::Group
     {
         ControllerStats(statistics::Group *parent);
 
-        // Initialized by the SLICC compiler for all combinations of event and
-        // states. Only histograms with samples will appear in the stats
-        std::vector<std::vector<std::vector<statistics::Histogram*>>>
-          inTransLatHist;
-        std::vector<statistics::Scalar*> inTransLatRetries;
-        std::vector<statistics::Scalar*> inTransLatTotal;
+        // Initialized by the SLICC compiler for all events with the
+        // "in_trans" property.
+        // Only histograms with samples will appear in the stats
+        std::unordered_map<unsigned, statistics::Histogram*> inTransLatHist;
+        std::unordered_map<unsigned, statistics::Scalar*> inTransRetryCnt;
+        // Initialized by the SLICC compiler for all combinations of events
+        // with the "in_trans" property, potential initial states, and
+        // potential final states. Potential initial states are states that
+        // appear in transitions triggered by that event. Currently all states
+        // are considered as potential final states.
+        std::unordered_map<unsigned, std::unordered_map<unsigned,
+          std::vector<statistics::Scalar*>>> inTransStateChanges;
 
-        // Initialized by the SLICC compiler for all events.
+        // Initialized by the SLICC compiler for all events with the
+        // "out_trans" property.
         // Only histograms with samples will appear in the stats.
-        std::vector<statistics::Histogram*> outTransLatHist;
-        std::vector<statistics::Scalar*> outTransLatHistRetries;
+        std::unordered_map<unsigned, statistics::Histogram*> outTransLatHist;
+        std::unordered_map<unsigned, statistics::Scalar*>
+          outTransRetryCnt;
 
         //! Counter for the number of cycles when the transitions carried out
         //! were equal to the maximum allowed

@@ -55,6 +55,7 @@ namespace X86ISA
 
     const int NumCRegs = 16;
     const int NumDRegs = 8;
+    const int NumXCRegs = 1;
 
     const int NumSegments = 6;
     const int NumSysSegments = 4;
@@ -71,6 +72,9 @@ namespace X86ISA
     // Each APIC gets two pages. One page is used for local apics to field
     // accesses from the CPU, and the other is for all APICs to communicate.
     const Addr PhysAddrAPICRangeSize = 1 << 12;
+
+    // Put this in an unused part of the 16 bit IO port address space.
+    const Addr PhysAddrIntA = 0x8000000100000000ULL;
 
     static inline Addr
     x86IOAddress(const uint32_t port)

@@ -35,7 +35,6 @@
 namespace gem5
 {
 
-GEM5_DEPRECATED_NAMESPACE(FastModel, fastmodel);
 namespace fastmodel
 {
 
@@ -45,7 +44,8 @@ PL330::PL330(const FastModelPL330Params &params,
     dma(amba_m, params.name + ".dma", -1),
     pioS(amba_s, params.name + ".pio_s", -1),
     pioNs(amba_s_ns, params.name + ".pio_ns", -1),
-    irqAbortReceiver("irq_abort_receiver")
+    irqAbortReceiver("irq_abort_receiver"),
+    resetIn("reset_in", 0)
 {
     set_parameter("pl330.fifo_size", params.fifo_size);
     set_parameter("pl330.max_transfer", params.max_transfer);
@@ -211,6 +211,9 @@ PL330::PL330(const FastModelPL330Params &params,
 
     // And install it.
     irqAbortReceiver.onChange(abort_change);
+
+    // Plumb the reset signal.
+    resetIn.signal_out.bind(this->reset_in);
 }
 
 void
@@ -246,10 +249,12 @@ PL330::gem5_getPort(const std::string &if_name, int idx)
             port = suffix[0] - '0';
         } else if (suffix.size() == 2 && isdigit(suffix[0]) &&
                 isdigit(suffix[1])) {
-            port = (suffix[1] - '0') * 10 + (suffix[0] - '0');
+            port = (suffix[0] - '0') * 10 + (suffix[1] - '0');
         }
         if (port != -1 && port < irqPort.size())
             return *irqPort[port].at(idx);
+    } else if (if_name == "reset_in") {
+        return resetIn;
     }
 
     return scx_evs_PL330::gem5_getPort(if_name, idx);

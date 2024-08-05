@@ -24,15 +24,21 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from .abstract_classic_cache_hierarchy import AbstractClassicCacheHierarchy
-from ..abstract_cache_hierarchy import AbstractCacheHierarchy
-from ...boards.abstract_board import AbstractBoard
+from typing import Optional
+
+from m5.objects import (
+    BadAddr,
+    BaseXBar,
+    Bridge,
+    Port,
+    SystemXBar,
+)
+
 from ....isas import ISA
-from ....runtime import get_runtime_isa
-
-from m5.objects import Bridge, BaseXBar, SystemXBar, BadAddr, Port
-
 from ....utils.override import *
+from ...boards.abstract_board import AbstractBoard
+from ..abstract_cache_hierarchy import AbstractCacheHierarchy
+from .abstract_classic_cache_hierarchy import AbstractClassicCacheHierarchy
 
 
 class NoCache(AbstractClassicCacheHierarchy):
@@ -42,24 +48,25 @@ class NoCache(AbstractClassicCacheHierarchy):
     By default a SystemXBar of width 64bit is used, though this can be
     configured via the constructor.
 
-    NOTE: At present this does not work with FS. The following error is
-    received:
+    .. note::
 
-    ```
-    ...
-    build/X86/mem/snoop_filter.cc:277: panic: panic condition
-    (sf_item.requested & req_mask).none() occurred: SF value
-    0000000000000000000000000000000000000000000000000000000000000000 ...
-    missing the original request
-    Memory Usage: 3554472 KBytes
-    Program aborted at tick 1668400099164
-    --- BEGIN LIBC BACKTRACE ---
-    ...
-    ```
+        At present this does not work with FS. The following error is
+        received:
+
+        .. code-block::
+            ...
+            build/X86/mem/snoop_filter.cc:277: panic: panic condition
+            (sf_item.requested & req_mask).none() occurred: SF value
+            0000000000000000000000000000000000000000000000000000000000000000 ...
+            missing the original request
+            Memory Usage: 3554472 KBytes
+            Program aborted at tick 1668400099164
+            --- BEGIN LIBC BACKTRACE ---
+            ...
+
     """
 
-    @staticmethod
-    def _get_default_membus() -> SystemXBar:
+    def _get_default_membus(self) -> SystemXBar:
         """
         A method used to obtain the default memory bus of 64 bit in width for
         the NoCache CacheHierarchy.
@@ -71,19 +78,21 @@ class NoCache(AbstractClassicCacheHierarchy):
         membus = SystemXBar(width=64)
         membus.badaddr_responder = BadAddr()
         membus.default = membus.badaddr_responder.pio
+        # the max. routing table size needs to be set
+        # to a higher value for HBM2 stack
+        membus.max_routing_table_size = 2048
         return membus
 
-    def __init__(
-        self, membus: BaseXBar = _get_default_membus.__func__()
-    ) -> None:
+    def __init__(self, membus: Optional[BaseXBar] = None) -> None:
         """
         :param membus: The memory bus for this setup. This parameter is
-        optional and will default toa 64 bit width SystemXBar is not specified.
+                       optional and will default toa 64 bit width SystemXBar
+                       if not specified.
 
         :type membus: BaseXBar
         """
         super().__init__()
-        self.membus = membus
+        self.membus = membus if membus else self._get_default_membus()
 
     @overrides(AbstractClassicCacheHierarchy)
     def get_mem_side_port(self) -> Port:
@@ -95,19 +104,17 @@ class NoCache(AbstractClassicCacheHierarchy):
 
     @overrides(AbstractCacheHierarchy)
     def incorporate_cache(self, board: AbstractBoard) -> None:
-
         if board.has_coherent_io():
             self._setup_coherent_io_bridge(board)
 
         for core in board.get_processor().get_cores():
-
             core.connect_icache(self.membus.cpu_side_ports)
             core.connect_dcache(self.membus.cpu_side_ports)
             core.connect_walker_ports(
                 self.membus.cpu_side_ports, self.membus.cpu_side_ports
             )
 
-            if get_runtime_isa() == ISA.X86:
+            if board.get_processor().get_isa() == ISA.X86:
                 int_req_port = self.membus.mem_side_ports
                 int_resp_port = self.membus.cpu_side_ports
                 core.connect_interrupt(int_req_port, int_resp_port)
@@ -117,8 +124,8 @@ class NoCache(AbstractClassicCacheHierarchy):
         # Set up the system port for functional access from the simulator.
         board.connect_system_port(self.membus.cpu_side_ports)
 
-        for cntr in board.get_memory().get_memory_controllers():
-            cntr.port = self.membus.mem_side_ports
+        for _, port in board.get_memory().get_mem_ports():
+            self.membus.mem_side_ports = port
 
     def _setup_coherent_io_bridge(self, board: AbstractBoard) -> None:
         """Create a bridge from I/O back to membus"""

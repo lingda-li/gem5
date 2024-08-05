@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2021 ARM Limited
+ * Copyright (c) 2020-2021,2023 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -49,6 +49,7 @@
 #include <cassert>
 #include <climits>
 
+#include "debug/RubyProtocol.hh"
 #include "debug/RubySlicc.hh"
 #include "mem/packet.hh"
 #include "mem/ruby/common/Address.hh"
@@ -161,6 +162,19 @@ isHtmCmdRequest(RubyRequestType type)
     }
 }
 
+inline bool
+isTlbiCmdRequest(RubyRequestType type)
+{
+    if ((type == RubyRequestType_TLBI)  ||
+        (type == RubyRequestType_TLBI_SYNC) ||
+        (type == RubyRequestType_TLBI_EXT_SYNC) ||
+        (type == RubyRequestType_TLBI_EXT_SYNC_COMP)) {
+            return true;
+    } else {
+            return false;
+    }
+}
+
 inline RubyRequestType
 htmCmdToRubyRequestType(const Packet *pkt)
 {
@@ -174,6 +188,22 @@ htmCmdToRubyRequestType(const Packet *pkt)
         return RubyRequestType_HTM_Abort;
     }
     else {
+        panic("invalid ruby packet type\n");
+    }
+}
+
+inline RubyRequestType
+tlbiCmdToRubyRequestType(const Packet *pkt)
+{
+    if (pkt->req->isTlbi()) {
+        return RubyRequestType_TLBI;
+    } else if (pkt->req->isTlbiSync()) {
+        return RubyRequestType_TLBI_SYNC;
+    } else if (pkt->req->isTlbiExtSync()) {
+        return RubyRequestType_TLBI_EXT_SYNC;
+    } else if (pkt->req->isTlbiExtSyncComp()) {
+        return RubyRequestType_TLBI_EXT_SYNC_COMP;
+    } else {
         panic("invalid ruby packet type\n");
     }
 }
@@ -284,6 +314,12 @@ countBoolVec(BoolVec bVec)
         }
     }
     return count;
+}
+
+inline RequestorID
+getRequestorID(RequestPtr req)
+{
+    return req->requestorId();
 }
 
 } // namespace ruby

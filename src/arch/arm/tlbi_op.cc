@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2021 Arm Limited
+ * Copyright (c) 2018-2023 Arm Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -48,8 +48,6 @@ namespace ArmISA {
 void
 TLBIALL::operator()(ThreadContext* tc)
 {
-    HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
-    inHost = (hcr.tge == 1 && hcr.e2h == 1);
     el2Enabled = EL2Enabled(tc);
     currentEL = currEL(tc);
 
@@ -62,11 +60,25 @@ TLBIALL::operator()(ThreadContext* tc)
     }
 }
 
+bool
+TLBIALL::match(TlbEntry* te, vmid_t vmid) const
+{
+    return te->valid && secureLookup == !te->nstid &&
+        (te->vmid == vmid || el2Enabled) &&
+        te->checkRegime(targetRegime);
+}
+
 void
 ITLBIALL::operator()(ThreadContext* tc)
 {
     el2Enabled = EL2Enabled(tc);
     getMMUPtr(tc)->iflush(*this);
+}
+
+bool
+ITLBIALL::match(TlbEntry* te, vmid_t vmid) const
+{
+    return TLBIALL::match(te, vmid) && (te->type & TypeTLB::instruction);
 }
 
 void
@@ -76,11 +88,15 @@ DTLBIALL::operator()(ThreadContext* tc)
     getMMUPtr(tc)->dflush(*this);
 }
 
+bool
+DTLBIALL::match(TlbEntry* te, vmid_t vmid) const
+{
+    return TLBIALL::match(te, vmid) && (te->type & TypeTLB::data);
+}
+
 void
 TLBIALLEL::operator()(ThreadContext* tc)
 {
-    HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
-    inHost = (hcr.tge == 1 && hcr.e2h == 1);
     getMMUPtr(tc)->flush(*this);
 
     // If CheckerCPU is connected, need to notify it of a flush
@@ -90,11 +106,16 @@ TLBIALLEL::operator()(ThreadContext* tc)
     }
 }
 
+bool
+TLBIALLEL::match(TlbEntry* te, vmid_t vmid) const
+{
+    return te->valid && secureLookup == !te->nstid &&
+        te->checkRegime(targetRegime);
+}
+
 void
 TLBIVMALL::operator()(ThreadContext* tc)
 {
-    HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
-    inHost = (hcr.tge == 1 && hcr.e2h == 1);
     el2Enabled = EL2Enabled(tc);
 
     getMMUPtr(tc)->flush(*this);
@@ -106,11 +127,17 @@ TLBIVMALL::operator()(ThreadContext* tc)
     }
 }
 
+bool
+TLBIVMALL::match(TlbEntry* te, vmid_t vmid) const
+{
+    return te->valid && secureLookup == !te->nstid &&
+        te->checkRegime(targetRegime) &&
+        (te->vmid == vmid || !el2Enabled || !useVMID(targetRegime));
+}
+
 void
 TLBIASID::operator()(ThreadContext* tc)
 {
-    HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
-    inHost = (hcr.tge == 1 && hcr.e2h == 1);
     el2Enabled = EL2Enabled(tc);
 
     getMMUPtr(tc)->flushStage1(*this);
@@ -120,6 +147,15 @@ TLBIASID::operator()(ThreadContext* tc)
     }
 }
 
+bool
+TLBIASID::match(TlbEntry* te, vmid_t vmid) const
+{
+    return te->valid && te->asid == asid &&
+        secureLookup == !te->nstid &&
+        te->checkRegime(targetRegime) &&
+        (te->vmid == vmid || !el2Enabled || !useVMID(targetRegime));
+}
+
 void
 ITLBIASID::operator()(ThreadContext* tc)
 {
@@ -127,11 +163,23 @@ ITLBIASID::operator()(ThreadContext* tc)
     getMMUPtr(tc)->iflush(*this);
 }
 
+bool
+ITLBIASID::match(TlbEntry* te, vmid_t vmid) const
+{
+    return TLBIASID::match(te, vmid) && (te->type & TypeTLB::instruction);
+}
+
 void
 DTLBIASID::operator()(ThreadContext* tc)
 {
     el2Enabled = EL2Enabled(tc);
     getMMUPtr(tc)->dflush(*this);
+}
+
+bool
+DTLBIASID::match(TlbEntry* te, vmid_t vmid) const
+{
+    return TLBIASID::match(te, vmid) && (te->type & TypeTLB::data);
 }
 
 void
@@ -145,11 +193,30 @@ TLBIALLN::operator()(ThreadContext* tc)
     }
 }
 
+bool
+TLBIALLN::match(TlbEntry* te, vmid_t vmid) const
+{
+    return te->valid && te->nstid &&
+        te->checkRegime(targetRegime);
+}
+
+TlbEntry::Lookup
+TLBIMVAA::lookupGen(vmid_t vmid) const
+{
+    TlbEntry::Lookup lookup_data;
+    lookup_data.va = sext<56>(addr);
+    lookup_data.ignoreAsn = true;
+    lookup_data.vmid = vmid;
+    lookup_data.secure = secureLookup;
+    lookup_data.functional = true;
+    lookup_data.targetRegime = targetRegime;
+    lookup_data.mode = BaseMMU::Read;
+    return lookup_data;
+}
+
 void
 TLBIMVAA::operator()(ThreadContext* tc)
 {
-    HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
-    inHost = (hcr.tge == 1 && hcr.e2h == 1);
     getMMUPtr(tc)->flushStage1(*this);
 
     CheckerCPU *checker = tc->getCheckerCpuPtr();
@@ -158,17 +225,47 @@ TLBIMVAA::operator()(ThreadContext* tc)
     }
 }
 
+bool
+TLBIMVAA::match(TlbEntry* te, vmid_t vmid) const
+{
+    TlbEntry::Lookup lookup_data = lookupGen(vmid);
+
+    return te->match(lookup_data) && (!lastLevel || !te->partial);
+}
+
+TlbEntry::Lookup
+TLBIMVA::lookupGen(vmid_t vmid) const
+{
+    TlbEntry::Lookup lookup_data;
+    lookup_data.va = sext<56>(addr);
+    lookup_data.asn = asid;
+    lookup_data.ignoreAsn = false;
+    lookup_data.vmid = vmid;
+    lookup_data.secure = secureLookup;
+    lookup_data.functional = true;
+    lookup_data.targetRegime = targetRegime;
+    lookup_data.mode = BaseMMU::Read;
+
+    return lookup_data;
+}
+
 void
 TLBIMVA::operator()(ThreadContext* tc)
 {
-    HCR hcr = tc->readMiscReg(MISCREG_HCR_EL2);
-    inHost = (hcr.tge == 1 && hcr.e2h == 1);
     getMMUPtr(tc)->flushStage1(*this);
 
     CheckerCPU *checker = tc->getCheckerCpuPtr();
     if (checker) {
         getMMUPtr(checker)->flushStage1(*this);
     }
+}
+
+bool
+TLBIMVA::match(TlbEntry* te, vmid_t vmid) const
+{
+    TlbEntry::Lookup lookup_data = lookupGen(vmid);
+
+    return te->match(lookup_data) && (!lastLevel || !te->partial);
 }
 
 void
@@ -177,10 +274,22 @@ ITLBIMVA::operator()(ThreadContext* tc)
     getMMUPtr(tc)->iflush(*this);
 }
 
+bool
+ITLBIMVA::match(TlbEntry* te, vmid_t vmid) const
+{
+    return TLBIMVA::match(te, vmid) && (te->type & TypeTLB::instruction);
+}
+
 void
 DTLBIMVA::operator()(ThreadContext* tc)
 {
     getMMUPtr(tc)->dflush(*this);
+}
+
+bool
+DTLBIMVA::match(TlbEntry* te, vmid_t vmid) const
+{
+    return TLBIMVA::match(te, vmid) && (te->type & TypeTLB::data);
 }
 
 void
@@ -191,6 +300,38 @@ TLBIIPA::operator()(ThreadContext* tc)
     CheckerCPU *checker = tc->getCheckerCpuPtr();
     if (checker) {
         getMMUPtr(checker)->flushStage2(makeStage2());
+    }
+}
+
+bool
+TLBIRMVA::match(TlbEntry* te, vmid_t vmid) const
+{
+    TlbEntry::Lookup lookup_data = lookupGen(vmid);
+    lookup_data.size = rangeSize();
+
+    auto addr_match = te->match(lookup_data) && (!lastLevel || !te->partial);
+    if (addr_match) {
+        return tgMap[rangeData.tg] == te->tg &&
+        (resTLBIttl(rangeData.tg, rangeData.ttl) ||
+            rangeData.ttl == te->lookupLevel);
+    } else {
+        return false;
+    }
+}
+
+bool
+TLBIRMVAA::match(TlbEntry* te, vmid_t vmid) const
+{
+    TlbEntry::Lookup lookup_data = lookupGen(vmid);
+    lookup_data.size = rangeSize();
+
+    auto addr_match = te->match(lookup_data) && (!lastLevel || !te->partial);
+    if (addr_match) {
+        return tgMap[rangeData.tg] == te->tg &&
+        (resTLBIttl(rangeData.tg, rangeData.ttl) ||
+            rangeData.ttl == te->lookupLevel);
+    } else {
+        return false;
     }
 }
 

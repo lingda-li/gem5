@@ -50,14 +50,6 @@ with gem5_scons.Configure(main) as conf:
         warning('protoc version', min_protoc_version, 'or newer required.\n'
                 'Installed version:', protoc_version[1])
     else:
-        # Attempt to determine the appropriate include path and
-        # library path using pkg-config, that means we also need to
-        # check for pkg-config. Note that it is possible to use
-        # protobuf without the involvement of pkg-config. Later on we
-        # check go a library config check and at that point the test
-        # will fail if libprotobuf cannot be found.
-        if conf.env['HAVE_PKG_CONFIG']:
-            conf.CheckPkgConfig('protobuf', '--cflags', '--libs-only-L')
         conf.env['HAVE_PROTOC'] = True
 
     # If we have the protobuf compiler, also make sure we have the
@@ -65,13 +57,22 @@ with gem5_scons.Configure(main) as conf:
     # automatically added to the LIBS environment variable. After
     # this, we can use the HAVE_PROTOBUF flag to determine if we have
     # got both protoc and libprotobuf available.
-    conf.env['HAVE_PROTOBUF'] = conf.env['HAVE_PROTOC'] and \
-        conf.CheckLibWithHeader('protobuf', 'google/protobuf/message.h',
-                                'C++', 'GOOGLE_PROTOBUF_VERIFY_VERSION;')
+    conf.env['CONF']['HAVE_PROTOBUF'] = bool(
+        conf.env['HAVE_PROTOC'] and (
+            (conf.env['HAVE_PKG_CONFIG'] and
+            conf.CheckPkgConfig('protobuf', '--cflags', '--libs')) or
+            conf.CheckLibWithHeader('protobuf', 'google/protobuf/message.h',
+                                    'C++', 'GOOGLE_PROTOBUF_VERIFY_VERSION;'))
+    )
 
 # If we have the compiler but not the library, print another warning.
-if main['HAVE_PROTOC'] and not main['HAVE_PROTOBUF']:
+if main['HAVE_PROTOC'] and not main['CONF']['HAVE_PROTOBUF']:
     warning('Did not find protocol buffer library and/or headers.\n'
             'Please install libprotobuf-dev for tracing support.')
 
-export_vars.append('HAVE_PROTOBUF')
+if main['CONF']['HAVE_PROTOBUF']:
+    main.TagImplies('protobuf', 'gem5 lib')
+    # protoc relies on the fact that undefined preprocessor symbols are
+    # explanded to 0 but since we use -Wundef they end up generating
+    # warnings.
+    main.Append(CCFLAGS='-DPROTOBUF_INLINE_NOT_IN_HEADERS=0')

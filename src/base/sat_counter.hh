@@ -318,9 +318,9 @@ class GenericSatCounter
      *
      * @ingroup api_sat_counter
      */
-    uint8_t saturate()
+    T saturate()
     {
-        const uint8_t diff = maxVal - counter;
+        const T diff = maxVal - counter;
         counter = maxVal;
         return diff;
     }
@@ -339,9 +339,6 @@ typedef GenericSatCounter<uint16_t> SatCounter16;
 typedef GenericSatCounter<uint32_t> SatCounter32;
 typedef GenericSatCounter<uint64_t> SatCounter64;
 /** @} */
-
-[[deprecated("Use SatCounter8 (or variants) instead")]]
-typedef SatCounter8 SatCounter;
 
 } // namespace gem5
 

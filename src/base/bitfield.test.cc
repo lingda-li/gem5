@@ -316,11 +316,29 @@ TEST(BitfieldTest, FindLsb)
 {
     uint64_t val = (1ULL << 63) + (1 << 1);
     EXPECT_EQ(1, findLsbSet(val));
+    EXPECT_EQ(1, findLsbSetFallback(val));
 }
 
 TEST(BitfieldTest, FindLsbZero)
 {
     EXPECT_EQ(64, findLsbSet(0));
+}
+
+TEST(BitfieldTest, FindLsbGeneralized)
+{
+    static constexpr size_t N{1000};
+    std::bitset<N> bs{0};
+    EXPECT_EQ(findLsbSet(bs), N);
+    for (size_t i{0}; i < N ; ++i) {
+        bs = std::bitset<N>{1} << i;
+        ASSERT_EQ(findLsbSet(bs), i);
+    }
+
+    const auto leadingOne = std::bitset<N>{1} << (N-1);
+    for (size_t i{0}; i < N ; ++i) {
+        bs = leadingOne | (std::bitset<N>{1} << i);
+        ASSERT_EQ(findLsbSet(bs), i);
+    }
 }
 
 /*
@@ -419,4 +437,40 @@ TEST(BitfieldTest, CountTrailingZero64AllZeros)
 {
     uint64_t value = 0;
     EXPECT_EQ(64, ctz64(value));
+}
+
+/*
+ * The following tests test clz32/64. The value returned in all cases should
+ * be equal to the number of leading zeros (i.e., the number of zeroes before
+ * the first bit set to one counting from the MSB).
+ */
+
+TEST(BitfieldTest, CountLeadingZeros32BitsNoTrailing)
+{
+    int32_t value = 1;
+    EXPECT_EQ(31, clz32(value));
+}
+
+TEST(BitfieldTest, CountLeadingZeros32Bits)
+{
+    uint32_t value = (1 << 30) + (1 << 29);
+    EXPECT_EQ(1, clz32(value));
+}
+
+TEST(BitfieldTest, CountLeadingZeros64BitsNoTrailing)
+{
+    uint64_t value = (1 << 29) + 1;
+    EXPECT_EQ(34, clz64(value));
+}
+
+TEST(BitfieldTest, CountLeadingZeros64Bits)
+{
+    uint64_t value = 1ULL << 63;
+    EXPECT_EQ(0, clz64(value));
+}
+
+TEST(BitfieldTest, CountLeadingZero64AllZeros)
+{
+    uint64_t value = 0;
+    EXPECT_EQ(64, clz64(value));
 }
