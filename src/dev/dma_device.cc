@@ -98,6 +98,7 @@ DmaPort::handleResp(DmaReqState *state, Addr addr, Addr size, Tick delay,
     // If we have reached the total number of bytes for this DMA request,
     // then signal the completion and delete the sate.
     if (state->totBytes == state->numBytes) {
+        // FIXME
         //if (gem5::ArmISA::TableWalker *walker_device =
         //        dynamic_cast<gem5::ArmISA::TableWalker *>(device))
         //  if (pkt)
