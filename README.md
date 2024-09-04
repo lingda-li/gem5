@@ -100,8 +100,11 @@ get started. Additional information can be found in the CONTRIBUTING.md file.
 
 
 ## Installing RISCV gem5
-cd gem5
+```cd gem5
 scons build/RISCV/gem5.opt
-
+```
 ## Run helloworld 
+
+```
 build/RISCV/gem5.opt configs/example/riscv/starter_se.py --cpu=minor tests/test-progs/hello/bin/riscv/linux/hello 
+```
