@@ -783,9 +783,12 @@ LSQ::StoreBuffer::insert(LSQRequestPtr request)
         request->setState(LSQRequest::StoreInStoreBuffer);
 
     slots.push_back(request);
+    // if (!request->isBarrier() ||
+    //     request->inst->staticInst->isStoreConditional() ||
+    //     request->inst->staticInst->isAtomic())
+    //   idx++;
     if (!request->isBarrier() ||
-        request->inst->staticInst->isStoreConditional() ||
-        request->inst->staticInst->isAtomic())
+        request->inst->staticInst->isStoreConditional() )
       idx++;
     request->inst->sqIdx = idx;
 

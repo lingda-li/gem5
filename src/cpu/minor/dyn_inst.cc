@@ -231,34 +231,41 @@ void MinorDynInst::dumpInst(FILE *tptr, bool isFault, bool FromSQ) {
   assert(!FromSQ || (!staticInst->isStoreConditional() && !staticInst->isAtomic()));
   if (sqIdx >= 0)
     assert(staticInst->isStore() || staticInst->isAtomic());
-  else
-    // assert(!staticInst->isStore() && !staticInst->isAtomic());
+  else 
     assert(!staticInst->isStore());
+    // assert(!staticInst->isStore());  
   assert(!dumped);
 
   fprintf(tptr, "%d ", isFault);
-  if (staticInst->isStore() || staticInst->isStoreConditional() || staticInst->isAtomic())
-   fprintf(tptr, "0 ");
-  else
-   fprintf(tptr, "-1 ");
+  // if (staticInst->isStore() || staticInst->isStoreConditional() || staticInst->isAtomic())
+  //  fprintf(tptr, "0 ");
+  // else
+  //  fprintf(tptr, "-1 ");
   fprintf(tptr, "%ld ", sqIdx);
   fprintf(tptr, "%lu %d %d", fetchTick, commitTick, commitTick);
   fprintf(tptr, " %d %d %d %d", decodeTick, decodeTick, issueTick,
           issueTick);
-  if (staticInst->isStore() || staticInst->isStoreConditional() || staticInst->isAtomic())
-   fprintf(tptr, " %d %d", commitTick, commitTick);
-  else
-   fprintf(tptr, " 0 0");
+  // if (staticInst->isStore() || staticInst->isStoreConditional() || staticInst->isAtomic())
+  //  fprintf(tptr, " %d %d", commitTick, commitTick);
+  // else
+  //  fprintf(tptr, " 0 0");
   if (FromSQ)
     fprintf(tptr, " %d %lu", storeTick, curTick() - fetchTick);
-  else if ((staticInst->isStoreConditional() || staticInst->isAtomic()) &&
+  // src/cpu/minor/lsq.cc:790 if (!request->isBarrier() || request->inst->staticInst->isStoreConditional() || request->inst->staticInst->isAtomic())
+  //  else if ((staticInst->isStoreConditional() || staticInst->isAtomic()) &&
+  //          !staticInst->isFullMemBarrier()) 
+  else if (staticInst->isStoreConditional() &&
            !staticInst->isFullMemBarrier()) {
     assert(sqIdx == 0 && !isFault);
     fprintf(tptr, " %d %d", storeTick, storeTick);
+
   } else if (sqIdx != -1 && !isFault) {
+    
     fprintf(tptr, "\n");
     return;
   }
+  if (sqIdx == 0)
+      int i =1;
   dumped = true;
   fprintf(tptr, " %d %d %d %d %d %d %d %d ", staticInst->opClass(), staticInst->isMicroop(),
           staticInst->isCondCtrl(), staticInst->isUncondCtrl(), staticInst->isDirectCtrl(),
