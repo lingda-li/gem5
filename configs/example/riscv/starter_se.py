@@ -102,6 +102,10 @@ class SimpleSeSystem(System):
                                               args.num_cores,
                                               args.cpu_freq, "1.2V",
                                               *cpu_types[args.cpu])
+        if args.maxinsts:
+            for i in range(args.num_cores):
+                self.cpu_cluster.cpus[i].max_insts_all_threads = \
+                    args.maxinsts
         print('CPU CLuster created')
         # Create a cache hierarchy (unless we are simulating a
         # functional CPU in atomic memory mode) for the CPU cluster
@@ -195,6 +199,9 @@ def main():
     parser.add_argument("--mem-size", action="store", type=str,
                         default="2GB",
                         help="Specify the physical memory size")
+    parser.add_argument("--maxinsts", action="store", type=str,
+                        default=1000,
+                        help="Max instructions for simulation")
 
     args = parser.parse_args()
     print('Parsing Completed')
