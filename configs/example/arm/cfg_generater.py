@@ -42,12 +42,13 @@ def generate_configs(args, r):
   # Memory configurations.
   args.mem_type = mem_types[r % len(mem_types)]
   print("Mem", args.mem_type)
-  if r % 4 == 0:
-    args.mem_channels = 1
-  elif r % 4 == 1:
-    args.mem_channels = 4
-  else:
-    args.mem_channels = 2
+  #if r % 4 == 0:
+  #  args.mem_channels = 1
+  #elif r % 4 == 1:
+  #  args.mem_channels = 4
+  #else:
+  #  args.mem_channels = 2
+  args.mem_channels = 2 ** random.randrange(0, 3)
   #args.mem_ranks
 
   # Cache configurations.
@@ -55,22 +56,29 @@ def generate_configs(args, r):
     # Latency and size.
     if cache == devices.L2:
       # 8 ~ 23
-      l = r % 16 + 8
+      #l = r % 16 + 8
+      l = random.randrange(8, 24)
       # 4 ~ 32
-      assoc = 2 ** (r % 4 + 2)
+      #assoc = 2 ** (r % 4 + 2)
+      assoc = 2 ** random.randrange(2, 6)
       # 64 ~ 256
-      sets = 2 ** (r % 3 + 6)
+      #sets = 2 ** (r % 3 + 6)
+      sets = 2 ** random.randrange(6, 9)
       if r % 2 == 0:
         cache.clusivity='mostly_excl'
       else:
         cache.clusivity='mostly_incl'
     else:
       # 1 ~ 4
-      l = r % 4 + 1
+      #l = r % 4 + 1
+      l = random.randrange(1, 5)
       # 2, 3, 4
-      assoc = r % 3 + 2
+      #assoc = r % 3 + 2
+      assoc = random.randrange(2, 5)
       # 4 ~ 16
-      sets = 2 ** (r % 3 + 2)
+      #sets = 2 ** (r % 3 + 2)
+      # 4 ~ 32
+      sets = 2 ** random.randrange(2, 6)
     cache.tag_latency = l
     cache.data_latency = l
     cache.response_latency = l // 2 + 1
