@@ -64,7 +64,8 @@ def generate_configs(args, r):
       # 64 ~ 256
       #sets = 2 ** (r % 3 + 6)
       sets = 2 ** random.randrange(6, 9)
-      if r % 2 == 0:
+      #if r % 2 == 0:
+      if random.randrange(0, 2) == 0:
         cache.clusivity='mostly_excl'
       else:
         cache.clusivity='mostly_incl'
