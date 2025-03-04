@@ -87,22 +87,28 @@ def generate_configs(args, r):
     cache.size = str(sets * assoc) + 'kB'
 
     # MSHR etc.
-    p = r % 4
+    #p = r % 4
     if cache == devices.L1I:
       # 1 ~ 8
-      cache.mshrs = 2 ** p
+      #cache.mshrs = 2 ** p
+      cache.mshrs = 2 ** random.randrange(4)
     elif cache == devices.L1D:
       # 4 ~ 32
-      cache.mshrs = 2 ** (p + 2)
+      #cache.mshrs = 2 ** (p + 2)
+      cache.mshrs = 2 ** random.randrange(2, 6)
       # 4 ~ 16
-      cache.write_buffers = 2 ** (r % 3 + 2)
+      #cache.write_buffers = 2 ** (r % 3 + 2)
+      cache.write_buffers = 2 ** random.randrange(2, 5)
     else:
       # 8 ~ 64
-      cache.mshrs = 2 ** (p + 3)
+      #cache.mshrs = 2 ** (p + 3)
+      cache.mshrs = 2 ** random.randrange(3, 7)
       # 8 ~ 32
-      cache.write_buffers = 2 ** (r % 3 + 3)
+      #cache.write_buffers = 2 ** (r % 3 + 3)
+      cache.write_buffers = 2 ** random.randrange(3, 6)
     # 4, 8, 12, 16, 20
-    cache.tgts_per_mshr = 4 + 4 * (r % 5)
+    #cache.tgts_per_mshr = 4 + 4 * (r % 5)
+    cache.tgts_per_mshr = 4 * random.randrange(1, 6)
 
   # CPU.
   if args.cpu == "minor":
