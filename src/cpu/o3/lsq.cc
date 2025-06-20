@@ -1136,12 +1136,12 @@ LSQ::SingleDataRequest::recvTimingResp(PacketPtr pkt)
     assert(_numOutstandingPackets == 1);
     flags.set(Flag::Complete);
     assert(pkt == _packets.front());
-    _port.completeDataAccess(pkt);
 
     // Record cache hit level info.
     _inst->cachedepth = pkt->req->getAccessDepth();
     for (int i = 0; i < 4; i++)
       _inst->dWritebacks[i] = pkt->req->writebacks[i];
+    _port.completeDataAccess(pkt);
     return true;
 }
 
@@ -1153,6 +1153,13 @@ LSQ::SplitDataRequest::recvTimingResp(PacketPtr pkt)
         pktIdx++;
     assert(pktIdx < _packets.size());
     numReceivedPackets++;
+
+    // Record cache hit level info.
+    _inst->cachedepth =
+        std::max(_inst->cachedepth, pkt->req->getAccessDepth());
+    for (int i = 0; i < 4; i++)
+      _inst->dWritebacks[i] =
+          std::max(_inst->dWritebacks[i], pkt->req->writebacks[i]);
     if (numReceivedPackets == _packets.size()) {
         flags.set(Flag::Complete);
         /* Assemble packets. */
@@ -1167,12 +1174,6 @@ LSQ::SplitDataRequest::recvTimingResp(PacketPtr pkt)
         _port.completeDataAccess(resp);
         delete resp;
     }
-
-    // Record cache hit level info.
-    _inst->cachedepth = std::max(_inst->cachedepth, pkt->req->getAccessDepth());
-    for (int i = 0; i < 4; i++)
-      _inst->dWritebacks[i] =
-          std::max(_inst->dWritebacks[i], pkt->req->writebacks[i]);
     return true;
 }
 
