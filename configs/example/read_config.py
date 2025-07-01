@@ -152,6 +152,10 @@ class PortConnection(object):
         return cmp((self.object_name, self.port_name, self.index),
             (right.object_name, right.port_name, right.index))
 
+    def __lt__(self, other):
+        return ((self.object_name, self.port_name, self.index)
+            < (other.object_name, other.port_name, other.index))
+
 def to_list(v):
     """Convert any non list to a singleton list"""
     if isinstance(v, list):
@@ -526,12 +530,15 @@ parser.add_argument('config_file', metavar='config-file.ini',
 parser.add_argument('--checkpoint-dir', type=str, default=None,
                     help='A checkpoint to directory to restore when starting '
                          'the simulation')
+parser.add_argument("--maxinsts", type=int, default=0, help="Total " \
+                    "number of instructions to simulate")
 
 args = parser.parse_args(sys.argv[1:])
 
 if args.config_file.endswith('.ini'):
     config = ConfigIniFile()
     config.load(args.config_file)
+    #print(config.get_all_object_names())
 else:
     config = ConfigJsonFile()
     config.load(args.config_file)
@@ -541,6 +548,13 @@ ticks.fixGlobalFrequency()
 mgr = ConfigManager(config)
 
 mgr.find_all_objects()
+
+if args.maxinsts:
+    # Static approach: limit each CPU’s max_insts_any_thread
+    for obj in mgr.objects_by_name.values():
+        if isinstance(obj, m5.objects.BaseCPU):
+            obj.max_insts_all_threads = args.maxinsts
+
 
 m5.instantiate(args.checkpoint_dir)
 
