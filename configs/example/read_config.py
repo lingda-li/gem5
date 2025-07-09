@@ -107,6 +107,7 @@ def memory_bandwidth_parser(cls, flags, param):
 param_parsers = {
     'Bool': simple_parser(),
     'ParamValue': no_parser,
+    'Float': simple_parser(),
     'NumericParamValue': simple_parser(cast=int),
     'TickParamValue': tick_parser(),
     'Frequency': tick_parser(cast=m5.objects.Latency),
