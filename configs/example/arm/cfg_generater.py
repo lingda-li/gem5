@@ -37,10 +37,13 @@ def generate_configs(args, r):
   random.seed(r)
   args = args
   #args.cpu_freq = str(r % 5 + 1) + "GHz"
-  freqs = ["1GHz", "2GHz", "2.5GHz", "3.3333GHz", "5GHz"]
-  args.cpu_freq = freqs[r % 5]
+  freqs = ["1GHz", "1.3333GHz", "1.6667GHz", "2GHz", "2.5GHz",
+           "3.3333GHz", "4GHz", "5GHz", "6.6667GHz"]
+  #args.cpu_freq = freqs[r % 5]
+  args.cpu_freq = freqs[random.randrange(len(freqs))]
   # Memory configurations.
-  args.mem_type = mem_types[r % len(mem_types)]
+  #args.mem_type = mem_types[r % len(mem_types)]
+  args.mem_type = mem_types[random.randrange(len(mem_types))]
   print("Mem", args.mem_type)
   #if r % 4 == 0:
   #  args.mem_channels = 1
@@ -48,7 +51,7 @@ def generate_configs(args, r):
   #  args.mem_channels = 4
   #else:
   #  args.mem_channels = 2
-  args.mem_channels = 2 ** random.randrange(0, 3)
+  args.mem_channels = 2 ** random.randrange(3)
   #args.mem_ranks
 
   # Cache configurations.
