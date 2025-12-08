@@ -897,7 +897,9 @@ class Request
      * This currently happens when the request misses in any cache level.
      */
     void incAccessDepth() const { depth++; }
+    void decAccessDepth() const { assert(depth > 0); depth--; }
     int getAccessDepth() const { return depth; }
+    void clearAccessDepth() { depth = 0; }
 
     /**
      * Set/Get the time taken for this request to be successfully translated.
@@ -1030,7 +1032,6 @@ class Request
       assert(depth < 4);
       writebacks[depth] += wb;
     }
-    void clearAccessDepth() { depth = 0; }
     /** @} */
 };
 

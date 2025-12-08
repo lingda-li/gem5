@@ -285,8 +285,8 @@ BaseCache::handleTimingReqMiss(PacketPtr pkt, MSHR *mshr, CacheBlk *blk,
 
                 assert(pkt->req->requestorId() < system->maxRequestors());
                 stats.cmdStats(pkt).mshrHits[pkt->req->requestorId()]++;
-                // Clear the depth of an access that hits in MSHR.
-                pkt->req->clearAccessDepth();
+                // Decrease the depth of an access that hits in MSHR.
+                pkt->req->decAccessDepth();
 
                 // We use forward_time here because it is the same
                 // considering new targets. We have multiple
@@ -1571,6 +1571,8 @@ BaseCache::allocateBlock(const PacketPtr pkt, PacketList &writebacks)
 
     // Print victim block's information
     DPRINTF(CacheRepl, "Replacement victim: %s\n", victim->print());
+    //DPRINTF(CacheRepl, "%llu replacement victim %llu: %s\n", addr,
+    //        regenerateBlkAddr(victim), victim->print());
 
     // Try to evict blocks; if it fails, give up on allocation
     if (!handleEvictions(evict_blks, writebacks)) {

@@ -356,6 +356,12 @@ Fetch::processCacheCompletion(PacketPtr pkt)
 
     DPRINTF(Fetch, "[tid:%i] Waking up from cache miss.\n", tid);
     assert(!cpu->switchedOut());
+    if (memReq[tid] && memReq[tid]->getPaddr() == pkt->req->getPaddr() &&
+        pkt->req->getAccessDepth() > depth) {
+        depth = pkt->req->getAccessDepth();
+        for (int i = 0; i < 4; i++)
+            writebacks[i] = pkt->req->writebacks[i];
+    }
 
     // Only change the status if it's still waiting on the icache access
     // to return.
@@ -387,7 +393,6 @@ Fetch::processCacheCompletion(PacketPtr pkt)
 
     pkt->req->setAccessLatency();
     cpu->ppInstAccessComplete->notify(pkt);
-    depth = pkt->req->getAccessDepth();
     // Reset the mem req to NULL.
     delete pkt;
     memReq[tid] = NULL;
@@ -1319,12 +1324,17 @@ Fetch::fetch(bool &status_change)
             if (status_change && numInst == 1) {
               // Return from icache access.
               instruction->fetchdepth = depth;
+              depth = -1;
               for (int i = 0; i < 4; i++) {
                 instruction->iwalkDepth[i] = walkDepth[i];
                 instruction->iwalkAddr[i] = walkAddr[i];
+                walkDepth[i] = -1;
+                walkAddr[i] = 0;
               }
-              for (int i = 0; i < 4; i++)
+              for (int i = 0; i < 4; i++) {
                 instruction->iWritebacks[i] = writebacks[i];
+                writebacks[i] = 0;
+              }
             } else {
               instruction->fetchdepth = -1;
               for (int i = 0; i < 4; i++) {
