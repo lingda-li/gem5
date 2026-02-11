@@ -1529,7 +1529,7 @@ LSQ::LSQ(std::string name_, std::string dcache_port_name_,
     }
 
     // Open file sq.trace.txt in write mode.
-    tptr = fopen("sq.trace.txt", "w");
+    tptr = fopen("/dev/null", "w");
     if (tptr == NULL)
         printf("Could not open trace file.\n");
 }

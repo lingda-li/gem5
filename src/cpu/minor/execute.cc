@@ -198,7 +198,7 @@ Execute::Execute(const std::string &name_,
     }
 
     // Open file trace.txt in write mode.
-    tptr = fopen("trace.txt", "w");
+    tptr = fopen("/dev/null", "w");
     if (tptr == NULL)
         printf("Could not open trace file.\n");
 }

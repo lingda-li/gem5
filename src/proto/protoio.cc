@@ -39,6 +39,8 @@
 
 #include "base/logging.hh"
 
+#include <string>
+
 using namespace google::protobuf;
 
 ProtoOutputStream::ProtoOutputStream(const std::string& filename) :
@@ -53,7 +55,7 @@ ProtoOutputStream::ProtoOutputStream(const std::string& filename) :
     // wrapped in a gzip stream if the filename ends with .gz. The
     // latter stream is in turn wrapped in a coded stream
     wrappedFileStream = new io::OstreamOutputStream(&fileStream);
-    if (filename.find_last_of('.') != string::npos &&
+    if (filename.find_last_of('.') != std::string::npos &&
         filename.substr(filename.find_last_of('.') + 1) == "gz") {
         gzipStream = new io::GzipOutputStream(wrappedFileStream);
         zeroCopyStream = gzipStream;

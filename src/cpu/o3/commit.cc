@@ -133,7 +133,7 @@ Commit::Commit(CPU *_cpu, const O3CPUParams &params)
     interrupt = NoFault;
 
     // Open file trace.txt in write mode.
-    tptr = fopen("trace.txt", "w");
+    tptr = fopen("/dev/null", "w");
     if (tptr == NULL)
         printf("Could not open trace file.\n");
     numPhaseInsts = 0;

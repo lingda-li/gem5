@@ -1,0 +1,21 @@
+name: gem5_clean
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - libprotobuf=3.21.12
+  - grpc-cpp=1.49.*
+  - scons=4.3.0
+  - pkg-config
+  - cmake
+  - ninja
+  - make
+  - gperftools
+  - zlib
+  - boost-cpp
+  - m4=1.4.*
+  - pip
+  - pip:
+      - protobuf==3.20.3

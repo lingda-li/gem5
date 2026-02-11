@@ -199,7 +199,7 @@ LSQUnit::LSQUnit(uint32_t lqEntries, uint32_t sqEntries)
       isStoreBlocked(false), storeInFlight(false), stats(nullptr)
 {
     // Open file sq.trace.txt in write mode.
-    tptr = fopen("sq.trace.txt", "w");
+    tptr = fopen("/dev/null", "w");
     if (tptr == NULL)
         printf("Could not open trace file.\n");
 }
